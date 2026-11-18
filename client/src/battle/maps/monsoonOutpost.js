@@ -1,13 +1,16 @@
+import { mirrorSet } from '../sim/setpieces.js'
 import { box, mirrored, mirrorPatch, mirrorRoad, scatterTrees } from './mapKit.js'
 
 /**
- * Monsoon Outpost - a jungle camp each side of a misty river. Each outpost is a
- * clearing behind a palisade and sandbag walls: stilt huts with thatched roofs, tents
- * under camo nets, two watchtowers and a helipad. Between them, thick jungle (the trees
- * are real cover), muddy trails to the fords, and an old overgrown ruin on each bank.
+ * Monsoon Outpost - two jungle camps either side of a misty brown river. Each camp is a
+ * log stockade: stilt huts with thatched roofs round a helipad, a longhouse, watchtowers
+ * at the corners and the gate. The river can only be crossed at three places - the plank
+ * bridge on the main trail, a rope footbridge to the south and a muddy ford to the north -
+ * so the fight is for those. Between camp and river: jungle groves (the trees are real
+ * cover), an overgrown temple ruin and a lookout hut over the bridge.
  */
 
-/** A thicket of jungle trees (cover) around (x, z). */
+/** A grove of jungle trees (cover) around (x, z). */
 function thicket(x, z, n, spread, seed) {
   const out = []
   for (let i = 0; i < n; i += 1) {
@@ -19,71 +22,81 @@ function thicket(x, z, n, spread, seed) {
 }
 
 const WEST = [
-  // The outpost: stilt huts and tents.
-  box('shed', -76, -22, 6, 4.5, 3.2, 0, { color: '#7a5c3c', roof: '#b39a5a' }),
-  box('shed', -76, 22, 6, 4.5, 3.2, 0, { color: '#7a5c3c', roof: '#b39a5a' }),
-  box('shed', -82, 0, 5, 7, 3.2, 0, { color: '#6e5236', roof: '#a89052' }),
-  box('tent', -66, -34, 4.2, 3.6),
-  box('tent', -66, 34, 4.2, 3.6),
-  box('tent', -72, -40, 4.2, 3.6),
-  box('tent', -72, 40, 4.2, 3.6),
-  // Sandbag walls at the camp's mouth.
-  box('sandbag', -58, -10, 0.9, 6),
-  box('sandbag', -58, 10, 0.9, 6),
-  box('sandbag', -54, -2, 3, 0.9),
-  box('crate', -64, -6, 1.25, 1.25, 2.5),
-  box('crate', -64, 6, 1.25, 1.25),
-  // Jungle.
-  ...thicket(-40, -30, 8, 6, 0.3),
-  ...thicket(-40, 30, 8, 6, 1.1),
-  ...thicket(-28, -6, 6, 4.5, 2.0),
-  ...thicket(-22, -44, 6, 5.5, 2.6),
-  ...thicket(-22, 44, 6, 5.5, 3.3),
-  ...thicket(-50, -48, 6, 4, 4.1),
-  ...thicket(-50, 48, 6, 4, 4.9),
-  ...thicket(-14, 20, 5, 3.5, 5.5),
+  // Sandbags in front of the stockade gate, stores inside it.
+  box('sandbag', -55, -10, 0.9, 5),
+  box('sandbag', -55, 10, 0.9, 5),
+  box('crate', -64, -5, 1.25, 1.25, 2.5),
+  box('crate', -64, 5, 1.25, 1.25),
+  box('tent', -66, -14, 4.2, 3.6),
+  box('tent', -66, 14, 4.2, 3.6),
+  // Jungle groves.
+  ...thicket(-44, 24, 8, 6, 0.3),
+  ...thicket(-26, 42, 6, 5, 1.1),
+  ...thicket(-50, -44, 6, 4.5, 2),
+  ...thicket(-47, -14, 4, 3, 3.3),
+  ...thicket(-15, -46, 5, 4, 4.1),
 ]
 
 const WEST_PIECES = [
-  // Palisade (fence lines) round the camp, a gap at the front.
-  ['fence', -60, -16, 1],
-  ['fence', -60, -20, 1],
-  ['fence', -60, -24, 1],
-  ['fence', -60, -28, 1],
-  ['fence', -60, 16, 1],
-  ['fence', -60, 20, 1],
-  ['fence', -60, 24, 1],
-  ['fence', -60, 28, 1],
-  ['tower', -62, -32],
-  ['tower', -62, 32],
-  ['helipad', -74, 0],
-  ['camonet', -68, -14],
-  ['camonet', -68, 14],
-  ['floodlight', -66, -2],
-  ['floodlight', -66, 2],
+  ['tower', -60, -32],
+  ['tower', -60, 32],
+  ['tower', -63, -9],
+  ['helipad', -72, 0],
+  ['camonet', -67, -21],
+  ['floodlight', -65, -2],
+  ['floodlight', -65, 2],
   ['radiomast', -84, 40],
-  ['ammocrate', -70, -8],
-  ['drum', -80, -10],
-  ['drum', -80.9, -10.5],
-  ['fuel', -80, 10],
-  // The old ruin on this bank, and the trail to the ford.
-  ['ruin', -16, -24],
-  ['rubble', -12, -30],
+  ['ammocrate', -68, -8],
+  ['drum', -76, -10],
+  ['drum', -76.9, -10.5],
+  ['fuel', -76, 10],
+  ['fuel', -76.8, 10.6],
+  // Out in the jungle: rocks, bushes, the bridgehead's sandbags, the ford's stones.
   ['rock', -32, 14],
-  ['rock', -10, 6],
-  ['rock', -36, -16],
+  ['rock', -10, 16],
+  ['rock', -7, 27],
+  ['rock', -38, -24],
   ['bush', -30, 22],
   ['bush', -46, 8],
-  ['bush', -26, -20],
+  ['bush', -24, -16],
   ['bush', -18, 34],
-  ['bush', -48, -20],
-  ['bush', -8, -46],
-  ['sandbags', -12, -6, 1],
-  ['sandbags', -12, 10, 1],
+  ['bush', -8, -44],
+  ['bush', -42, 44],
+  ['sandbags', -11, -6, 1],
+  ['sandbags', -11, 6, 1],
 ]
 
-const { obstacles, pieces } = mirrored(WEST, WEST_PIECES, [], [['rock', 0, -18], ['rock', 2, 26]])
-const westTrails = [{ width: 2.0, points: [[-90, 0], [-58, 0], [-40, 6], [-24, 2], [-4, 8]] }]
+const WEST_SETS = [
+  // The stockade: log walls with a gate facing the river.
+  ['palisade', -60, -18.5, 1, { len: 23 }],
+  ['palisade', -60, 18.5, 1, { len: 23 }],
+  ['palisade', -72.5, -30, 0, { len: 25 }],
+  ['palisade', -72.5, 30, 0, { len: 25 }],
+  // Huts on stilts round the helipad, the longhouse at the back.
+  ['stilthut', -79, -20, 1, { w: 7, d: 5 }],
+  ['stilthut', -79, 20, 1, { w: 7, d: 5 }],
+  ['stilthut', -70, -24, 0, { w: 6, d: 4.5 }],
+  ['stilthut', -70, 24, 2, { w: 6, d: 4.5 }],
+  ['stilthut', -82, 0, 1, { w: 10, d: 5, roof: '#a89052' }],
+  // The lookout over the bridge and the temple ruin in the jungle.
+  ['stilthut', -14, -12, 1, { w: 5, d: 4 }],
+  ['ruins', -34, -34, 0],
+]
+
+const CENTRE_SETS = [
+  // Plank bridge on the main trail, rope footbridge to the south (the ford is open water's edge).
+  ['bridge', 0, 0, 0, { len: 16, w: 6 }],
+  ['bridge', 0, -32, 0, { len: 15, w: 3.4, rope: true }],
+  ['boat', 0, -18, 1],
+  ['boat', 0.5, 45, 3],
+]
+
+const { obstacles, pieces } = mirrored(WEST, WEST_PIECES, [], [])
+const westTrails = [
+  { width: 2.2, points: [[-90, 0], [-58, 0], [-40, 4], [-20, 1], [-8, 0]] },
+  { width: 1.6, points: [[-40, 4], [-28, -16], [-14, -30], [-7, -32]] },
+  { width: 1.6, points: [[-20, 1], [-16, 18], [-6, 30]] },
+]
 
 export const MONSOON_OUTPOST = {
   id: 'jungle',
@@ -96,11 +109,18 @@ export const MONSOON_OUTPOST = {
   ],
   obstacles,
   pieces,
+  sets: [...WEST_SETS, ...WEST_SETS.map(mirrorSet), ...CENTRE_SETS],
+  // The river: four reaches with muddy banks; the crossings are the bridges and the ford.
+  water: [
+    { x: 0, z: -49.9, w: 12, d: 32.4, bank: true },
+    { x: 0, z: -16.65, w: 10, d: 27.3, bank: true },
+    { x: 0, z: 14.75, w: 11.5, d: 23.5, bank: true },
+    { x: 0, z: 30, w: 11.5, d: 7, bank: true, ford: true },
+    { x: 0, z: 49.8, w: 11.5, d: 32.6, bank: true },
+  ],
   roads: [...westTrails, ...westTrails.map(mirrorRoad)],
-  // The river down the middle (painted as water), with misty air over it.
-  ice: [{ width: 3.6, points: [[4, -60], [-3, -36], [5, -14], [-2, 8], [4, 30], [-3, 60]] }],
-  mud: [[-58, 0, 6], [-40, 6, 5], [-24, 2, 5], [-6, 8, 6]].flatMap((p) => [p, mirrorPatch(p)]),
-  trees: scatterTrees(70, 71, 85, 55),
+  mud: [[-58, 0, 6], [-40, 4, 5], [-24, 2, 5], [-72, 0, 9], [-28, -16, 4]].flatMap((p) => [p, mirrorPatch(p)]).concat([[0, 30, 7]]),
+  trees: scatterTrees(50, 71, 85, 55),
   hills: [150, 250],
   hillScale: 1.5,
   mist: { x0: -22, x1: 22 },

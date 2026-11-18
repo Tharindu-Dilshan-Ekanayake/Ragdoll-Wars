@@ -7,7 +7,8 @@
  * the same frame. Plain data, no three.js, so the server runs it too.
  *
  * `water` maps also get basins (`map.water`: [{ x, z, w, d }]): flat boxes that stop
- * anyone walking in but not a bullet flying over.
+ * anyone walking in but not a bullet flying over (`bank: true` draws a river's natural
+ * banks; `ford: true` is shallow water anyone can wade).
  */
 
 const B = (x, z, w, d, h, extra) => ({ x, z, w, d, h, ...extra })
@@ -40,6 +41,30 @@ const KINDS = {
   fence: (o) => [B(0, 0, o.len || 20, 0.2, 0.05)],
   lamp: () => [B(0, 0, 0.3, 0.3, 7.5)],
   rail: () => [],
+  // Jungle.
+  // A bridge's railings only: the deck is walked on (it spans a gap left between basins).
+  bridge: (o) => [B(0, -(o.w || 6) / 2, o.len || 16, 0.25, 1.1), B(0, (o.w || 6) / 2, o.len || 16, 0.25, 1.1)],
+  stilthut: (o) => [B(0, 0.8, (o.w || 6) + 0.4, (o.d || 5) + 2, 6.4)],
+  palisade: (o) => [B(0, 0, o.len || 10, 0.7, 2.8)],
+  ruins: () => [
+    B(-4.5, -4.5, 1.2, 1.2, 4.2),
+    B(4.5, -4.5, 1.2, 1.2, 2),
+    B(-4.5, 4.5, 1.2, 1.2, 1.2),
+    B(4.5, 4.5, 1.2, 1.2, 3.4),
+    B(-1.5, -5.2, 3, 0.9, 2.6),
+    B(1.5, -5.2, 3, 0.9, 1.8),
+    B(-5.2, 0.5, 0.9, 5, 1.6),
+    B(1.5, 1.5, 3, 1, 1),
+  ],
+  boat: () => [B(0, 0, 9, 3, 2.2)],
+  // Scrapyard.
+  sheetwall: (o) => [B(0, 0, o.len || 12, 0.3, 2.8)],
+  scrapheap: (o) => [B(0, 0, (o.r || 4) * 1.6, (o.r || 4) * 1.6, (o.r || 4) * 0.8)],
+  carstack: (o) => [B(0, 0, 4.2, 2, 0.72 * (o.n || 3))],
+  crusher: () => [B(0, 0, 9, 3.6, 3.4)],
+  magnet: () => [B(0, 0, 5, 3.6, 4.2)],
+  cabin: () => [B(0, 0, 6.2, 2.6, 2.9)],
+  tyres: () => [B(0, 0, 2.6, 2.6, 1.6)],
 }
 
 export const SET_KINDS = Object.keys(KINDS)
@@ -83,6 +108,7 @@ export const mirrorSet = ([kind, x, z, rot = 0, opts]) => [kind, -x, z, opts?.fl
 export function setObstacles(map) {
   const out = []
   for (const [kind, x, z, rot, opts] of map.sets || []) for (const b of setBoxes(kind, x, z, rot, opts)) out.push(b)
-  for (const r of map.water || []) out.push(waterBox(r))
+  // A ford is shallow: drawn as water but walked through.
+  for (const r of map.water || []) if (!r.ford) out.push(waterBox(r))
   return out
 }

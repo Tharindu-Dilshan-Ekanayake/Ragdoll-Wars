@@ -492,7 +492,253 @@ function lamp(b) {
   b.box(1.7, 7.2, 0, 0.6, 0.18, 0.35, '#fff2c8')
 }
 
-const DRAW = { crane, ship, tug, tank, lighthouse, office, truck, railcar, rail, hangar, ctower, plane, fighter, radar, revetment, windsock, house, domehouse, stall, watertower, well, loaddock, pallets, fence, lamp }
+// --- Jungle -----------------------------------------------------------------------------
+
+const WOOD = '#6b4e34'
+const WOOD_DARK = '#4a3626'
+
+/** A plank bridge over a river gap, length along local x; `rope` makes it a footbridge. */
+function bridge(b, o) {
+  const len = o.len || 16
+  const w = o.w || 6
+  b.box(0, 0.09, 0, len, 0.12, w, WOOD)
+  for (let x = -len / 2 + 0.45; x < len / 2; x += 0.9) b.box(x, 0.155, 0, 0.06, 0.012, w - 0.1, WOOD_DARK)
+  for (const z of [-w / 2 + 0.3, w / 2 - 0.3]) b.box(0, -0.12, z, len, 0.3, 0.3, WOOD_DARK)
+  for (const x of [-2.6, 2.6]) for (const z of [-w / 2 + 0.3, w / 2 - 0.3]) b.box(x, -0.4, z, 0.35, 0.8, 0.35, WOOD_DARK)
+  const rc = o.rope ? '#a08a5a' : WOOD
+  const t = o.rope ? 0.05 : 0.1
+  for (const z of [-w / 2 + 0.06, w / 2 - 0.06]) {
+    for (let x = -len / 2 + 0.1; x <= len / 2; x += 2) b.box(x, 0.7, z, 0.12, 1.1, 0.12, WOOD_DARK)
+    b.box(0, 1.22, z, len, t, t, rc)
+    b.box(0, 0.75, z, len, t, t, rc)
+  }
+}
+
+/** A hut on stilts: plank walls, a veranda and ladder at the front (+z), a thatched roof. */
+function stilthut(b, o) {
+  const w = o.w || 6
+  const d = o.d || 5
+  const fy = 1.8
+  const wall = o.color || ['#8a6a44', '#7d6040', '#94744c'][((o.seed || 0) * 3) | 0]
+  for (const x of [-w / 2 + 0.3, 0, w / 2 - 0.3]) for (const z of [-d / 2 + 0.3, d / 2 + 1.5]) b.box(x, fy / 2, z, 0.25, fy, 0.25, WOOD_DARK)
+  b.box(0, fy + 0.1, 0.8, w + 0.4, 0.2, d + 2, '#5e4630')
+  b.box(0, fy + 1.4, 0, w, 2.4, d, wall)
+  for (let x = -w / 2 + 0.5; x < w / 2; x += 0.75) b.box(x, fy + 1.4, d / 2 + 0.02, 0.07, 2.4, 0.04, shade(wall, 0.72))
+  b.box(0.8, fy + 1.15, d / 2 + 0.05, 1, 1.9, 0.06, '#3a2a1c')
+  b.box(-w * 0.28, fy + 1.6, d / 2 + 0.05, 1, 0.7, 0.06, '#2a1e14')
+  for (const sx of [-1, 1]) b.box(sx * (w / 2 + 0.03), fy + 1.6, 0, 0.06, 0.7, 1.1, '#2a1e14')
+  b.box(0, fy + 0.75, d / 2 + 1.75, w, 0.08, 0.08, WOOD)
+  for (const sx of [-1, 1]) b.box(sx * (w / 2 - 0.05), fy + 1.4, d / 2 + 1.7, 0.15, 2.6, 0.15, WOOD_DARK)
+  const roof = new ConeGeometry(1, 1, 4)
+  roof.rotateY(Math.PI / 4)
+  b.geo(roof, o.roof || '#b39a5a', 0, fy + 3.6, 0.8, 0, 0, 0, (w / 2 + 0.9) / 0.7071, 2.1, ((d + 2) / 2 + 0.6) / 0.7071)
+  const lx = w / 2 - 1.3
+  for (const dx of [0, 0.6]) b.bar(lx + dx, 0, d / 2 + 3, lx + dx, fy + 0.2, d / 2 + 1.8, 0.07, WOOD_DARK)
+  for (let k = 1; k < 4; k += 1) b.box(lx + 0.3, (fy * k) / 4, d / 2 + 3 - (1.2 * k) / 4, 0.6, 0.06, 0.06, WOOD_DARK)
+}
+
+/** A palisade of sharpened logs along local x, two rails behind. */
+function palisade(b, o) {
+  const len = o.len || 10
+  let k = 0
+  for (let x = -len / 2 + 0.2; x <= len / 2 - 0.15; x += 0.42) {
+    const h = 2.6 + hash(x + (o.seed || 0) * 9, k) * 0.4
+    const c = shade('#6b5038', 0.85 + hash(k, x) * 0.3)
+    // Three-sided open logs and tips: 9 triangles a log (palisades run for metres).
+    b.geo(new CylinderGeometry(0.23, 0.23, h, 3, 1, true), c, x, h / 2, 0, 0, k * 1.3, 0)
+    b.geo(new ConeGeometry(0.23, 0.45, 3, 1, true), '#5a4430', x, h + 0.22, 0, 0, k * 1.3, 0)
+    k += 1
+  }
+  for (const y of [0.8, 2]) b.box(0, y, -0.27, len, 0.15, 0.12, WOOD_DARK)
+}
+
+/** An overgrown temple ruin on its stone plinth: broken pillars, walls, a fallen column. */
+function ruins(b) {
+  const S = '#8f8a7a'
+  const M = '#5f6e46'
+  b.box(0, 0.12, 0, 12, 0.24, 12, '#8a8474', 'concrete')
+  b.box(0, 0.06, 6.5, 4, 0.12, 1, '#8a8474', 'concrete')
+  for (const [x, z, h] of [[-4.5, -4.5, 3.8], [4.5, -4.5, 2], [-4.5, 4.5, 1.2], [4.5, 4.5, 3.4]]) {
+    b.box(x, h / 2, z, 1.2, h, 1.2, S, 'concrete')
+    b.box(x, h + 0.04, z, 1.25, 0.08, 1.25, M)
+  }
+  b.box(-4.5, 4, -4.5, 1.6, 0.4, 1.6, S, 'concrete')
+  b.box(-1.5, 1.3, -5.2, 3, 2.6, 0.9, S, 'concrete')
+  b.box(1.5, 0.9, -5.2, 3, 1.8, 0.9, S, 'concrete')
+  b.box(-5.2, 0.8, 0.5, 0.9, 1.6, 5, S, 'concrete')
+  for (const [x, y, z, w, h, d] of [[-1.5, 2.64, -5.2, 3, 0.08, 0.95], [1.5, 1.84, -5.2, 3, 0.08, 0.95], [-5.2, 1.64, 0.5, 0.95, 0.08, 5]]) b.box(x, y, z, w, h, d, M)
+  b.cyl(1.5, 0.5, 1.5, 0.5, 0.5, 3, S, 8, 0, Math.PI / 2)
+  for (const [x, z, h] of [[-2.4, -4.72, 1.8], [-0.6, -4.72, 1.2], [2.2, -4.72, 1.1], [-4.72, -0.8, 1.2], [-4.72, 2, 0.9]]) {
+    const top = z < -4 ? (x < 0 ? 2.6 : 1.8) : 1.6
+    b.box(x, top - h / 2, z, z < -4 ? 0.3 : 0.06, h, z < -4 ? 0.06 : 0.3, '#4e6e38')
+  }
+}
+
+/** A river patrol boat, bow towards +x. */
+function boat(b) {
+  const H = '#4a5a48'
+  b.box(-0.6, 0.35, 0, 7.8, 0.9, 2.8, H)
+  b.geo(new BoxGeometry(1.98, 0.9, 1.98), H, 3.3, 0.35, 0, 0, Math.PI / 4, 0)
+  b.box(-0.4, 0.82, 0, 8, 0.05, 2.6, '#6b6f64')
+  b.box(-0.5, 1.4, 0, 2.6, 1.2, 2, '#5a6a56')
+  b.box(0.82, 1.6, 0, 0.04, 0.45, 1.7, '#1e2a30')
+  b.box(-3.1, 1.95, 0, 2.4, 0.08, 2.4, '#3f4f3a')
+  for (const x of [-4.1, -2.1]) for (const z of [-1.1, 1.1]) b.box(x, 1.4, z, 0.08, 1.1, 0.08, '#2a2c2e')
+  b.cyl(2.5, 1.05, 0, 0.25, 0.3, 0.45, '#2a2c2e', 8)
+  b.bar(2.5, 1.35, 0, 3.8, 1.5, 0, 0.1, '#1d1f21')
+}
+
+// --- Scrapyard --------------------------------------------------------------------------
+
+const RUSTS = ['#8a5a3c', '#7a4a2e', '#946646', '#6e5240', '#7d6448']
+const SCRAP = ['#7a4a2e', '#8a5a3c', '#5e4636', '#6d6a64', '#9a7a4a', '#5d7a8a', '#8a3f30', '#4e4a44']
+
+/** Corrugated sheet panels on posts along local x, each panel rusted its own shade. */
+function sheetwall(b, o) {
+  const len = o.len || 12
+  const n = Math.max(1, Math.round(len / 3))
+  const pw = len / n
+  for (let i = 0; i < n; i += 1) {
+    const x = -len / 2 + pw * (i + 0.5)
+    const c = RUSTS[(hash(x + (o.seed || 0) * 5, i) * RUSTS.length) | 0]
+    b.box(x, 1.4 + (i % 2) * 0.06, 0, pw - 0.05, 2.8, 0.1, c, 'steel', 1.2)
+  }
+  for (let i = 0; i <= n; i += 1) b.box(-len / 2 + pw * i, 1.45, -0.12, 0.14, 2.9, 0.14, '#4a3a2e')
+}
+
+/** A heap of scrap: a dirt-and-rust mound with plates, beams and pipes sticking out. */
+function scrapheap(b, o) {
+  const r = o.r || 4
+  const s = (o.seed || 0.3) * 100
+  const hh = r * 0.8
+  b.geo(new ConeGeometry(r, hh, 8), '#5a4434', 0, hh / 2, 0)
+  for (let k = 0; k < 22; k += 1) {
+    const a = hash(s, k) * Math.PI * 2
+    const t = Math.sqrt(hash(s + 1, k)) * r * 0.85
+    const y = hh * (1 - t / r) + 0.1
+    const c = SCRAP[(hash(s + 2, k) * SCRAP.length) | 0]
+    const rx = (hash(s + 3, k) - 0.5) * 1.6
+    const ry = hash(s + 4, k) * Math.PI
+    const rz = (hash(s + 5, k) - 0.5) * 1.6
+    if (k % 4 === 3) b.geo(new CylinderGeometry(0.18, 0.18, 1.6 + hash(s + 6, k) * 1.6, 6), c, Math.cos(a) * t, y, Math.sin(a) * t, rx + 1.2, ry, rz)
+    else b.geo(new BoxGeometry(1 + hash(s + 6, k) * 1.4, 0.15 + hash(s + 7, k) * 0.35, 0.7 + hash(s + 8, k) * 1), c, Math.cos(a) * t, y, Math.sin(a) * t, rx, ry, rz)
+  }
+}
+
+/** Crushed cars stacked `n` high. */
+function carstack(b, o) {
+  const n = o.n || 3
+  const s = (o.seed || 0.5) * 50
+  const paints = ['#7a3a30', '#3f5a6e', '#8a8a82', '#5a6a3a', '#a8842e', '#4a4a4e', '#8a5a3c']
+  for (let k = 0; k < n; k += 1) {
+    const c = paints[(hash(s, k) * paints.length) | 0]
+    const y = 0.36 + k * 0.72
+    const ox = (hash(s + 1, k) - 0.5) * 0.4
+    const ry = (hash(s + 2, k) - 0.5) * 0.12
+    b.geo(new BoxGeometry(4, 0.7, 1.85), c, ox, y, 0, 0, ry, 0)
+    b.geo(new BoxGeometry(2.6, 0.16, 1.88), '#26292c', ox + 0.2, y + 0.12, 0, 0, ry, 0)
+  }
+}
+
+/** A car crusher: a steel chamber with a crushed car in it, the ram housing and its cab. */
+function crusher(b) {
+  const Y = '#c49a32'
+  b.box(0, 0.3, 0, 9, 0.6, 3.6, '#3a3d40')
+  for (const z of [-1.5, 1.5]) b.box(-1, 1.8, z, 6, 2.4, 0.6, Y, 'steel', 1.2)
+  b.box(-4.1, 1.8, 0, 0.6, 2.4, 3.6, Y, 'steel', 1.2)
+  b.box(3, 1.9, 0, 3, 2.6, 3.4, shade(Y, 0.9), 'steel', 1.2)
+  for (const z of [-0.9, 0.9]) b.cyl(1, 2.2, z, 0.25, 0.25, 2.4, '#9aa0a5', 8, 0, Math.PI / 2)
+  b.box(-1.2, 1.05, 0, 3.6, 0.9, 2.2, '#7a3a30')
+  b.box(3.6, 3.95, 1.1, 1.6, 1.5, 1.4, '#c9c4b8')
+  b.box(3.6, 4.1, 1.82, 1.3, 0.6, 0.04, '#1e2a30')
+  b.geo(new BoxGeometry(6, 0.12, 2.6), shade(Y, 0.8), -1, 3.4, -2.4, 0.9, 0, 0)
+}
+
+/** A crawler crane with a lattice boom swinging a scrap magnet out along local +x. */
+function magnet(b) {
+  const Y = '#c4952e'
+  for (const z of [-1.4, 1.4]) b.box(0, 0.5, z, 5, 1, 0.9, '#2a2c2e')
+  b.box(-0.3, 1.9, 0, 4.2, 1.8, 3.2, Y, 'steel', 1.2)
+  b.box(-2.4, 1.9, 0, 1, 1.6, 3, '#3a3d40')
+  b.box(1.2, 3.4, 1, 1.6, 1.6, 1.2, Y)
+  b.box(2.02, 3.55, 1, 0.04, 0.8, 1, '#1e2a30')
+  const tip = [12, 15]
+  for (const z of [-0.6, 0.6]) b.bar(1.4, 2.8, z, tip[0], tip[1], z * 0.4, 0.22, Y)
+  for (let k = 1; k < 7; k += 1) {
+    const f0 = (k - 1) / 7
+    const f1 = k / 7
+    const p = (f) => [1.4 + (tip[0] - 1.4) * f, 2.8 + (tip[1] - 2.8) * f, 0.6 - 0.36 * f]
+    const [x0, y0, z0] = p(f0)
+    const [x1, y1, z1] = p(f1)
+    b.bar(x0, y0, z0, x1, y1, -z1, 0.08, Y)
+  }
+  for (const z of [-1, 1]) b.bar(-1.5, 2.8, z, -0.5, 6, 0, 0.12, '#3a3d40')
+  b.bar(-0.5, 6, 0, tip[0], tip[1], 0, 0.06, '#2a2c2e')
+  b.bar(tip[0], tip[1], 0, tip[0], 6.6, 0, 0.05, '#2a2c2e')
+  b.cyl(tip[0], 6.3, 0, 1.1, 1.1, 0.6, '#2a2c2e', 12)
+}
+
+/** A portacabin site office raised on blocks, door and steps on the front (+z). */
+function cabin(b, o) {
+  const c = o.color || ['#d6d2c4', '#8fa8b8', '#b8a88a'][((o.seed || 0) * 3) | 0]
+  for (const x of [-2.6, 2.6]) for (const z of [-1, 1]) b.box(x, 0.15, z, 0.5, 0.3, 0.5, '#8d8a82', 'concrete')
+  b.box(0, 1.6, 0, 6, 2.6, 2.5, c, 'steel', 1.4)
+  b.box(0, 2.95, 0, 6.2, 0.1, 2.7, shade(c, 0.8))
+  for (const x of [-1.8, 0.2]) b.box(x, 1.9, 1.27, 1.3, 0.8, 0.05, '#2e3e4a')
+  b.box(2, 1.4, 1.27, 0.9, 2, 0.05, '#4a4e52')
+  b.box(2, 0.3, 1.75, 1.1, 0.6, 0.9, '#8d8a82', 'concrete')
+}
+
+/** Four stacks of old tyres. */
+function tyres(b, o) {
+  const s = (o.seed || 0.5) * 30
+  for (const x of [-0.65, 0.65]) {
+    for (const z of [-0.65, 0.65]) {
+      const n = 2 + ((hash(s + x, z) * 3) | 0)
+      for (let k = 0; k < n; k += 1) b.cyl(x, 0.14 + k * 0.29, z, 0.44, 0.44, 0.28, '#1d1f21', 8)
+    }
+  }
+}
+
+const DRAW = {
+  crane,
+  ship,
+  tug,
+  tank,
+  lighthouse,
+  office,
+  truck,
+  railcar,
+  rail,
+  hangar,
+  ctower,
+  plane,
+  fighter,
+  radar,
+  revetment,
+  windsock,
+  house,
+  domehouse,
+  stall,
+  watertower,
+  well,
+  loaddock,
+  pallets,
+  fence,
+  lamp,
+  bridge,
+  stilthut,
+  palisade,
+  ruins,
+  boat,
+  sheetwall,
+  scrapheap,
+  carstack,
+  crusher,
+  magnet,
+  cabin,
+  tyres,
+}
 
 /** Every set of `map` as three geometries ({ plain, concrete, steel }), or null if none. */
 export function buildSetGeometries(map) {

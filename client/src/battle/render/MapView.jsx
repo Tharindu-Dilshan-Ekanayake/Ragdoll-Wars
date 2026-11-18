@@ -265,8 +265,20 @@ function paintGround(map, S = 512) {
     ctx.fillText(t.text, 0, 0)
     ctx.restore()
   }
-  // Under the basins: dark water (the surface is drawn over it).
+  // Under the basins: dark water (the surface is drawn over it); river basins get a
+  // muddy, ragged bank instead (their water's edge wobbles in the shader).
   for (const r of map.water || []) {
+    if (r.bank) {
+      for (const [pad, a, f] of [
+        [3.2, 0.3, 1],
+        [1.5, 0.6, 0.9],
+        [0, 0.95, 0.62],
+      ]) {
+        ctx.fillStyle = `rgba(${Math.round(mr0 * f)},${Math.round(mg0 * f)},${Math.round(mb0 * f)},${a})`
+        wobblyRect(ctx, r, pad, toX, toY)
+      }
+      continue
+    }
     ctx.fillStyle = '#1b3b4a'
     ctx.fillRect(toX(r.x - r.w / 2), toY(r.z - r.d / 2), r.w * kx, r.d * kz)
   }
@@ -581,11 +593,40 @@ void main() {`)
  * own size attribute so the shader knows how far every pixel is from the quay - teal
  * and foamy along the edge, deep blue-green out in the middle, the sun glinting on it.
  */
+/** Fills a rectangle grown by `pad` metres, its sides wobbling like a natural bank. */
+function wobblyRect(ctx, r, pad, toX, toY) {
+  const x0 = r.x - r.w / 2 - pad
+  const x1 = r.x + r.w / 2 + pad
+  const z0 = r.z - r.d / 2 - pad
+  const z1 = r.z + r.d / 2 + pad
+  const amp = pad * 0.5 + 0.3
+  ctx.beginPath()
+  let first = true
+  const side = (ax, az, bx, bz, nx, nz) => {
+    const n = Math.max(2, Math.ceil(Math.hypot(bx - ax, bz - az) / 1.5))
+    for (let i = 0; i < n; i += 1) {
+      const x = ax + ((bx - ax) * i) / n
+      const z = az + ((bz - az) * i) / n
+      const w = (Math.sin(x * 0.43 + z * 0.37) * 0.6 + Math.sin(x * 1.3 - z * 0.9) * 0.4) * amp
+      if (first) ctx.moveTo(toX(x + nx * w), toY(z + nz * w))
+      else ctx.lineTo(toX(x + nx * w), toY(z + nz * w))
+      first = false
+    }
+  }
+  side(x0, z0, x1, z0, 0, -1)
+  side(x1, z0, x1, z1, 1, 0)
+  side(x1, z1, x0, z1, 0, 1)
+  side(x0, z1, x0, z0, -1, 0)
+  ctx.closePath()
+  ctx.fill()
+}
+
 function basinGeometry(water) {
   const parts = water.map((r) => {
     const g = new PlaneGeometry(r.w, r.d).rotateX(-Math.PI / 2).translate(r.x, 0.07, r.z)
     const n = g.attributes.position.count
     g.setAttribute('aSize', new Float32BufferAttribute(new Array(n).fill([r.w, r.d]).flat(), 2))
+    g.setAttribute('aBank', new Float32BufferAttribute(new Array(n).fill(r.ford ? 2 : r.bank ? 1 : 0), 1))
     return g
   })
   const g = mergeGeometries(parts)
@@ -598,17 +639,33 @@ function basinMaterial() {
   m.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = seaClock
     shader.vertexShader = shader.vertexShader
-      .replace('void main() {', `attribute vec2 aSize;\nvarying vec2 vB;\nvarying vec2 vBSize;\nvarying vec3 vBPos;\nvoid main() {`)
-      .replace('#include <begin_vertex>', `#include <begin_vertex>\n  vB = uv;\n  vBSize = aSize;\n  vBPos = (modelMatrix * vec4(transformed, 1.0)).xyz;`)
+      .replace('void main() {', `attribute vec2 aSize;\nattribute float aBank;\nvarying vec2 vB;\nvarying vec2 vBSize;\nvarying vec3 vBPos;\nvarying float vBank;\nvoid main() {`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>\n  vB = uv;\n  vBSize = aSize;\n  vBank = aBank;\n  vBPos = (modelMatrix * vec4(transformed, 1.0)).xyz;`)
     shader.fragmentShader = shader.fragmentShader
-      .replace('void main() {', `uniform float uTime;\nvarying vec2 vB;\nvarying vec2 vBSize;\nvarying vec3 vBPos;\nvoid main() {`)
+      .replace('void main() {', `uniform float uTime;\nvarying vec2 vB;\nvarying vec2 vBSize;\nvarying vec3 vBPos;\nvarying float vBank;\nvoid main() {`)
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
-  float edge = min(min(vB.x, 1.0 - vB.x) * vBSize.x, min(vB.y, 1.0 - vB.y) * vBSize.y);
-  vec3 water = mix(vec3(0.11, 0.34, 0.38), vec3(0.04, 0.17, 0.24), smoothstep(0.4, 6.0, edge));
+  float edgeX = min(vB.x, 1.0 - vB.x) * vBSize.x;
+  float edgeZ = min(vB.y, 1.0 - vB.y) * vBSize.y;
+  float river = min(vBank, 1.0);
+  float fordZ = edgeZ;
+  if (river > 0.5) {
+    // A river's banks wobble; its ends stay straight so the reaches meet under bridges.
+    edgeX -= 0.95 + sin(vBPos.z * 0.37 + vBPos.x * 0.21) * 0.5 + sin(vBPos.z * 1.1 + vBPos.x * 0.7 + 1.7) * 0.3;
+    if (edgeX < 0.0) discard;
+    edgeZ = 99.0;
+  }
+  float edge = min(edgeX, edgeZ);
+  vec3 water = mix(
+    mix(vec3(0.11, 0.34, 0.38), vec3(0.04, 0.17, 0.24), smoothstep(0.4, 6.0, edge)),
+    mix(vec3(0.07, 0.1, 0.06), vec3(0.025, 0.05, 0.04), smoothstep(0.3, 4.0, edge)),
+    river
+  );
+  // A ford: shallower, browner water, fading into the river at its ends.
+  water = mix(water, vec3(0.12, 0.13, 0.07), step(1.5, vBank) * smoothstep(0.0, 2.5, fordZ) * 0.8);
   float lap = smoothstep(0.88, 1.0, sin(edge * 2.2 - uTime * 1.3 + sin(vBPos.x * 0.1) * 1.5)) * (1.0 - smoothstep(0.6, 4.0, edge));
-  float foam = max(1.0 - smoothstep(0.08, 0.6, edge), lap * 0.6);
+  float foam = max(1.0 - smoothstep(0.08, 0.6, edge), lap * 0.6) * (1.0 - river * 0.85);
   diffuseColor.rgb = mix(water, vec3(0.9, 0.95, 0.97), foam);`,
       )
       .replace(
@@ -627,6 +684,7 @@ function quayCurbs(water) {
   const b = new BoxBatch()
   const c = col('#a7a397')
   for (const r of water) {
+    if (r.bank) continue
     const open = r.open || ''
     const x0 = r.x - r.w / 2
     const x1 = r.x + r.w / 2
