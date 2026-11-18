@@ -103,6 +103,12 @@ class SetBuilder {
     this.geo(g, color, (ax + bx) / 2, (ay + by) / 2, (az + bz) / 2, tmpE.x, tmpE.y, tmpE.z)
   }
 
+  /** A gabled roof: a triangular prism w wide, len long, h tall, eaves at y0 (ridge along local z, or x). */
+  roof(lx, y0, lz, w, len, h, color, alongX = false) {
+    const sz = h / 1.5
+    this.geo(new CylinderGeometry(1, 1, 1, 3, 1, false), color, lx, y0 + 0.5 * sz, lz, -Math.PI / 2, 0, alongX ? Math.PI / 2 : 0, w / 2 / 0.866, len, sz)
+  }
+
   build() {
     const indexed = this.plainBoxes.build()
     const plainBox = indexed.toNonIndexed()
@@ -311,20 +317,27 @@ function rail(b, o) {
 function hangar(b, o) {
   const w = o.w || 30
   const d = o.d || 24
-  const h = 11
+  const h = o.h || 11
+  const k = h / 11
   const c = o.color || '#8f969b'
-  const arch = new CylinderGeometry(1, 1, d, 28, 1, true, -Math.PI / 2, Math.PI)
+  const arch = new CylinderGeometry(1, 1, d, o.small ? 12 : 28, 1, true, -Math.PI / 2, Math.PI)
   b.geo(arch, c, 0, 0, 0, -Math.PI / 2, 0, 0, w / 2, 1, h)
   // (A cylinder lying along z: scaled so the arch is w wide and h tall.)
-  for (const z of [-d / 2 + 1, -d / 6, d / 6, d / 2 - 1]) {
-    b.geo(new CylinderGeometry(1, 1, 0.35, 28, 1, true, -Math.PI / 2, Math.PI), shade(c, 0.8), 0, 0, z, -Math.PI / 2, 0, 0, w / 2 + 0.08, 1, h + 0.08)
+  for (const z of o.small ? [-d / 4, d / 4] : [-d / 2 + 1, -d / 6, d / 6, d / 2 - 1]) {
+    b.geo(new CylinderGeometry(1, 1, 0.35, o.small ? 12 : 28, 1, true, -Math.PI / 2, Math.PI), shade(c, 0.8), 0, 0, z, -Math.PI / 2, 0, 0, w / 2 + 0.08, 1, h + 0.08)
   }
-  const face = (z, flip) => b.geo(new CircleGeometry(1, 28, 0, Math.PI), shade(c, 0.92), 0, 0, z, 0, flip ? Math.PI : 0, 0, w / 2, h, 1)
+  const face = (z, flip) => b.geo(new CircleGeometry(1, o.small ? 12 : 28, 0, Math.PI), shade(c, 0.92), 0, 0, z, 0, flip ? Math.PI : 0, 0, w / 2, h, 1)
   face(-d / 2, true)
   face(d / 2, false)
-  b.box(0, 3.6, d / 2 + 0.02, w * 0.62, 7.2, 0.1, '#1b1e21')
-  for (const sx of [-1, 1]) b.box(sx * w * 0.36, 3.7, d / 2 + 0.25, w * 0.2, 7.4, 0.3, shade(c, 0.75), 'steel', 1.2)
-  b.box(0, 7.7, d / 2 + 0.2, w * 0.74, 0.6, 0.4, '#d4a531')
+  if (o.small) {
+    // A Nissen hut: a door and two windows in the end wall, no apron.
+    b.box(0, 1.05, d / 2 + 0.03, 1.2, 2.1, 0.08, '#3a2e24')
+    for (const sx of [-1, 1]) b.box(sx * w * 0.27, h * 0.45, d / 2 + 0.03, 0.9, 0.7, 0.06, '#2e3e4a')
+    return
+  }
+  b.box(0, 3.6 * k, d / 2 + 0.02, w * 0.62, 7.2 * k, 0.1, '#1b1e21')
+  for (const sx of [-1, 1]) b.box(sx * w * 0.36, 3.7 * k, d / 2 + 0.25, w * 0.2, 7.4 * k, 0.3, shade(c, 0.75), 'steel', 1.2)
+  b.box(0, 7.7 * k, d / 2 + 0.2, w * 0.74, 0.6 * k, 0.4, '#d4a531')
   b.box(0, 0.08, d / 2 + 4, w * 0.7, 0.16, 8, '#8d8a82', 'concrete')
 }
 
@@ -700,7 +713,266 @@ function tyres(b, o) {
   }
 }
 
+// --- Army base --------------------------------------------------------------------------
+
+/** A long barracks block, ridge along local x, door and windows on the front (+z). */
+function barracks(b, o) {
+  const w = o.w || 16
+  const d = o.d || 7
+  const c = o.color || '#c9c0a4'
+  b.box(0, 0.2, 0, w + 0.3, 0.4, d + 0.3, '#8d8a82', 'concrete')
+  b.box(0, 1.8, 0, w, 2.8, d, c)
+  b.roof(0, 3.2, 0, d + 1.2, w + 0.8, 1.8, o.roof || '#5d6650', true)
+  for (let x = -w / 2 + 1.6; x < w / 2 - 1; x += 2.4) {
+    if (Math.abs(x) < 1.2) continue
+    for (const sz of [-1, 1]) b.box(x, 2.1, sz * (d / 2 + 0.03), 1.1, 0.9, 0.06, '#2e3e4a')
+  }
+  b.box(0, 1.45, d / 2 + 0.04, 1.2, 2.1, 0.08, '#4a3a2a')
+  b.box(0, 0.25, d / 2 + 0.6, 2, 0.5, 1, '#8d8a82', 'concrete')
+}
+
+function flagpole(b, o) {
+  b.box(0, 0.25, 0, 1.6, 0.5, 1.6, '#8d8a82', 'concrete')
+  b.cyl(0, 5.2, 0, 0.06, 0.1, 9.6, '#cfcac0', 6)
+  b.geo(new BoxGeometry(2.2, 1.3, 0.04), o.color || '#3f6fb0', 1.15, 9.2, 0, 0, 0, -0.06)
+}
+
+/** An assault-course wall: planks between two posts, a rope over the top. */
+function climbwall(b) {
+  b.box(0, 1.5, 0, 4, 3, 0.25, '#7a5c3c')
+  for (let y = 0.4; y < 3; y += 0.5) b.box(0, y, 0.13, 4, 0.04, 0.02, WOOD_DARK)
+  for (const x of [-2.1, 2.1]) b.box(x, 1.7, 0, 0.25, 3.4, 0.3, WOOD_DARK)
+  b.bar(0.6, 3, 0.14, 0.8, 0.3, 0.9, 0.05, '#c8b48a')
+}
+
+function hurdle(b) {
+  for (const x of [-1.4, 1.4]) b.box(x, 0.5, 0, 0.15, 1, 0.15, WOOD_DARK)
+  b.cyl(0, 0.85, 0, 0.12, 0.12, 3, '#8a6a44', 6, 0, Math.PI / 2)
+}
+
+/** A rifle range: an earth berm behind a row of targets on posts (targets towards +z). */
+function range(b, o) {
+  const len = o.len || 20
+  b.geo(new BoxGeometry(len, 2.5, 3), '#6b5a3c', 0, 1.25, 0)
+  b.geo(new BoxGeometry(len, 0.4, 2.2), '#5d6b3a', 0, 2.6, 0)
+  for (let x = -len / 2 + 2; x < len / 2 - 1; x += 3) {
+    b.box(x, 0.6, 2.2, 0.08, 1.2, 0.08, WOOD_DARK)
+    b.box(x, 1.5, 2.2, 1, 1.2, 0.05, '#e8e2d0')
+    b.box(x, 1.55, 2.23, 0.45, 0.45, 0.02, '#b8352c')
+  }
+}
+
+/** An open shelter: a flat steel roof on posts (a motor pool or firing point). */
+function shelter(b, o) {
+  const w = o.w || 12
+  const d = o.d || 6
+  for (const x of [-w / 2 + 0.2, 0, w / 2 - 0.2]) for (const z of [-d / 2 + 0.2, d / 2 - 0.2]) b.box(x, 2, z, 0.2, 4, 0.2, '#5a5e62')
+  b.geo(new BoxGeometry(w + 0.6, 0.12, d + 0.6), o.color || '#6f7a66', 0, 4.05, 0, 0.05, 0, 0)
+  b.box(0, 3.8, 0, w, 0.18, 0.18, '#5a5e62')
+}
+
+// --- Desert -----------------------------------------------------------------------------
+
+/** An old mud-brick fort: crenellated walls with a gate in each, round towers at the corners. */
+function fort(b, o) {
+  const L = (o.s || 26) / 2
+  const g = 2
+  const C = o.color || '#b8956a'
+  const seg = (L - g) / 2 + g
+  for (const s of [-1, 1]) {
+    for (const t of [-1, 1]) {
+      b.box(t * seg, 2.5, s * L, L - g, 5, 1.2, C, 'concrete', 3)
+      b.box(s * L, 2.5, t * seg, 1.2, 5, L - g, C, 'concrete', 3)
+      for (let k = 0.5; k < L - g; k += 1.6) {
+        b.box(t * (g + k), 5.3, s * L, 0.8, 0.6, 1.2, shade(C, 0.95))
+        b.box(s * L, 5.3, t * (g + k), 1.2, 0.6, 0.8, shade(C, 0.95))
+      }
+    }
+    b.box(0, 4.6, s * (L + 0.1), g * 2 + 0.6, 0.8, 1.4, shade(C, 0.9))
+    b.box(s * (L + 0.1), 4.6, 0, 1.4, 0.8, g * 2 + 0.6, shade(C, 0.9))
+  }
+  for (const x of [-L, L]) {
+    for (const z of [-L, L]) {
+      b.cyl(x, 3.5, z, 2.1, 2.3, 7, C, 10)
+      b.cyl(x, 7.2, z, 2.3, 2.3, 0.5, shade(C, 0.92), 10)
+      b.box(x + (x < 0 ? 2.3 : -2.3), 5.2, z, 0.06, 0.8, 0.4, '#3a2c1e')
+    }
+  }
+}
+
+/** A big canvas tent: a low ridge roof on poles, sides rolled up. */
+function bigtent(b, o) {
+  const w = o.w || 9
+  const d = o.d || 6
+  const c = o.color || '#8a7a5a'
+  for (const x of [-w / 2, 0, w / 2]) for (const z of [-d / 2, d / 2]) b.box(x, 0.9, z, 0.1, 1.8, 0.1, WOOD_DARK)
+  b.roof(0, 1.8, 0, d + 0.6, w + 0.4, 1.4, c, true)
+  b.box(0, 0.25, -d / 2, w, 0.5, 0.05, shade(c, 0.8))
+}
+
+// --- Snow -------------------------------------------------------------------------------
+
+/** A log cabin under a snow-laden roof, a stone chimney, lit windows; door on the front (+z). */
+function logcabin(b, o) {
+  const w = o.w || 8
+  const d = o.d || 6
+  const c = o.color || '#6e4e34'
+  b.box(0, 1.5, 0, w, 3, d, c)
+  for (let y = 0.3; y < 3; y += 0.38) for (const sz of [-1, 1]) b.box(0, y, sz * (d / 2 + 0.02), w + 0.3, 0.06, 0.04, shade(c, 0.7))
+  b.roof(0, 2.9, 0, w + 1.2, d + 1, 1.9, '#4a3a2c')
+  b.roof(0, 3.05, 0, w + 1.1, d + 0.9, 1.85, '#f2f5f7')
+  b.box(w * 0.28, 4.1, -d * 0.18, 0.9, 2.6, 0.9, '#7d7a76')
+  b.box(w * 0.28, 5.45, -d * 0.18, 1, 0.12, 1, '#f2f5f7')
+  b.box(-w * 0.18, 1.1, d / 2 + 0.05, 1, 2, 0.06, '#3a2a1c')
+  for (const x of [w * 0.15, w * 0.36]) b.box(x, 1.7, d / 2 + 0.05, 0.9, 0.8, 0.05, '#ffd98a')
+  b.box(0, 0.08, d / 2 + 0.9, w * 0.5, 0.16, 1.4, '#5e4630')
+}
+
+/** A radar dome on its equipment building. */
+function radome(b) {
+  b.box(0, 1.5, 0, 6, 3, 6, '#c9c4b8', 'concrete')
+  b.box(0, 1.1, 3.03, 1.2, 2.2, 0.06, '#4a4e52')
+  b.geo(new SphereGeometry(3.4, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.62), '#eef0f2', 0, 4.4, 0)
+  b.box(0, 3.08, 0, 6.2, 0.16, 6.2, '#f2f5f7')
+}
+
+/** A snowcat: twin tracks, a red cab, a plough blade on the front (+x). */
+function snowcat(b) {
+  for (const z of [-1.05, 1.05]) {
+    b.box(0, 0.45, z, 4.4, 0.9, 0.7, '#26282a')
+    for (let x = -1.8; x <= 1.8; x += 0.9) b.cyl(x, 0.45, z, 0.32, 0.32, 0.72, '#3a3d40', 6, Math.PI / 2)
+  }
+  b.box(-0.3, 1.25, 0, 3.6, 0.7, 2, '#c43a30')
+  b.box(0.3, 2.1, 0, 2.2, 1.1, 1.9, '#c43a30')
+  b.box(1.42, 2.15, 0, 0.04, 0.7, 1.6, '#1e2a30')
+  for (const sz of [-1, 1]) b.box(0.3, 2.15, sz * 0.97, 1.8, 0.6, 0.04, '#1e2a30')
+  b.box(2.6, 0.55, 0, 0.2, 1, 2.8, '#d8a22c')
+  b.box(-1.9, 1.85, 0, 0.6, 0.12, 1.6, '#3a3d40')
+}
+
+// --- Coast ------------------------------------------------------------------------------
+
+/** A concrete gun casemate: firing slit and gun barrel on the front (+z), a thick roof. */
+function casemate(b) {
+  const C = '#a9a598'
+  b.box(0, 1.4, 0, 8, 2.8, 6, C, 'concrete', 2.5)
+  b.box(0, 2.95, 0.4, 9, 0.5, 7, shade(C, 0.95), 'concrete', 2.5)
+  b.box(0, 1.6, 3.02, 4.6, 0.7, 0.06, '#15181a')
+  b.cyl(0, 1.6, 4.4, 0.16, 0.2, 3, '#3a3d40', 8, Math.PI / 2)
+  b.box(-2.8, 1, -3.02, 1, 2, 0.06, '#3a3d40')
+  for (const [x, z, w, d] of [[-2, -1, 2.6, 1.8], [2.2, 1.4, 2, 1.6]]) b.box(x, 3.22, z, w, 0.04, d, '#7f8a62')
+}
+
+/** A landing craft beached with its ramp down at the bow (+x); walk in up the ramp. */
+function landingcraft(b) {
+  const H = '#5d6b5a'
+  b.box(0, 0.12, 0, 12, 0.24, 4.6, shade(H, 0.8))
+  for (const z of [-2.1, 2.1]) b.box(0, 1, z, 12, 2, 0.4, H, 'steel', 1.2)
+  b.box(-5.8, 1.6, 0, 0.4, 3.2, 4.6, H, 'steel', 1.2)
+  b.box(-5, 3.6, 0, 2, 1.6, 2.4, shade(H, 1.1))
+  b.box(-4, 3.8, 0, 0.04, 0.5, 2, '#1e2a30')
+  b.geo(new BoxGeometry(2.4, 0.15, 4), shade(H, 0.9), 7.1, 0.55, 0, 0, 0, -0.42)
+  for (const z of [-1.9, 1.9]) b.box(-5.9, 2.4, z, 0.1, 1.2, 0.1, '#2a2c2e')
+}
+
+/** Barbed wire: posts every 2.5 m with crossed coils between. */
+function wire(b, o) {
+  const len = o.len || 10
+  const n = Math.max(1, Math.round(len / 2.5))
+  const step = len / n
+  for (let i = 0; i <= n; i += 1) b.box(-len / 2 + i * step, 0.55, 0, 0.08, 1.1, 0.08, '#4a3a2e')
+  for (let i = 0; i < n; i += 1) {
+    const x0 = -len / 2 + i * step
+    b.bar(x0, 0.1, -0.3, x0 + step, 1, 0.3, 0.03, '#5a5e62')
+    b.bar(x0, 1, -0.3, x0 + step, 0.1, 0.3, 0.03, '#5a5e62')
+    b.bar(x0, 0.55, 0.3, x0 + step, 0.55, -0.3, 0.03, '#5a5e62')
+  }
+}
+
+// --- Town ruins -------------------------------------------------------------------------
+
+/** A shelled apartment block: broken walls round a gutted inside, rebar, a rubble spill. */
+function ruinblock(b, o) {
+  const w = o.w || 10
+  const d = o.d || 8
+  const h = o.h || 7
+  const c = o.color || ['#b9b2a2', '#a8a294', '#c4b8a0', '#9c9a92'][((o.seed || 0) * 4) | 0]
+  const fw = w / 2 - 1.3
+  const walls = [
+    [0, -d / 2, w, 0.4, h],
+    [-w / 2, 0, 0.4, d, h * 0.8],
+    [w / 2, 0, 0.4, d, h * 0.5],
+    [-(fw / 2 + 1.3), d / 2, fw, 0.4, h * 0.7],
+    [fw / 2 + 1.3, d / 2, fw, 0.4, h * 0.4],
+  ]
+  for (const [x, z, ww, dd, hh] of walls) {
+    b.box(x, hh / 2, z, ww, hh, dd, c, 'concrete', 2.6)
+    // Windows: dark holes on the outer face, one per bay and floor.
+    const along = ww > dd
+    const span = along ? ww : dd
+    for (let y = 1.7; y < hh - 0.6; y += 3) {
+      for (let t = -span / 2 + 1.4; t < span / 2 - 0.8; t += 2.6) {
+        const nx = along ? x + t : x + Math.sign(x || 1) * 0.22
+        const nz = along ? z + Math.sign(z || 1) * 0.22 : z + t
+        b.box(nx, y, nz, along ? 1.1 : 0.04, 1.2, along ? 0.04 : 1.1, '#1d1f21')
+      }
+    }
+  }
+  // What's left of the first floor and the roof slab: a corner each.
+  b.box(-w * 0.2, 3.1, -d * 0.2, w * 0.6, 0.25, d * 0.6, shade(c, 0.85), 'concrete')
+  b.box(-w * 0.3, h - 0.1, -d * 0.3, w * 0.4, 0.25, d * 0.4, shade(c, 0.85), 'concrete')
+  for (const [x, z] of [[w * 0.1, -d * 0.1], [-w * 0.42, d * 0.05], [w * 0.47, -d * 0.3]]) b.bar(x, 3.2, z, x + 0.3, 4.2, z + 0.2, 0.05, '#6b4a34')
+  const s = (o.seed || 0.4) * 60
+  for (let k = 0; k < 7; k += 1) {
+    const x = w * 0.15 + hash(s, k) * w * 0.4
+    const z = d / 2 + 0.6 + hash(s + 1, k) * 1.4
+    b.geo(new BoxGeometry(0.6 + hash(s + 2, k) * 0.9, 0.3 + hash(s + 3, k) * 0.4, 0.5 + hash(s + 4, k) * 0.7), shade(c, 0.8 + hash(s + 5, k) * 0.2), x, 0.2, z, hash(s + 6, k), hash(s + 7, k) * 3, 0)
+  }
+}
+
+/** A shelled church: the nave under a part-fallen roof, the tower broken off at the top. */
+function church(b) {
+  const C = '#b8ad98'
+  b.box(0, 3.5, -2, 10, 7, 16, C, 'concrete', 3)
+  b.roof(0, 7, -5, 10.8, 10, 3.6, '#6e5a4a')
+  b.box(0, 7, 3, 10, 0.3, 0.4, shade(C, 0.8))
+  for (let z = -8; z < 5; z += 3.2) for (const sx of [-1, 1]) b.box(sx * 5.03, 3.8, z, 0.06, 2.6, 1, '#2a2e38')
+  b.box(0, 7, 8, 4.4, 14, 4.4, C, 'concrete', 3)
+  b.box(0, 14.3, 8, 4.8, 0.5, 4.8, shade(C, 0.9))
+  for (const sx of [-1, 1]) b.box(sx * 2.22, 11.5, 8, 0.06, 2, 1, '#1d1f21')
+  b.box(0, 11.5, 10.22, 1, 2, 0.06, '#1d1f21')
+  b.box(0, 1.6, 10.22, 1.6, 3.2, 0.08, '#4a3a2a')
+  b.geo(new BoxGeometry(3, 1.2, 2.5), shade(C, 0.85), 2.5, 0.5, 4.6, 0.3, 0.6, 0.2)
+}
+
+/** A burnt-out bus, front towards +x. */
+function bus(b, o) {
+  const c = o.color || '#5a4a3e'
+  b.box(0, 1.65, 0, 11, 2.3, 2.5, c)
+  b.box(0, 2.2, 0, 10.4, 0.8, 2.54, '#1d1f21')
+  b.box(5.52, 2, 0, 0.04, 1.2, 2.2, '#1d1f21')
+  b.box(0, 2.85, 0, 10.6, 0.1, 2.3, shade(c, 0.7))
+  wheelsAt(b, [3.6, -3.4], 1.1, 0.5)
+}
+
 const DRAW = {
+  barracks,
+  flagpole,
+  climbwall,
+  hurdle,
+  range,
+  shelter,
+  fort,
+  bigtent,
+  logcabin,
+  radome,
+  snowcat,
+  casemate,
+  landingcraft,
+  wire,
+  ruinblock,
+  church,
+  bus,
   crane,
   ship,
   tug,

@@ -23,7 +23,7 @@ const KINDS = {
   office: (o) => [B(0, 0, o.w || 14, o.d || 9, o.h || 7)],
   truck: () => [B(0, 0, 10, 2.6, 3.4)],
   railcar: () => [B(0, 0, 13, 3, 3.6)],
-  hangar: (o) => [B(0, 0, o.w || 30, o.d || 24, 11)],
+  hangar: (o) => [B(0, 0, o.w || 30, o.d || 24, o.h || 11)],
   ctower: () => [B(0, 0, 6, 6, 16)],
   plane: () => [B(0, 0, 32, 4.6, 5.5), B(1.5, 0, 5, 36, 4.0), B(-14.5, 0, 3, 12, 7.5)],
   fighter: () => [B(0, 0, 11, 9, 3.2)],
@@ -65,6 +65,57 @@ const KINDS = {
   magnet: () => [B(0, 0, 5, 3.6, 4.2)],
   cabin: () => [B(0, 0, 6.2, 2.6, 2.9)],
   tyres: () => [B(0, 0, 2.6, 2.6, 1.6)],
+  // Army base.
+  barracks: (o) => [B(0, 0, o.w || 16, o.d || 7, 5)],
+  flagpole: () => [B(0, 0, 0.3, 0.3, 10)],
+  climbwall: () => [B(0, 0, 4, 0.35, 3)],
+  hurdle: () => [B(0, 0, 3, 0.3, 0.9)],
+  range: (o) => [B(0, 0, o.len || 20, 3, 2.5)],
+  shelter: (o) => {
+    const w = o.w || 12
+    const d = o.d || 6
+    const out = []
+    for (const x of [-w / 2 + 0.2, 0, w / 2 - 0.2]) for (const z of [-d / 2 + 0.2, d / 2 - 0.2]) out.push(B(x, z, 0.25, 0.25, 4))
+    return out
+  },
+  // Desert fort: walls with a gate in each side, round towers at the corners.
+  fort: (o) => {
+    const L = (o.s || 26) / 2
+    const g = 2
+    const out = []
+    const seg = (L - g) / 2 + g
+    for (const s of [-1, 1]) {
+      out.push(B(-seg, s * L, L - g, 1.2, 5), B(seg, s * L, L - g, 1.2, 5))
+      out.push(B(s * L, -seg, 1.2, L - g, 5), B(s * L, seg, 1.2, L - g, 5))
+    }
+    for (const x of [-L, L]) for (const z of [-L, L]) out.push(B(x, z, 4.4, 4.4, 7))
+    return out
+  },
+  bigtent: (o) => [B(0, 0, o.w || 9, o.d || 6, 2.6)],
+  // Snow.
+  logcabin: (o) => [B(0, 0, o.w || 8, o.d || 6, 5)],
+  radome: () => [B(0, 0, 7, 7, 6.5)],
+  snowcat: () => [B(0, 0, 5, 2.8, 2.8)],
+  // Coast. A landing craft is walls round an open deck: walk in up the ramp (+x).
+  casemate: () => [B(0, 0, 8, 6, 3)],
+  landingcraft: () => [B(0, -2.1, 12, 0.4, 2), B(0, 2.1, 12, 0.4, 2), B(-5.8, 0, 0.4, 4.6, 3.2)],
+  wire: (o) => [B(0, 0, o.len || 10, 0.6, 0.05)],
+  // Town ruins: four broken walls (a doorway in the front, +z) you can get inside.
+  ruinblock: (o) => {
+    const w = o.w || 10
+    const d = o.d || 8
+    const h = o.h || 7
+    const fw = w / 2 - 1.3
+    return [
+      B(0, -d / 2, w, 0.4, h),
+      B(-w / 2, 0, 0.4, d, h * 0.8),
+      B(w / 2, 0, 0.4, d, h * 0.5),
+      B(-(fw / 2 + 1.3), d / 2, fw, 0.4, h * 0.7),
+      B(fw / 2 + 1.3, d / 2, fw, 0.4, h * 0.4),
+    ]
+  },
+  church: () => [B(0, -2, 10, 16, 7), B(0, 8, 4.4, 4.4, 14)],
+  bus: () => [B(0, 0, 11, 2.6, 3)],
 }
 
 export const SET_KINDS = Object.keys(KINDS)

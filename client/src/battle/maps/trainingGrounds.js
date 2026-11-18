@@ -1,31 +1,21 @@
+import { mirrorSet } from '../sim/setpieces.js'
+import { box, mirrored, mirrorPatch } from './mapKit.js'
+
 /**
- * Training Grounds - Floppy Front's first battlefield.
+ * Training Grounds - Floppy Front's first battlefield: an army training base.
  *
- * A muddy army yard: each side has a sandbag emplacement, flank nests, a broken line of
- * concrete barriers and a pair of shipping containers. The middle holds a ruined walled
- * compound with gaps on every side. Sheds on the far flanks give cover for flanking
- * runs. The layout is mirrored across x = 0, so neither team has an edge.
+ * Each side's camp has barracks blocks round a concrete parade ground and its flag, the
+ * HQ, Nissen huts, a motor pool of lorries under a shelter, a water tower and fuel. Out
+ * in the muddy yard are the assault course (climbing walls, hurdles, tyres), the rifle
+ * range with its earth berm and targets, sandbag nests, barrier lines and containers.
+ * The middle is the "killhouse": a walled compound with gaps on every side.
  *
  * Every obstacle is an axis-aligned box `{ x, z, w, d, h, kind, tint }` (centre, size
  * along x and z, height). `kind` picks how it looks and how it counts as cover:
  * anything under 1.4 m is low cover you can shoot over by standing up.
  */
 
-const KIND_HEIGHT = {
-  sandbag: 0.95,
-  barrier: 1.05,
-  lowwall: 1.1,
-  crate: 1.25,
-  wall: 2.7,
-  container: 2.6,
-  shed: 3.4,
-  tree: 6,
-}
-
-const box = (kind, x, z, w, d, h = KIND_HEIGHT[kind], tint = 0) => ({ kind, x, z, w, d, h, tint })
-
-/** The blue (west, x < 0) half; mirrored to make the red half. */
-const WEST_HALF = [
+const WEST = [
   // Forward emplacement: a sandbag U opening towards home.
   box('sandbag', -58, 0, 0.9, 12),
   box('sandbag', -60.5, -6.45, 5.9, 0.9),
@@ -39,11 +29,10 @@ const WEST_HALF = [
   box('barrier', -43, -37, 0.7, 9),
   box('barrier', -43, -15, 0.7, 9),
   box('barrier', -43, 15, 0.7, 9),
-  box('barrier', -43, 37, 0.7, 9),
+  box('barrier', -43, 32, 0.7, 7),
   // Shipping containers.
   box('container', -33, -22, 2.5, 6.1, 2.6, 0),
   box('container', -33, 23, 6.1, 2.5, 2.6, 1),
-  box('container', -63, -40, 6.1, 2.5, 2.6, 2),
   // Crates.
   box('crate', -25.2, -7.4, 1.25, 1.25),
   box('crate', -23.8, -7.4, 1.25, 1.25),
@@ -55,21 +44,49 @@ const WEST_HALF = [
   // Midfield low walls.
   box('lowwall', -18, -33, 6, 0.6),
   box('lowwall', -18, 33, 6, 0.6),
-  box('lowwall', -30, -45, 0.6, 5),
-  box('lowwall', -30, 45, 0.6, 5),
+  box('lowwall', -30, -48, 0.6, 5),
   box('sandbag', -16, -18, 4.5, 0.9),
   box('sandbag', -16, 18, 4.5, 0.9),
-  // Flank sheds.
-  box('shed', -22, -47, 9, 6),
-  box('shed', -22, 47, 9, 6),
-  box('shed', -72, 44, 7, 6),
-  // A few trees inside the fence.
-  box('tree', -40, -50, 0.7, 0.7),
-  box('tree', -8, 50.5, 0.7, 0.7),
-  box('tree', -66, -16, 0.7, 0.7),
 ]
 
-/** The ruined compound in the middle: walls with gaps on all four sides. */
+const WEST_PIECES = [
+  ['floodlight', -66, -10],
+  ['floodlight', -66, 10],
+  ['ammocrate', -64, 36],
+  ['fuel', -80, 38],
+  ['fuel', -80.9, 38.6],
+  ['drum', -78.8, 38.4],
+]
+
+const WEST_SETS = [
+  // The camp: barracks either side of the parade ground, the HQ behind it.
+  ['barracks', -74, -28, 0, { w: 16, d: 7 }],
+  ['barracks', -74, 28, 2, { w: 16, d: 7, color: '#bdb496' }],
+  ['office', -82, 0, 1, { w: 12, d: 6, floors: 1, h: 3.8, color: '#c9c0a4' }],
+  ['flagpole', -79, -11, 0, { color: '#3f6fb0' }],
+  ['hangar', -60, -44, 0, { w: 7, d: 12, h: 3.6, small: true, color: '#6f7a5a' }],
+  ['hangar', -51, -44, 0, { w: 7, d: 12, h: 3.6, small: true, color: '#77805f' }],
+  ['watertower', -82, -44, 0],
+  // Motor pool.
+  ['shelter', -62, 44, 0, { w: 14, d: 7 }],
+  ['truck', -62, 42.3, 0, { color: '#5d6b4a' }],
+  ['truck', -62, 45.7, 2, { color: '#4f5c40' }],
+  ['tank', -82, 44, 0, { r: 2, h: 3.5, color: '#6f7a5a' }],
+  // Assault course.
+  ['climbwall', -38, -41, 0],
+  ['climbwall', -30, -41, 0],
+  ['hurdle', -38, -35, 0],
+  ['hurdle', -34, -35, 0],
+  ['hurdle', -30, -35, 0],
+  ['tyres', -24, -42, 0],
+  // Rifle range: firing point shelter facing the berm.
+  ['range', -30, 50, 2, { len: 18 }],
+  ['shelter', -30, 39, 0, { w: 10, d: 4, color: '#5d6650' }],
+  ['lamp', -50, -3.5, 0],
+  ['lamp', -26, 3.5, 2],
+]
+
+/** The killhouse in the middle: walls with gaps on all four sides. */
 const CENTRE = [
   box('wall', -7.25, 11, 7.5, 0.6),
   box('wall', 7.25, 11, 7.5, 0.6),
@@ -85,7 +102,23 @@ const CENTRE = [
   box('crate', 0, -5.5, 1.25, 1.25),
 ]
 
-const mirror = (o) => ({ ...o, x: -o.x })
+const { obstacles, pieces } = mirrored(WEST, WEST_PIECES, CENTRE, [])
+const mirrorPad = (p) => ({ ...p, x: -p.x })
+const mirrorLine = (l) => ({ ...l, points: l.points.map(([x, z]) => [-x, z]) })
+
+const WEST_PADS = [
+  // Parade ground, motor pool and firing point hardstanding.
+  { x: -71, z: 0, w: 16, d: 40, color: '#a19d93', joints: 4 },
+  { x: -62, z: 44, w: 16, d: 9, color: '#8d8a82', joints: 4 },
+  { x: -30, z: 39, w: 12, d: 6, color: '#8d8a82' },
+]
+const WEST_LINES = [
+  // The parade ground's painted rectangle and marker lines.
+  { points: [[-78, -18], [-64, -18], [-64, 18], [-78, 18], [-78, -18]], width: 0.25, color: 'rgba(240,238,228,0.85)' },
+  ...[-8, 0, 8].map((z) => ({ points: [[-76, z], [-66, z]], width: 0.2, color: 'rgba(240,238,228,0.75)', dash: [1, 1] })),
+  // Firing lanes down the range.
+  ...[-36, -30, -24].map((x) => ({ points: [[x, 42], [x, 48]], width: 0.2, color: 'rgba(240,238,228,0.6)' })),
+]
 
 /** Trees outside the fence: scenery only, never collide. Deterministic. */
 function scatterTrees(count, seed = 7) {
@@ -108,7 +141,7 @@ function scatterTrees(count, seed = 7) {
 export const TRAINING_GROUNDS = {
   id: 'training',
   name: 'Training Grounds',
-  blurb: 'A muddy army yard with sandbag nests, barrier lines, containers and a ruined compound in the middle.',
+  blurb: 'An army training base: barracks round a parade ground, an assault course, a rifle range and a walled killhouse in the middle.',
   /** Playable area (the fence). */
   width: 170,
   depth: 110,
@@ -117,25 +150,21 @@ export const TRAINING_GROUNDS = {
     { x: -70, z: 0 },
     { x: 70, z: 0 },
   ],
-  obstacles: [...WEST_HALF, ...WEST_HALF.map(mirror), ...CENTRE],
+  obstacles,
+  pieces,
+  sets: [...WEST_SETS, ...WEST_SETS.map(mirrorSet)],
+  pads: [...WEST_PADS, ...WEST_PADS.map(mirrorPad), { x: 0, z: 0, w: 24, d: 24, color: '#9a968c', joints: 3 }],
+  lines: [...WEST_LINES, ...WEST_LINES.map(mirrorLine)],
   /** Dirt roads painted on the ground: polylines of [x, z], with a half width. */
   roads: [
     { width: 3.2, points: [[-90, 0], [-12, 0], [12, 0], [90, 0]] },
     { width: 2.6, points: [[0, -60], [0, -12], [0, 12], [0, 60]] },
-    { width: 2.2, points: [[-60, -6], [-60, -30], [-54, -40]] },
-    { width: 2.2, points: [[60, 6], [60, 30], [54, 40]] },
+    { width: 2.2, points: [[-56, -6], [-56, -30], [-50, -38]] },
+    { width: 2.2, points: [[56, 6], [56, 30], [50, 38]] },
   ],
   /** Muddy patches: [x, z, radius]. */
-  mud: [
-    [-58, 0, 9],
-    [58, 0, 9],
-    [0, 0, 13],
-    [-30, -30, 7],
-    [30, 30, 7],
-    [-22, 26, 6],
-    [22, -26, 6],
-  ],
-  trees: scatterTrees(110),
+  mud: [[-34, -38, 8], [-30, -30, 7], [-22, 26, 6], [-46, 0, 6]].flatMap((p) => [p, mirrorPatch(p)]),
+  trees: scatterTrees(100),
   sky: { top: '#5b9bd8', horizon: '#cfe3ee', ground: '#8a9a6a' },
   fog: '#c9d9df',
 }
