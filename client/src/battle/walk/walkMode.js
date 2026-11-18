@@ -64,6 +64,21 @@ export function placeWalker(w, x, z, camYaw) {
  * walking. `slot` spreads teammates out (online) so nobody lands inside anyone.
  */
 export function landWalker(w, team, slot = 0) {
+  // A map with a rampart: up on top of its middle section, looking out over the field.
+  const r = w.rampart
+  if (r && team === 0) {
+    const seg = r.segs[Math.floor(r.segs.length / 2)]
+    const wk = battle.walk
+    placeWalker(w, (seg.x0 + seg.x1) / 2, (seg.z0 + seg.z1) / 2, -Math.PI / 2)
+    // (placeWalker keeps to the ground: put it back on the walkway.)
+    wk.x = (seg.x0 + seg.x1) / 2 - 1
+    wk.z = (seg.z0 + seg.z1) / 2 + (slot % 2 ? -1 : 1) * Math.ceil(slot / 2) * 2.5
+    wk.y = seg.h
+    wk.floor = seg.h
+    wk.on = false
+    enterWalk()
+    return
+  }
   const base = w.map.bases[team] || { x: 0, z: 0 }
   const ahead = team === 0 ? 1 : -1
   const z0 = base.z + (slot % 2 ? -1 : 1) * Math.ceil(slot / 2) * 2.5

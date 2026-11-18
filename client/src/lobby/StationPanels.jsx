@@ -1,6 +1,6 @@
 import { sfx } from '../audio/sfx'
 import { Glyph, WeaponIcon } from '../battle/hud/icons'
-import { MAPS } from '../battle/maps'
+import { MAPS, ZOMBIE_MAP } from '../battle/maps'
 import { UNIT_ORDER, UNIT_TYPES } from '../battle/sim/units'
 import { useApp } from '../store/app'
 import { useProgress, ZOMBIE_BADGES } from '../store/progress'
@@ -167,15 +167,17 @@ function ZombiePanel() {
           <span className="ff-tag ff-tag--warn">15 waves</span>
           <span className="ff-tag">Best: wave {best || '-'}</span>
         </div>
-        <div className="ff-zpanel__title">Dig in. Hold on.</div>
+        <div className="ff-zpanel__title">Keep the bastion standing.</div>
       </div>
       <p>
-        The dead are coming over the hills from the east. Spend the quiet between waves building defences and buying troops; every zombie you drop pays a bounty, every wave you
-        clear pays a bonus. Ten zombies through your line and it's over.
+        Mirefall Bastion: a stone rampart across a drowned marsh, and the dead coming out of the mist. Put your troops up on the wall to shoot down into the horde - they
+        can't climb it, but they'll pound a section until it falls. Every zombie you drop pays a bounty, every wave cleared pays a bonus and patches the wall. Ten zombies
+        through and it's over.
       </p>
       <ul>
+        <li>Click the top of the rampart to place troops on it; walk up the stairs yourself</li>
         <li>Walkers, fast Runners, hulking Brutes - and a giant Behemoth on waves 10 and 15</li>
-        <li>Start with $500; flamethrowers, machine guns and mines are your friends</li>
+        <li>Start with $500; machine guns, rockets and mortars on the wall are your friends</li>
       </ul>
       <div className="ff-badges">
         {ZOMBIE_BADGES.map((b) => (
@@ -193,7 +195,7 @@ function ZombiePanel() {
         className="ff-btn ff-btn--accent ff-btn--big"
         onClick={() => {
           sfx.click()
-          startBattle('training', 'zombies')
+          startBattle(ZOMBIE_MAP.id, 'zombies')
         }}
       >
         Play Zombie Horde

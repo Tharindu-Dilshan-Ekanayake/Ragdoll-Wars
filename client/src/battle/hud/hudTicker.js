@@ -74,10 +74,12 @@ export function startHudTicker() {
     const z = w.zmode
     if (z) {
       const buildT = Math.max(0, Math.ceil(z.buildT))
-      const key = `${z.wave},${z.state},${z.cash},${z.left},${buildT},${z.breaches},${z.result}`
+      // Rampart sections in percent (-1 fallen), when the map has one.
+      const wall = w.rampart ? w.rampart.segs.map((g) => (g.up ? Math.max(1, Math.round((g.hp / g.max) * 100)) : -1)) : null
+      const key = `${z.wave},${z.state},${z.cash},${z.left},${buildT},${z.breaches},${z.result},${wall}`
       if (key !== lastZombie) {
         lastZombie = key
-        useHud.setState({ zombie: { wave: z.wave, total: z.total, state: z.state, cash: z.cash, left: z.left, buildT, breaches: z.breaches, maxBreaches: z.maxBreaches, kills: z.kills, result: z.result } })
+        useHud.setState({ zombie: { wave: z.wave, total: z.total, state: z.state, cash: z.cash, left: z.left, buildT, breaches: z.breaches, maxBreaches: z.maxBreaches, kills: z.kills, result: z.result, wall } })
       }
     }
     const st = w.stats

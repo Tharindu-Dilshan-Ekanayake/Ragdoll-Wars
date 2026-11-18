@@ -66,6 +66,15 @@ const STYLES = {
     flowers: ['#ffffff', '#f9e27c'],
     bladeShare: 0.75,
   },
+  marsh: {
+    blades: { colors: ['#5a6440', '#4d5636', '#6b6a46', '#5f5a3e', '#45502f'], height: [0.35, 0.9] },
+    props: [
+      { colors: ['#5d605a', '#6b6d66', '#4f524c'], scale: [0.2, 0.55], flat: 0.55, share: 0.45 },
+      { colors: ['#4a4636', '#3f4430', '#56503a'], scale: [0.5, 1.0], flat: 0.65, share: 0.55, lift: 0.2 },
+    ],
+    flowers: null,
+    bladeShare: 1.1,
+  },
   ruins: {
     blades: { colors: ['#7c8854', '#8a945c', '#6f7a4a'], height: [0.2, 0.4] },
     props: [

@@ -1,9 +1,10 @@
 import { emitImpact, emitSound } from './fx.js'
-import { wrapAngle } from './rig.js'
+import { J_PELVIS, wrapAngle } from './rig.js'
 import { damageStructureNear } from './structures.js'
 import { UNIT_TYPES } from './units.js'
 import { damageVehicle } from './vehicles.js'
-import { meleeHit, removeSoldier, spawnOne } from './world.js'
+import { meleeHit, rebuildStatic, removeSoldier, spawnOne } from './world.js'
+import { clampToDeck, segAt } from './rampart.js'
 
 /**
  * Zombie Horde: hold the west side of the map against 15 waves of the undead.
@@ -15,6 +16,11 @@ import { meleeHit, removeSoldier, spawnOne } from './world.js'
  * vehicle and hit what they reach; walled in, they bash through. Each one that gets all
  * the way across to the west edge is a breach: ten breaches and it's over. Survive
  * wave 15 to win.
+ *
+ * On a map with a rampart (Mirefall Bastion) your troops stand up on the wall and the
+ * zombies can't reach them: they pile up at its foot and batter the section in front of
+ * them. A section battered to nothing falls - with whoever stood on it - and the horde
+ * pours through the gap; cleared waves patch the wall up and rebuild what fell.
  *
  * Zombies are team 1 soldiers with a zombie type, so everything else - bullets, fire,
  * blasts, ragdolls, the renderer - just works on them. Only so many are alive at once
@@ -127,6 +133,98 @@ export function startWave(w) {
 /** Back to the start of a run (Try again). */
 export function restartZombies(w) {
   initZombieMode(w)
+  repairRampart(w, true)
+  w.version += 1
+}
+
+// --- The rampart ------------------------------------------------------------------------
+
+/** A blow to a rampart section; it falls when it's had enough. */
+function hitWall(w, seg, dmg, s) {
+  seg.hp -= dmg
+  const r = w.rampart
+  emitImpact(w.fx, r.front + 0.05, 0.4 + rand() * 2.6, s.z + (rand() - 0.5) * 0.8, 2, w.time)
+  if (rand() < 0.35) emitSound(w.fx, 'thud', r.front, 1.5, s.z, 0)
+  if (seg.hp <= 0) collapseSegment(w, seg)
+  else r.version += 1
+}
+
+/**
+ * A section comes down: its boxes go (zombies can walk through), the troops on top drop
+ * to the ground with it (shaken and hurt), the dead up there land in the rubble, and a
+ * cloud of dust goes up.
+ */
+export function collapseSegment(w, seg) {
+  const r = w.rampart
+  seg.up = false
+  seg.hp = 0
+  w.baseObstacles = w.baseObstacles.filter((o) => !seg.boxes.includes(o))
+  rebuildStatic(w)
+  for (const s of w.slots) {
+    if (!s.used) continue
+    if (s.alive) {
+      if (s.deck !== seg.i) continue
+      s.deck = -1
+      s.dropY = s.fy
+      s.dropV = 1.5
+      s.fy = 0
+      s.goalMode = 0
+      s.hp = Math.max(1, s.hp - 25)
+      s.hurtT = 0
+    } else {
+      const j = s.joints
+      const px = j[J_PELVIS * 3]
+      const pz = j[J_PELVIS * 3 + 2]
+      if (px < seg.fx0 || px > seg.fx1 || pz < seg.fz0 || pz > seg.fz1 || j[J_PELVIS * 3 + 1] < seg.h * 0.5) continue
+      for (let k = 1; k < j.length; k += 3) j[k] = Math.max(0.05, j[k] - seg.h)
+      s.poseVersion += 1
+    }
+  }
+  const cx = (seg.fx0 + seg.fx1) / 2
+  const cz = (seg.fz0 + seg.fz1) / 2
+  for (let k = 0; k < 14; k += 1) {
+    emitImpact(w.fx, seg.fx0 + rand() * (seg.fx1 - seg.fx0), rand() * seg.h, seg.fz0 + rand() * (seg.fz1 - seg.fz0), 3, w.time)
+  }
+  emitSound(w.fx, 'boom', cx, 2, cz, 6)
+  r.version += 1
+  w.version += 1
+}
+
+/**
+ * Between waves: every section patched up a third of the way, fallen ones rebuilt to
+ * half strength (`full`: everything back as new). Anyone standing where a section goes
+ * back up finds themselves on top of it; zombies there are shoved out in front.
+ */
+export function repairRampart(w, full = false) {
+  const r = w.rampart
+  if (!r) return
+  let rebuilt = false
+  for (const seg of r.segs) {
+    if (seg.up) {
+      seg.hp = full ? seg.max : Math.min(seg.max, seg.hp + seg.max * 0.35)
+      continue
+    }
+    seg.up = true
+    seg.hp = full ? seg.max : seg.max * 0.5
+    for (const o of seg.boxes) if (!w.baseObstacles.includes(o)) w.baseObstacles.push(o)
+    rebuilt = true
+    const p = { x: 0, z: 0 }
+    for (const s of w.slots) {
+      if (!s.used || !s.alive || s.deck >= 0) continue
+      if (s.x < seg.fx0 || s.x > seg.fx1 || s.z < seg.fz0 || s.z > seg.fz1) continue
+      if (s.team === 0) {
+        p.x = s.x
+        p.z = s.z
+        clampToDeck(r, seg.i, p)
+        s.x = p.x
+        s.z = p.z
+        s.deck = seg.i
+        s.fy = seg.h
+      } else s.x = r.front + 0.6
+    }
+  }
+  if (rebuilt) rebuildStatic(w)
+  r.version += 1
   w.version += 1
 }
 
@@ -135,8 +233,17 @@ function spawnZombie(w, key) {
   const lz = w.obs.limitZ
   let x
   let z
-  // From the east edge; later waves send some round the flanks too.
-  if (w.zmode.wave >= 6 && rand() < 0.3) {
+  const r = w.rampart
+  // Facing a rampart they come out of the mist 40-70 m off the wall, not the far edge.
+  if (r) {
+    x = r.front + 40 + rand() * 30
+    z = (rand() * 2 - 1) * (lz - 4)
+    if (w.zmode.wave >= 6 && rand() < 0.25) {
+      x = r.front + 14 + rand() * 40
+      z = (rand() < 0.5 ? -1 : 1) * (lz - 2)
+    }
+  } else if (w.zmode.wave >= 6 && rand() < 0.3) {
+    // From the east edge; later waves send some round the flanks too.
     x = 10 + rand() * (lx - 14)
     z = (rand() < 0.5 ? -1 : 1) * (lz - 2)
   } else {
@@ -193,6 +300,7 @@ export function updateZombieMode(w, h) {
     return
   }
   if (z.left === 0) {
+    repairRampart(w)
     z.cash += 150 + z.wave * 30
     if (z.wave >= z.total) {
       z.result = 'won'
@@ -214,13 +322,29 @@ export function onZombieKilled(w, s) {
 
 // --- The zombies themselves -------------------------------------------------------------
 
+/** The fallen rampart section nearest z, or null. */
+function nearestGap(r, z) {
+  let best = null
+  let bestD = Infinity
+  for (const seg of r.segs) {
+    if (seg.up) continue
+    const d = Math.abs((seg.fz0 + seg.fz1) / 2 - z)
+    if (d < bestD) {
+      bestD = d
+      best = seg
+    }
+  }
+  return best
+}
+
 function nearestPrey(w, s) {
   let best = null
   let bestD = Infinity
   const soldiers = w.teamLiving[0]
   for (let i = 0; i < soldiers.length; i += 1) {
     const e = soldiers[i]
-    if (e.dropY > 0) continue
+    // Up on the rampart: out of reach.
+    if (e.dropY > 0 || e.fy > 0) continue
     const d = (e.x - s.x) ** 2 + (e.z - s.z) ** 2
     if (d < bestD) {
       bestD = d
@@ -250,12 +374,31 @@ export function zombieStep(w, s, type, h) {
   s.thinkT -= h
   if (s.thinkT <= 0) {
     s.thinkT = 0.3 + rand() * 0.25
-    const prey = nearestPrey(w, s)
-    s.target = prey
-    s.targetId = prey ? prey.id : 0
+    let prey = nearestPrey(w, s)
     s.goalMode = 1
     s.goalX = prey ? prey.x : -w.obs.limitX - 6
     s.goalZ = prey ? prey.z : s.z
+    s.wallSeg = -1
+    const r = w.rampart
+    if (r && s.x > r.back - 0.5) {
+      // Still out in front of the wall: only what's out here too can be reached.
+      if (prey && prey.x < r.front + 0.5) prey = null
+      if (!prey) {
+        const seg = segAt(r, s.z)
+        const gap = nearestGap(r, s.z)
+        // Some of them make for a gap when there is one; the rest pound their bit.
+        if (seg && seg.up && !(gap && (s.seed * 0.137) % 1 < 0.55)) {
+          s.wallSeg = seg.i
+          s.goalX = r.front + 0.5
+          s.goalZ = Math.max(seg.fz0 + 0.8, Math.min(seg.fz1 - 0.8, s.z))
+        } else if (gap) {
+          s.goalX = r.back - 4
+          s.goalZ = Math.max(gap.fz0 + 1.2, Math.min(gap.fz1 - 1.2, s.z))
+        }
+      }
+    }
+    s.target = prey
+    s.targetId = prey ? prey.id : 0
     // Legs shot out: crawl.
     s.wantProne = s.legL > 0 && s.legR > 0
     s.wantCrouch = false
@@ -286,6 +429,21 @@ export function zombieStep(w, s, type, h) {
         } else meleeHit(w, tg, ai.damage, dx / (d || 1), dz / (d || 1), s)
       }
     } else if (s.goalMode === 0) s.goalMode = 1
+  }
+  // At the foot of the rampart: batter it.
+  if (s.wallSeg >= 0 && !s.target) {
+    const r = w.rampart
+    const seg = r.segs[s.wallSeg]
+    if (!seg.up) s.wallSeg = -1
+    else if (s.x - r.front < ai.reach * (type.size || 1) * 0.6 + 0.9) {
+      s.goalMode = 0
+      s.yaw += wrapAngle(-Math.PI / 2 - s.yaw) * Math.min(1, h * 8)
+      if (s.fireT <= 0) {
+        s.fireT = ai.interval * (0.85 + rand() * 0.3)
+        s.recoil = 1
+        hitWall(w, seg, ai.damage * ai.bash, s)
+      }
+    }
   }
   // Not getting anywhere? Something's built in the way: smash it.
   if (s.goalMode === 1 && s.detourT > 0 && s.fireT <= 0 && w.build.list.length) {

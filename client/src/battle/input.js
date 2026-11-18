@@ -31,7 +31,10 @@ const v1 = new Vector3()
 const v2 = new Vector3()
 const proj = new Vector3()
 
-/** Ground point (y = 0) under client pixel (cx, cy), written to out; false if none. */
+/**
+ * The point under client pixel (cx, cy) - on the ground, or on top of a rampart section
+ * when the pointer is over one - written to out ({ x, y, z }); false if none.
+ */
 export function groundAt(cx, cy, out) {
   const cam = battle.camera
   const canvas = battle.canvas
@@ -43,8 +46,23 @@ export function groundAt(cx, cy, out) {
   v2.set(nx, ny, 1).unproject(cam)
   const dy = v2.y - v1.y
   if (Math.abs(dy) < 1e-6) return false
-  const t = -v1.y / dy
+  let t = -v1.y / dy
   if (t < 0) return false
+  out.y = 0
+  // The top of a standing rampart section hit before the ground wins.
+  const ramp = battle.world?.rampart
+  if (ramp) {
+    for (const seg of ramp.segs) {
+      if (!seg.up) continue
+      const ts = (seg.h - v1.y) / dy
+      if (ts < 0 || ts >= t) continue
+      const px = v1.x + (v2.x - v1.x) * ts
+      const pz = v1.z + (v2.z - v1.z) * ts
+      if (px < seg.fx0 || px > seg.fx1 || pz < seg.fz0 || pz > seg.fz1) continue
+      t = ts
+      out.y = seg.h
+    }
+  }
   out.x = v1.x + (v2.x - v1.x) * t
   out.z = v1.z + (v2.z - v1.z) * t
   return true

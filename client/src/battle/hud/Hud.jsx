@@ -51,6 +51,18 @@ function ZombieBar() {
         <span className="ff-zbar__label">Cash</span>
         <span className="ff-zbar__num">${z.cash}</span>
       </div>
+      {z.wall && (
+        <div className={`ff-zbar__cell ff-zbar__cell--wall ${z.wall.some((p) => p >= 0 && p < 30) || z.wall.includes(-1) ? 'is-danger' : ''}`}>
+          <span className="ff-zbar__label">Rampart</span>
+          <span className="ff-wallpips" title="Rampart sections, south to north">
+            {z.wall.map((p, i) => (
+              <span key={i} className={`ff-wallpip ${p < 0 ? 'is-down' : p < 30 ? 'is-low' : p < 65 ? 'is-mid' : ''}`}>
+                <span style={{ height: `${Math.max(0, p)}%` }} />
+              </span>
+            ))}
+          </span>
+        </div>
+      )}
       <div className={`ff-zbar__cell ${z.breaches >= z.maxBreaches - 3 ? 'is-danger' : ''}`}>
         <span className="ff-zbar__label">Breaches</span>
         <span className="ff-zbar__num">

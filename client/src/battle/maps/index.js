@@ -40,4 +40,16 @@ export const MAPS = [
   },
 ]
 
-export const mapById = (id) => MAPS.find((m) => m.id === id) || MAPS[0]
+/** Zombie Horde's own battlefield (not in the sandbox map list). */
+export const ZOMBIE_MAP = {
+  id: 'bastion',
+  name: 'Mirefall Bastion',
+  blurb: 'A stone rampart across a drowned, misty marsh: hold it against the horde from the top of the wall.',
+  size: '170 × 110 m',
+  load: () => import('./mirefallBastion.js'),
+}
+
+/** Every battlefield, sandbox and Zombie Horde. */
+export const ALL_MAPS = [...MAPS, ZOMBIE_MAP]
+
+export const mapById = (id) => ALL_MAPS.find((m) => m.id === id) || MAPS[0]

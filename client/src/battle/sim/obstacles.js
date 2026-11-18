@@ -20,8 +20,11 @@ export function buildObstacles(map) {
   const n = list.length
   // minX, minZ, maxX, maxZ, height per box.
   const data = new Float32Array(n * 5)
+  /** Rampart boxes (rampart.js): no cover against anyone standing up on top of them. */
+  const deck = new Uint8Array(n)
   for (let i = 0; i < n; i += 1) {
     const o = list[i]
+    if (o.deck) deck[i] = 1
     data[i * 5] = o.x - o.w / 2
     data[i * 5 + 1] = o.z - o.d / 2
     data[i * 5 + 2] = o.x + o.w / 2
@@ -46,6 +49,7 @@ export function buildObstacles(map) {
     list,
     count: n,
     data,
+    deck,
     buckets,
     cols,
     rows,
@@ -68,7 +72,8 @@ function bucketAt(obs, x, z) {
  * First hit of the segment A -> B with any box, as a fraction 0..1 along it, or
  * Infinity. A box the segment starts inside is ignored (a soldier pressed against
  * cover), and so is low cover within `lipSkip` metres of A: you shoot over the lip of
- * the sandbags you crouch behind.
+ * the sandbags you crouch behind. A rampart box is ignored by a segment starting near or
+ * above its top: troops on the wall fire over the parapet and down its face.
  */
 export function segmentHit3D(obs, ax, ay, az, bx, by, bz, lipSkip = 0) {
   const dx = bx - ax
@@ -88,6 +93,7 @@ export function segmentHit3D(obs, ax, ay, az, bx, by, bz, lipSkip = 0) {
     const z1 = d[o + 3]
     if (x1 < minX || x0 > maxX || z1 < minZ || z0 > maxZ) continue
     const h = d[o + 4]
+    if (obs.deck[i] && ay > h - 1.25) continue
     let tmin = 0
     let tmax = 1
     // X slab

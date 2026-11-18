@@ -3,7 +3,7 @@ import { test } from 'node:test'
 
 import { pack, unpack } from 'msgpackr'
 
-import { MAPS } from '../../client/src/battle/maps/index.js'
+import { ALL_MAPS, MAPS } from '../../client/src/battle/maps/index.js'
 import { createEncoder, encodeSnapshot, SOLDIER_STRIDE } from '../../client/src/battle/sim/netProtocol.js'
 import { createWorld, spawnUnits, stepWorld, withUnits, moveSelected } from '../../client/src/battle/sim/world.js'
 import { newGuestId, resolveIdentity } from '../src/bloxityApi.js'
@@ -26,7 +26,7 @@ test('save tickets round-trip', () => {
 })
 
 test('every map loads and simulates on the server', async () => {
-  for (const entry of MAPS) {
+  for (const entry of ALL_MAPS) {
     const map = (await entry.load()).default
     const w = createWorld(map, CAPS)
     w.deaths = []

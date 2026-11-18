@@ -27,6 +27,7 @@ import {
   updateProjectiles,
 } from './ordnance.js'
 import { buildCoverSpots, buildObstacles, collideCircle, segmentClear2D, segmentHit3D } from './obstacles.js'
+import { buildRampart, clampToDeck, deckAt } from './rampart.js'
 import { BODIES_PER_RAGDOLL, startRagdoll, stepRagdoll } from './ragdoll.js'
 import { animate, J_PELVIS, wrapAngle } from './rig.js'
 import { makeSoldier, resetSoldier } from './soldier.js'
@@ -99,6 +100,8 @@ export function createWorld(map, caps, mode = 'sandbox') {
     build: createBuild(),
     /** 'sandbox' or 'zombies' (Zombie Horde: zombies.js keeps its state in `zmode`). */
     mode,
+    /** A wall troops stand on (rampart.js), on maps that have one; else null. */
+    rampart: buildRampart(map),
     zmode: null,
     slots,
     free: slots.map((s) => s.slot).reverse(),
@@ -314,10 +317,11 @@ function updateSoldier(w, s, h) {
 
 /** Eye/muzzle/chest heights blend with stance. */
 const standW = (s) => Math.max(0, 1 - s.wCrouch - s.wProne - s.wDown)
-const eyeH = (s) => STAND_EYE * standW(s) + 1.15 * s.wCrouch + 0.38 * s.wProne + 0.3 * s.wDown
-const muzzleH = (s) => STAND_MUZZLE * standW(s) + 1.12 * s.wCrouch + 0.3 * s.wProne + 0.25 * s.wDown
-const chestH = (s) => 1.15 * standW(s) + 0.8 * s.wCrouch + 0.25 * s.wProne + 0.2 * s.wDown
-const headH = (s) => 1.62 * standW(s) + 1.15 * s.wCrouch + 0.42 * s.wProne + 0.25 * s.wDown
+// All above the floor they stand on: the ground, or the top of the rampart.
+const eyeH = (s) => s.fy + STAND_EYE * standW(s) + 1.15 * s.wCrouch + 0.38 * s.wProne + 0.3 * s.wDown
+const muzzleH = (s) => s.fy + STAND_MUZZLE * standW(s) + 1.12 * s.wCrouch + 0.3 * s.wProne + 0.25 * s.wDown
+const chestH = (s) => s.fy + 1.15 * standW(s) + 0.8 * s.wCrouch + 0.25 * s.wProne + 0.2 * s.wDown
+const headH = (s) => s.fy + 1.62 * standW(s) + 1.15 * s.wCrouch + 0.42 * s.wProne + 0.25 * s.wDown
 
 /** Where to aim at target `t`: a soldier's chest, or the middle of a vehicle. */
 const aimY = (t) => (t.isVehicle ? t.y + t.aimH : chestH(t))
@@ -533,7 +537,8 @@ function releaseCover(w, s) {
  * it; returns true while heading there or sitting in it.
  */
 function seekCover(w, s, type, target, cx, cz, radius) {
-  if (type.prone || !target) {
+  // Up on the rampart the parapet is the cover.
+  if (type.prone || !target || s.deck >= 0) {
     releaseCover(w, s)
     return false
   }
@@ -793,10 +798,10 @@ function traceSoldiers(w, team, ox, oy, oz, dx, dy, dz, maxDist) {
     if (!lying) {
       const top = 1.82 - 0.55 * e.wCrouch
       ax = e.x
-      ay = 0.2
+      ay = e.fy + 0.2
       az = e.z
       bx = e.x
-      by = top - 0.22
+      by = e.fy + top - 0.22
       bz = e.z
       r = 0.24
     } else {
@@ -805,10 +810,10 @@ function traceSoldiers(w, team, ox, oy, oz, dx, dy, dz, maxDist) {
       const fx = Math.sin(e.yaw) * sgn
       const fz = Math.cos(e.yaw) * sgn
       ax = e.x - fx * 0.85
-      ay = 0.2
+      ay = e.fy + 0.2
       az = e.z - fz * 0.85
       bx = e.x + fx * 0.75
-      by = 0.25
+      by = e.fy + 0.25
       bz = e.z + fz * 0.75
       r = 0.22
     }
@@ -846,7 +851,7 @@ function traceSoldiers(w, team, ox, oy, oz, dx, dy, dz, maxDist) {
     const lz = -Math.sin(e.yaw)
     const side = qx * lx + qz * lz
     if (!lying) {
-      const y = ay + uy * tc
+      const y = ay + uy * tc - e.fy
       const hipY = 0.84 - 0.34 * e.wCrouch
       const neckY = 1.44 - 0.42 * e.wCrouch
       if (y > neckY) foundPart = PART_HEAD
@@ -1184,6 +1189,14 @@ function move(w, s, type, h) {
   let dirX = 0
   let dirZ = 0
   const crawling = s.legL > 0 && s.legR > 0
+  // Up on the rampart, wherever they're headed they stop at its edge.
+  if (s.deck >= 0 && s.goalMode === 1) {
+    GOAL.x = s.goalX
+    GOAL.z = s.goalZ
+    clampToDeck(w.rampart, s.deck, GOAL)
+    s.goalX = GOAL.x
+    s.goalZ = GOAL.z
+  }
   if (s.goalMode === 1) {
     const gx = s.goalX - s.x
     const gz = s.goalZ - s.z
@@ -1191,8 +1204,9 @@ function move(w, s, type, h) {
     if (dist < 0.35) {
       s.goalMode = 0
     } else {
-      // Straight there when the way is clear, else follow the flow field.
-      if (dist < 30 && segmentClear2D(w.obs, s.x, s.z, s.goalX, s.goalZ, 0.35)) {
+      // Straight there when the way is clear (always, up on the rampart), else follow
+      // the flow field.
+      if (s.deck >= 0 || (dist < 30 && segmentClear2D(w.obs, s.x, s.z, s.goalX, s.goalZ, 0.35))) {
         dirX = gx / dist
         dirZ = gz / dist
       } else {
@@ -1281,7 +1295,10 @@ function move(w, s, type, h) {
   const oz = s.z
   POS.x = s.x + s.vx * h
   POS.z = s.z + s.vz * h
-  collideCircle(w.obs, POS, SOLDIER_RADIUS)
+  // On the rampart: anywhere on your section's top, never over the edge.
+  if (s.deck >= 0) {
+    clampToDeck(w.rampart, s.deck, POS)
+  } else collideCircle(w.obs, POS, SOLDIER_RADIUS)
   s.x = POS.x
   s.z = POS.z
   const moved = Math.hypot(s.x - ox, s.z - oz)
@@ -1307,6 +1324,7 @@ function move(w, s, type, h) {
 }
 
 const POS = { x: 0, z: 0 }
+const GOAL = { x: 0, z: 0 }
 const DIR_OUT = { x: 0, z: 0 }
 
 function animStep(s, h) {
@@ -1361,6 +1379,7 @@ export function spawnUnits(w, typeKey, team, x, z, count, order, rot = 0) {
   const face = Math.atan2(enemyBase.x - x, enemyBase.z - z)
   const cols = Math.ceil(Math.sqrt(count))
   const spacing = 1.25
+  const onDeck = deckAt(w.rampart, x, z)
   const fx = Math.sin(face)
   const fz = Math.cos(face)
   let spawned = 0
@@ -1373,8 +1392,15 @@ export function spawnUnits(w, typeKey, team, x, z, count, order, rot = 0) {
     const oz = -row * spacing
     POS.x = x + fz * ox + fx * oz
     POS.z = z - fx * ox + fz * oz
-    collideCircle(w.obs, POS, SOLDIER_RADIUS)
+    // Dropped onto the rampart: they stand on top of it.
+    const deck = onDeck >= 0 ? onDeck : -1
+    if (deck >= 0) clampToDeck(w.rampart, deck, POS)
+    else collideCircle(w.obs, POS, SOLDIER_RADIUS)
     resetSoldier(s, type, team, POS.x, POS.z, face, order)
+    if (deck >= 0) {
+      s.deck = deck
+      s.fy = w.rampart.segs[deck].h
+    }
     s.dropY = 2.2 + rand() * 0.8 + row * 0.15
     s.dropV = 0
     s.scale = 0.2
@@ -1459,6 +1485,8 @@ export function moveSelected(w, x, z) {
   const cols = Math.ceil(Math.sqrt(units.length * 1.6))
   const spacing = 1.6
   const spots = []
+  // Sent somewhere along the top of the rampart: the spots are up there too.
+  const toDeck = deckAt(w.rampart, x, z)
   for (let i = 0; i < units.length; i += 1) {
     const col = i % cols
     const row = Math.floor(i / cols)
@@ -1466,7 +1494,8 @@ export function moveSelected(w, x, z) {
     const oz = -row * spacing
     POS.x = x + fz * ox + fx * oz
     POS.z = z - fx * ox + fz * oz
-    collideCircle(w.obs, POS, SOLDIER_RADIUS + 0.1)
+    if (toDeck >= 0) clampToDeck(w.rampart, toDeck, POS)
+    else collideCircle(w.obs, POS, SOLDIER_RADIUS + 0.1)
     spots.push({ x: POS.x, z: POS.z, used: false })
   }
   for (const s of units) {
@@ -1483,8 +1512,14 @@ export function moveSelected(w, x, z) {
     best.used = true
     releaseCover(w, s)
     s.order = 'move'
-    s.moveX = best.x
-    s.moveZ = best.z
+    POS.x = best.x
+    POS.z = best.z
+    // Nobody climbs: those on the wall walk along their own section, those below go
+    // to the foot of it.
+    if (s.deck >= 0) clampToDeck(w.rampart, s.deck, POS)
+    else if (toDeck >= 0) collideCircle(w.obs, POS, SOLDIER_RADIUS + 0.1)
+    s.moveX = POS.x
+    s.moveZ = POS.z
     s.thinkT = 0
     s.progressT = 0
     s.progressD = Infinity

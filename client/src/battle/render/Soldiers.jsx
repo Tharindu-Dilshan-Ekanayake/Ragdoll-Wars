@@ -216,7 +216,7 @@ export default function Soldiers({ getWorld, capacity = MAX_SLOTS }) {
           if (s.alive) {
             px = s.x
             pz = s.z
-            sphere.center.set(px, 0.9 + s.dropY, pz)
+            sphere.center.set(px, 0.9 + s.dropY + s.fy, pz)
             sphere.radius = 1.4
             if (!frustum.intersectsSphere(sphere)) continue
             const d2 = (px - cx) * (px - cx) + (pz - cz) * (pz - cz)
@@ -288,11 +288,12 @@ export default function Soldiers({ getWorld, capacity = MAX_SLOTS }) {
 
           if (!realtimeShadows) {
             const size = s.alive ? 0.95 - Math.min(0.5, s.dropY * 0.15) : 1.5
-            writeMatrix(shadowArr, nShadow * 16, px, 0.025 + (i % 7) * 0.001, pz, 0, 0, 0, 1, size)
+            // Under their feet: on the ground, or up on the rampart.
+            writeMatrix(shadowArr, nShadow * 16, px, (s.alive ? s.fy : 0) + 0.025 + (i % 7) * 0.001, pz, 0, 0, 0, 1, size)
             nShadow += 1
           }
           if (s.selected && s.alive) {
-            writeMatrix(ringArr, nRing * 16, px, 0.04, pz, 0, 0, 0, 1, 1)
+            writeMatrix(ringArr, nRing * 16, px, s.fy + 0.04, pz, 0, 0, 0, 1, 1)
             const rc = RING_RGB[s.team]
             ringCol[nRing * 3] = rc[0]
             ringCol[nRing * 3 + 1] = rc[1]

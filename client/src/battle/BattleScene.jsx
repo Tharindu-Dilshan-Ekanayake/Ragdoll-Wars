@@ -78,7 +78,7 @@ const battleFocus = () => battle.view
 /** The battle's 3D view. */
 export default function BattleScene({ map, onReady }) {
   return (
-    <GameCanvas clearColor={map.fog} fogColor={map.fog} onReady={onReady}>
+    <GameCanvas clearColor={map.fog} fogColor={map.fog} fogRange={map.fogRange} onReady={onReady}>
       <SimAndSound />
       <CameraRig map={map} selectBoxId="ff-selectbox" />
       <MapView map={map} focus={battleFocus} />

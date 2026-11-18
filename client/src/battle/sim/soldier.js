@@ -75,6 +75,9 @@ export function makeSoldier(slot) {
     flinchX: 0,
     flinchZ: 0,
     dropY: 0,
+    /** Standing height: the top of the rampart section `deck` (rampart.js), or 0 / -1. */
+    fy: 0,
+    deck: -1,
     dropV: 0,
     scale: 1,
     progressT: 0,
@@ -135,6 +138,8 @@ export function resetSoldier(s, type, team, x, z, yaw, order) {
   s.type = type.key
   s.x = x
   s.z = z
+  s.fy = 0
+  s.deck = -1
   s.vx = 0
   s.vz = 0
   s.yaw = yaw

@@ -38,7 +38,7 @@ const PROJ_INDEX = Object.fromEntries(PROJ_KINDS.map((k, i) => [k, i]))
 export const ZOMBIE_STATES = ['build', 'wave']
 export const ZOMBIE_RESULTS = [null, 'won', 'lost']
 
-export const SOLDIER_STRIDE = 20
+export const SOLDIER_STRIDE = 21
 export const VEHICLE_STRIDE = 14
 export const PROJECTILE_STRIDE = 8
 export const MINE_STRIDE = 5
@@ -118,6 +118,7 @@ export function encodeSnapshot(w, enc) {
       q(x.scale),
       Math.max(0, Math.round(x.hp)),
       healing ? x.patientId : 0,
+      q(x.fy),
     )
   }
   const v = []
@@ -184,7 +185,20 @@ export function encodeSnapshot(w, enc) {
     fx: { tr, fl, im, de, ex, fm, so },
     st: [st.alive[0], st.alive[1], st.lost[0], st.lost[1], st.downed[0], st.downed[1], st.kills[0], st.kills[1]],
     z: zm
-      ? [zm.wave, zm.total, ZOMBIE_STATES.indexOf(zm.state), zm.cash, zm.left, Math.round(zm.buildT * 10), zm.breaches, zm.maxBreaches, zm.kills, ZOMBIE_RESULTS.indexOf(zm.result)]
+      ? [
+          zm.wave,
+          zm.total,
+          ZOMBIE_STATES.indexOf(zm.state),
+          zm.cash,
+          zm.left,
+          Math.round(zm.buildT * 10),
+          zm.breaches,
+          zm.maxBreaches,
+          zm.kills,
+          ZOMBIE_RESULTS.indexOf(zm.result),
+          // Rampart sections: strength in percent, -1 when fallen.
+          ...(w.rampart ? w.rampart.segs.map((g) => (g.up ? Math.max(1, Math.round((g.hp / g.max) * 100)) : -1)) : []),
+        ]
       : null,
   }
   if (w.build.version !== enc.buildVersion) {

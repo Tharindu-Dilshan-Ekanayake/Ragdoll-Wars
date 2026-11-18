@@ -1706,3 +1706,36 @@ button {
 .ff-walker-tag__name--1 {
   border-color: #ff4d4d;
 }
+
+/* --- Rampart strength (Zombie Horde top bar) ---------------------------------------- */
+.ff-wallpips {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: calc(var(--u) * 22);
+}
+.ff-wallpip {
+  position: relative;
+  width: calc(var(--u) * 9);
+  height: 100%;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+.ff-wallpip > span {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #8fd16a;
+  transition: height 0.3s;
+}
+.ff-wallpip.is-mid > span {
+  background: #e6c14e;
+}
+.ff-wallpip.is-low > span {
+  background: #ff6b4a;
+}
+.ff-wallpip.is-down {
+  background: repeating-linear-gradient(45deg, rgba(255, 80, 60, 0.55) 0 3px, rgba(0, 0, 0, 0.3) 3px 6px);
+}

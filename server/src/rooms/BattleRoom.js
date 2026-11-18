@@ -1,6 +1,6 @@
 import { Room } from '@colyseus/core'
 
-import { MAPS } from '../../../client/src/battle/maps/index.js'
+import { MAPS, ZOMBIE_MAP } from '../../../client/src/battle/maps/index.js'
 import { createEncoder, encodeSnapshot } from '../../../client/src/battle/sim/netProtocol.js'
 import { BUILD_GROUPS } from '../../../client/src/battle/sim/pieces.js'
 import { applySave } from '../../../client/src/battle/sim/saveGame.js'
@@ -88,7 +88,8 @@ export class BattleRoom extends Room {
 
   async onCreate(options = {}) {
     this.mode = options.mode === 'zombies' ? 'zombies' : 'sandbox'
-    const entry = (this.mode === 'zombies' ? null : MAPS.find((m) => m.id === options.mapId)) || MAPS[0]
+    // Zombie Horde has its own battlefield; sandbox rooms play the map they asked for.
+    const entry = this.mode === 'zombies' ? ZOMBIE_MAP : MAPS.find((m) => m.id === options.mapId) || MAPS[0]
     const map = (await entry.load()).default
     this.mapId = map.id
     this.w = createWorld(map, CAPS, this.mode)

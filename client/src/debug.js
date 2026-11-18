@@ -29,5 +29,8 @@ export function installDebugHooks() {
     async walk() {
       return import('./battle/walk/walkMode.js')
     },
+    async zombies() {
+      return import('./battle/sim/zombies.js')
+    },
   }
 }

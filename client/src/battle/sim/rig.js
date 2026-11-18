@@ -492,7 +492,7 @@ export function animate(s, out, t) {
   }
   const c = Math.cos(s.yaw)
   const sn = Math.sin(s.yaw)
-  const y0 = s.dropY
+  const y0 = s.dropY + s.fy
   for (let j = 0; j < JOINT_COUNT; j += 1) {
     const lx = src[j * 3]
     const lz = src[j * 3 + 2]

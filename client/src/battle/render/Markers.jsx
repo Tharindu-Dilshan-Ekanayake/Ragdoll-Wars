@@ -3,6 +3,7 @@ import { BoxGeometry, Color, DynamicDrawUsage, InstancedBufferAttribute, Instanc
 
 import { useHud } from '../hud/hudStore'
 import { segmentClear2D } from '../sim/obstacles'
+import { deckAt } from '../sim/rampart'
 import { BUILD_TYPES } from '../sim/structures'
 import { addFrameHook, battle, PHASE } from '../state'
 
@@ -125,7 +126,7 @@ export default function Markers({ map }) {
           for (let i = 0; i < n; i += 1) {
             const ox = ((i % cols) - (cols - 1) / 2) * 1.25
             const oz = -Math.floor(i / cols) * 1.25
-            p3.set(h.x + fz * ox + fx * oz, 0.05, h.z - fx * ox + fz * oz)
+            p3.set(h.x + fz * ox + fx * oz, (h.y || 0) + 0.05, h.z - fx * ox + fz * oz)
             s3.setScalar(pulse)
             m4.compose(p3, q4.identity(), s3)
             ghost.setMatrixAt(i, m4)
@@ -143,7 +144,9 @@ export default function Markers({ map }) {
         if (mesh) {
           const age = mk ? (performance.now() - mk.t) / 1000 : 9
           if (age < 0.8) {
-            mesh.position.set(mk.x, 0.06, mk.z)
+            const r = battle.world?.rampart
+            const deck = r ? deckAt(r, mk.x, mk.z) : -1
+            mesh.position.set(mk.x, (deck >= 0 ? r.segs[deck].h : 0) + 0.06, mk.z)
             mesh.scale.setScalar(1.6 - age * 1.2)
             parts.moveMat.opacity = 1 - age / 0.8
             mesh.visible = true

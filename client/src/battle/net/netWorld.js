@@ -103,6 +103,7 @@ export function applySnapshot(w, net, snap) {
     x.scale = cm(s[i + 17])
     x.hp = s[i + 18]
     t.patientId = f & F_HEALING ? s[i + 19] : 0
+    x.fy = cm(s[i + 20])
   }
   // Medics at work: point them at their patient (for the heal cross).
   for (const x of net.soldiers.values()) {
@@ -263,6 +264,23 @@ export function applySnapshot(w, net, snap) {
       kills: z[8],
       result: ZOMBIE_RESULTS[z[9]] || null,
     })
+    // The rampart: strengths, and sections falling or going back up.
+    const r = w.rampart
+    if (r && z.length > 10) {
+      let changed = false
+      r.segs.forEach((g, k) => {
+        const v = z[10 + k]
+        const up = v >= 0
+        g.hp = up ? (v / 100) * g.max : 0
+        if (g.up === up) return
+        g.up = up
+        changed = true
+        if (up) for (const o of g.boxes) if (!w.baseObstacles.includes(o)) w.baseObstacles.push(o)
+        if (!up) w.baseObstacles = w.baseObstacles.filter((o) => !g.boxes.includes(o))
+      })
+      if (changed) rebuildStatic(w)
+      r.version += 1
+    }
   }
   if (snap.b) {
     const list = []
