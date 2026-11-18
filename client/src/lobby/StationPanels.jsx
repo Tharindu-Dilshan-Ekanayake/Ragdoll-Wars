@@ -69,12 +69,21 @@ function SandboxPanel() {
 
 const MAX_RANGE = Math.max(...UNIT_ORDER.map((k) => UNIT_TYPES[k].range))
 
+/** What a unit does per hit, in words: bullets, a blast, fire, or healing. */
+function damageText(u) {
+  if (u.blast) return `${u.blast.damage} blast · ${u.blast.radius} m`
+  if (u.flame) return `${u.flame.dps}/s fire`
+  if (u.pellets > 1) return `${u.damage} × ${u.pellets}`
+  return u.damage
+}
+
 function ArmoryPanel() {
   return (
     <div className="ff-roster">
       {UNIT_ORDER.map((k, i) => {
         const u = UNIT_TYPES[k]
-        const rpm = Math.round(60 / u.interval)
+        // Single-shot launchers are paced by their reload.
+        const rpm = Math.round(60 / (u.mag === 1 ? u.interval + u.reload : u.interval))
         return (
           <div key={k} className="ff-roster__unit">
             <div className="ff-roster__head">
@@ -89,7 +98,15 @@ function ArmoryPanel() {
               <dt>Health</dt>
               <dd>{u.hp}</dd>
               <dt>Damage</dt>
-              <dd>{u.pellets > 1 ? `${u.damage} × ${u.pellets}` : u.damage}</dd>
+              <dd>{damageText(u)}</dd>
+              {u.medic && (
+                <>
+                  <dt>Heals</dt>
+                  <dd>
+                    {u.medic.heal} HP · revives
+                  </dd>
+                </>
+              )}
               <dt>Fire rate</dt>
               <dd>{rpm} / min</dd>
               <dt>Magazine</dt>

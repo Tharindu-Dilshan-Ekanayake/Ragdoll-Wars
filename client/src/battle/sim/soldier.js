@@ -86,6 +86,30 @@ export function makeSoldier(slot) {
     kills: 0,
     selected: false,
     seed: 0,
+    // Fire: seconds left burning, damage per second, when to pick a new panic direction.
+    burnT: 0,
+    burnDps: 0,
+    burnerSlot: -1,
+    burnerId: 0,
+    panicT: 0,
+    charred: false,
+    // Medic: the patient they're working on (and its id, in case the slot is reused),
+    // how long they've been at it; and on the patient's side, who's coming for them.
+    patient: null,
+    patientId: 0,
+    healT: 0,
+    medicId: 0,
+    medicSlot: -1,
+    // Thrown by a blast without a ragdoll (over the ragdoll budget): a scripted arc.
+    flinging: false,
+    flingVX: 0,
+    flingVY: 0,
+    flingVZ: 0,
+    flingY: 0,
+    flingAng: 0,
+    flingSpin: 0,
+    flingAX: 1,
+    flingAZ: 0,
     // Body state once dead.
     deadT: 0,
     joints: new Float32Array(JOINT_COUNT * 3),
@@ -163,6 +187,20 @@ export function resetSoldier(s, type, team, x, z, yaw, order) {
   s.kills = 0
   s.selected = false
   s.seed = Math.random() * 100
+  s.burnT = 0
+  s.burnDps = 0
+  s.burnerSlot = -1
+  s.burnerId = 0
+  s.panicT = 0
+  s.charred = false
+  s.patient = null
+  s.patientId = 0
+  s.healT = 0
+  s.medicId = 0
+  s.medicSlot = -1
+  s.flinging = false
+  s.flingY = 0
+  s.flingAng = 0
   s.ragActive = false
   s.crumple = false
   s.sinkT = 0

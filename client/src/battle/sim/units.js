@@ -1,12 +1,23 @@
 /**
- * Infantry types. Phase 1 has six; support, vehicles and air come in later phases.
+ * Unit types: six infantry, four support soldiers (Phase 2) and the landmine, which is
+ * placed like a unit but isn't a soldier (`trap`). Vehicles and air come later.
  *
  * Ranges in metres, times in seconds, spread is the standard deviation of the aim error
  * in radians (so the miss distance grows with range, as it should). `burst` is the
  * [min, max] rounds per trigger pull; `pause` is the rest between bursts.
  *
- * Weapon geometry (render/weaponModels.js) uses `front` (grip to muzzle), `back` (grip to
+ * Weapon geometry (render/models.js) uses `front` (grip to muzzle), `back` (grip to
  * stock) and `foregrip` (grip to the left hand; 0 = pistol, both hands on the grip).
+ * `model` picks the weapon mesh when it isn't the unit's own key.
+ *
+ * Support extras:
+ * - `proj`: fires a projectile instead of bullets ('rocket' straight, 'shell' in an arc);
+ *   `blast` is its explosion { radius, damage }; `indirect` needs no line of sight
+ *   (mortar), with `minRange`; `scatter` is the landing error per metre of range.
+ * - `flame`: a short cone that sets enemies alight ({ dps, burn } seconds).
+ * - `medic`: looks for hurt teammates within `range`, heals `heal` HP over `time` s,
+ *   stops bleeding and fire, and gets downed soldiers back on their feet.
+ * - `max`: most of this type per team.
  */
 export const UNIT_TYPES = {
   pistol: {
@@ -148,10 +159,152 @@ export const UNIT_TYPES = {
     back: 0.3,
     foregrip: 0.24,
   },
+  rocket: {
+    key: 'rocket',
+    name: 'Rocket Launcher',
+    role: 'Explosive',
+    hp: 100,
+    speed: 4.0,
+    range: 70,
+    engage: 55,
+    damage: 0,
+    pellets: 1,
+    interval: 0.2,
+    burst: [1, 1],
+    pause: 0.1,
+    mag: 1,
+    reload: 4.2,
+    spread: 0.022,
+    runAndGun: false,
+    prone: false,
+    heavy: false,
+    proj: 'rocket',
+    projSpeed: 42,
+    blast: { radius: 4.2, damage: 150 },
+    max: 6,
+    front: 0.42,
+    back: 0.55,
+    foregrip: 0.22,
+  },
+  flame: {
+    key: 'flame',
+    name: 'Flamethrower',
+    role: 'Burns',
+    hp: 140,
+    speed: 4.1,
+    range: 13,
+    engage: 9,
+    damage: 4,
+    pellets: 1,
+    interval: 0.1,
+    burst: [12, 20],
+    pause: 0.7,
+    mag: 60,
+    reload: 3.0,
+    spread: 0.12,
+    runAndGun: true,
+    prone: false,
+    heavy: false,
+    flame: { dps: 22, burn: 3.5 },
+    max: 6,
+    front: 0.48,
+    back: 0.2,
+    foregrip: 0.24,
+  },
+  medic: {
+    key: 'medic',
+    name: 'Medic',
+    role: 'Heals',
+    hp: 100,
+    speed: 4.7,
+    range: 30,
+    engage: 18,
+    damage: 14,
+    pellets: 1,
+    interval: 0.45,
+    burst: [1, 1],
+    pause: 0.25,
+    mag: 12,
+    reload: 1.6,
+    spread: 0.06,
+    runAndGun: true,
+    prone: false,
+    heavy: false,
+    medic: { range: 40, heal: 70, time: 2.4 },
+    max: 8,
+    model: 'pistol',
+    front: 0.17,
+    back: 0.03,
+    foregrip: 0,
+  },
+  mortar: {
+    key: 'mortar',
+    name: 'Mortar',
+    role: 'Artillery',
+    hp: 100,
+    speed: 3.6,
+    range: 130,
+    engage: 125,
+    minRange: 18,
+    damage: 0,
+    pellets: 1,
+    interval: 0.2,
+    burst: [1, 1],
+    pause: 0.1,
+    mag: 1,
+    reload: 4.8,
+    spread: 0,
+    scatter: 0.055,
+    runAndGun: false,
+    prone: false,
+    heavy: false,
+    proj: 'shell',
+    indirect: true,
+    blast: { radius: 5, damage: 160 },
+    max: 4,
+    front: 0.42,
+    back: 0.3,
+    foregrip: 0.2,
+  },
+  mine: {
+    key: 'mine',
+    name: 'Landmine',
+    role: 'Trap',
+    trap: true,
+    blast: { radius: 4, damage: 200 },
+    max: 20,
+    // Soldier fields, unused (keeps lookups safe).
+    hp: 1,
+    speed: 0,
+    range: 0,
+    engage: 0,
+    damage: 0,
+    pellets: 1,
+    interval: 1,
+    burst: [1, 1],
+    pause: 0,
+    mag: 1,
+    reload: 1,
+    spread: 0,
+    front: 0,
+    back: 0,
+    foregrip: 0,
+  },
 }
 
-/** Dock order; also the 1-6 hotkeys. */
-export const UNIT_ORDER = ['pistol', 'smg', 'rifle', 'shotgun', 'sniper', 'mg']
+/** Soldier types in dock order; also the 1-9, 0 hotkeys. */
+export const UNIT_ORDER = ['pistol', 'smg', 'rifle', 'shotgun', 'sniper', 'mg', 'rocket', 'flame', 'medic', 'mortar']
+
+/** Everything the dock can place, grouped. */
+export const DOCK_GROUPS = [
+  { label: 'Infantry', keys: ['pistol', 'smg', 'rifle', 'shotgun', 'sniper', 'mg'] },
+  { label: 'Support', keys: ['rocket', 'flame', 'medic', 'mortar'] },
+  { label: 'Traps', keys: ['mine'] },
+]
+
+/** Weapon meshes (a unit uses `model` or its own key). */
+export const WEAPON_MODELS = ['pistol', 'smg', 'rifle', 'shotgun', 'sniper', 'mg', 'rocket', 'flame', 'mortar']
+export const weaponModelIndex = (key) => WEAPON_MODELS.indexOf(UNIT_TYPES[key]?.model || key)
 
 /** Heavy types (sniper, machine gun) may make up at most this share of a team. */
 export const HEAVY_SHARE = 0.2

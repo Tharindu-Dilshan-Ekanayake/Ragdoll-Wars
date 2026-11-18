@@ -72,7 +72,10 @@ const QUICK_SQUADS = [
   ['mg', 1, -14],
   ['sniper', 1, 14],
   ['shotgun', 2, 0],
-  ['pistol', 2, 20],
+  ['flame', 1, 2],
+  ['rocket', 1, -10],
+  ['medic', 2, 10],
+  ['mortar', 1, 24],
   ['rifle', 4, -22],
 ]
 

@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react'
 import { worldSound } from '../audio/sfx'
 import CameraRig from './render/CameraRig'
 import Effects from './render/Effects'
+import Ordnance from './render/Ordnance'
 import GameCanvas from './render/GameCanvas'
 import MapView from './render/MapView'
 import Markers from './render/Markers'
@@ -54,6 +55,7 @@ export default function BattleScene({ map, onReady }) {
       <MapView map={map} focus={battleFocus} />
       <Soldiers getWorld={getBattleWorld} />
       <Effects />
+      <Ordnance />
       <Markers map={map} />
     </GameCanvas>
   )

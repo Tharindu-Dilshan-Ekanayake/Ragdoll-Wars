@@ -309,8 +309,8 @@ export function attachInput(canvas, boxEl) {
       if (k === 'escape') hud.setPanel(null)
       return
     }
-    if (k >= '1' && k <= '9') {
-      const type = UNIT_ORDER[Number(k) - 1]
+    if (k >= '0' && k <= '9') {
+      const type = UNIT_ORDER[(Number(k) + 9) % 10]
       if (type) {
         hud.setPlacing(type)
         sfx.toggle()

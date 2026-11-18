@@ -80,7 +80,7 @@ export function HelpBody() {
         <h3>Mouse &amp; keyboard</h3>
         <ul>
           <li>
-            <b>1–6</b> or a card: pick a unit, then <b>click</b> the ground to drop it
+            <b>1–9, 0</b> or a card: pick a unit, then <b>click</b> the ground to drop it
           </li>
           <li>
             <b>Drag</b> to select soldiers · <b>click</b> the ground to send them there

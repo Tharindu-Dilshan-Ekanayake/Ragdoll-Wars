@@ -12,6 +12,20 @@ import {
 } from './constants.js'
 import { createFx, emitDecal, emitFlash, emitImpact, emitSound, emitTracer } from './fx.js'
 import { createNavGrid, FlowFields } from './nav.js'
+import {
+  assignPatient,
+  clearOrdnance,
+  clearPatient,
+  createOrdnance,
+  findPatient,
+  flameBurst,
+  healPatient,
+  launchProjectile,
+  needsMedic,
+  placeMines,
+  updateMines,
+  updateProjectiles,
+} from './ordnance.js'
 import { buildCoverSpots, buildObstacles, collideCircle, segmentClear2D, segmentHit3D } from './obstacles.js'
 import { BODIES_PER_RAGDOLL, startRagdoll, stepRagdoll } from './ragdoll.js'
 import { animate, J_PELVIS, wrapAngle } from './rig.js'
@@ -20,7 +34,8 @@ import { createSpatial, rebuildSpatial } from './spatial.js'
 import { HEAVY_SHARE, UNIT_TYPES } from './units.js'
 
 /**
- * The battle simulation: soldiers, their AI, shooting, wounds, deaths and ragdolls.
+ * The battle simulation: soldiers, their AI, shooting, wounds, deaths and ragdolls, and
+ * (ordnance.js) rockets, mortar shells, explosions, mines, fire and medics.
  *
  * Runs on its own clock (`w.time`) scaled by `w.timeScale` (pause / 0.5x / 1x / 2x), in
  * sub-steps of at most 1/60 s. Nothing here touches three.js or React: the renderer
@@ -65,6 +80,7 @@ export function createWorld(map, caps) {
     spatial: createSpatial(map, MAX_SLOTS),
     bullets: [],
     bulletPool: [],
+    ord: createOrdnance(),
     fx: createFx(),
     time: 0,
     timeScale: 1,
@@ -153,6 +169,8 @@ function tick(w, h) {
 
   for (let i = 0; i < living.length; i += 1) updateSoldier(w, living[i], h)
   updateBullets(w)
+  updateProjectiles(w, h)
+  updateMines(w, h)
   updateBodies(w, h)
 }
 
@@ -176,6 +194,36 @@ function updateSoldier(w, s, h) {
     }
     if (s.hp <= 0) {
       kill(w, s, -1, 0, 0, 0, null, 1)
+      return
+    }
+  }
+
+  // On fire: it hurts, and they run about in a panic instead of fighting.
+  if (s.burnT > 0) {
+    s.burnT -= h
+    s.hp -= s.burnDps * h
+    s.hurtT = 0
+    if (s.hp <= 0) {
+      const b = w.slots[s.burnerSlot]
+      s.charred = true
+      kill(w, s, -1, 0, 0, 0, b && b.id === s.burnerId ? b : null, 1.5)
+      return
+    }
+    if (!s.downed && s.dropY <= 0) {
+      if (s.patient) clearPatient(s)
+      releaseCover(w, s)
+      s.target = null
+      s.wantCrouch = false
+      s.wantProne = false
+      s.panicT -= h
+      if (s.panicT <= 0) {
+        s.panicT = 0.55 + rand() * 0.4
+        const a = rand() * Math.PI * 2
+        setGoal(s, clamp(s.x + Math.sin(a) * 5, -w.obs.limitX, w.obs.limitX), clamp(s.z + Math.cos(a) * 5, -w.obs.limitZ, w.obs.limitZ))
+      }
+      s.ready = Math.max(0, s.ready - h * 3)
+      move(w, s, type, h)
+      animStep(s, h)
       return
     }
   }
@@ -225,6 +273,7 @@ function think(w, s, type) {
   const enemies = w.teamLiving[1 - s.team]
   const reach = type.range * 1.05
   const reach2 = reach * reach
+  const min2 = type.minRange ? type.minRange * type.minRange : 0
   let nearest = null
   let nearestD2 = Infinity
   CAND_SCORE[0] = CAND_SCORE[1] = CAND_SCORE[2] = Infinity
@@ -239,7 +288,7 @@ function think(w, s, type) {
       nearestD2 = d2
       nearest = e
     }
-    if (d2 > reach2) continue
+    if (d2 > reach2 || d2 < min2) continue
     let score = Math.sqrt(d2)
     if (e.downed) score += 40
     if (e === s.target) score -= 8
@@ -258,7 +307,8 @@ function think(w, s, type) {
   if (!s.downed) {
     for (let k = 0; k < 3; k += 1) {
       const e = CANDIDATES[k]
-      if (e && canSee(w, s, e)) {
+      // Mortars lob shells over cover: they need no line of sight.
+      if (e && (type.indirect || canSee(w, s, e))) {
         target = e
         break
       }
@@ -272,6 +322,32 @@ function think(w, s, type) {
   s.targetId = target ? target.id : 0
   s.sees = Boolean(target)
   s.nearest = nearest
+
+  // Medics: see to the most urgent hurt teammate nearby, and do nothing else meanwhile
+  // (a move order from the player comes first).
+  if (type.medic && !s.downed && s.order !== 'move') {
+    const p = s.patient
+    if (p && (!p.alive || p.id !== s.patientId || !needsMedic(p))) clearPatient(s)
+    if (!s.patient) {
+      const found = findPatient(w, s, s.order === 'hold' ? 14 : type.medic.range)
+      if (found) assignPatient(s, found)
+    }
+    if (s.patient) {
+      const q = s.patient
+      s.target = null
+      s.targetId = 0
+      s.sees = false
+      releaseCover(w, s)
+      const dx = q.x - s.x
+      const dz = q.z - s.z
+      const d = Math.hypot(dx, dz)
+      if (d > 0.95) setGoal(s, q.x - (dx / (d || 1)) * 0.75, q.z - (dz / (d || 1)) * 0.75)
+      else s.goalMode = 0
+      s.wantProne = false
+      s.wantCrouch = d < 1.6
+      return
+    }
+  }
 
   if (s.downed) {
     // Drag themselves back a little, then lie there.
@@ -412,6 +488,26 @@ function combat(w, s, type, h) {
     s.ready = Math.max(0, s.ready - h * 3)
     return
   }
+  // A medic at work: kneel by the patient until they're patched up.
+  if (s.patient) {
+    const p = s.patient
+    if (!p.alive || p.id !== s.patientId) clearPatient(s)
+    else {
+      const dx = p.x - s.x
+      const dz = p.z - s.z
+      s.aimYaw += wrapAngle(Math.atan2(dx, dz) - s.aimYaw) * Math.min(1, h * 6)
+      s.aimPitch *= 1 - Math.min(1, h * 3)
+      s.ready = Math.max(0, s.ready - h * 3)
+      if (Math.hypot(dx, dz) < 1.4) {
+        s.healT += h
+        if (s.healT >= type.medic.time) {
+          healPatient(w, p, type.medic)
+          clearPatient(s)
+        }
+      } else s.healT = 0
+      return
+    }
+  }
   if (s.reloadT > 0) {
     s.reloadT -= h
     const total = type.reload * (1 + 0.4 * (s.armL + s.armR))
@@ -445,19 +541,34 @@ function combat(w, s, type, h) {
   const turn = (s.armL + s.armR > 0 ? 3.5 : 6.5) * h
   const diff = wrapAngle(want - s.aimYaw)
   s.aimYaw += clamp(diff, -turn, turn)
-  const pitch = Math.atan2(chestH(t) - muzzleH(s), Math.max(1, dist))
+  // Mortars point the tube high; everything else aims at the chest.
+  const pitch = type.indirect ? 0.95 : Math.atan2(chestH(t) - muzzleH(s), Math.max(1, dist))
   s.aimPitch += (pitch - s.aimPitch) * Math.min(1, h * 8)
   s.ready = Math.min(1, s.ready + h * 3.5)
 
   if (s.reloadT > 0 || s.fireT > 0 || s.mag <= 0) return
   if (Math.abs(wrapAngle(want - s.aimYaw)) > 0.12) return
-  if (dist > type.range || s.ready < 0.8 || s.staggerT > 0) return
+  // Flamethrowers keep pouring it on when hit; everyone else flinches.
+  if (dist > type.range || s.ready < 0.8 || (s.staggerT > 0 && !type.flame)) return
   const moving = s.vx * s.vx + s.vz * s.vz > 0.6
   if (moving && !type.runAndGun) return
   if (Math.abs(wrapAngle(s.aimYaw - s.yaw)) > 1.15) return
   if (s.wantProne && s.wProne < 0.9) return
 
-  fire(w, s, t, type, dist, moving)
+  if (type.proj) {
+    if (type.minRange && dist < type.minRange) return
+    const sy = Math.sin(s.aimYaw)
+    const cy = Math.cos(s.aimYaw)
+    const up = type.indirect ? 0.45 : 0
+    if (!launchProjectile(w, s, type, t, s.x + sy * 0.7 - cy * 0.1, muzzleH(s) + up, s.z + cy * 0.7 + sy * 0.1, chestH(t))) return
+    s.recoil = 1
+    s.lastShotT = w.time
+  } else if (type.flame) {
+    const sy = Math.sin(s.aimYaw)
+    const cy = Math.cos(s.aimYaw)
+    flameBurst(w, s, type, s.x + sy * 0.66 - cy * 0.1, muzzleH(s), s.z + cy * 0.66 + sy * 0.1)
+    s.lastShotT = w.time
+  } else fire(w, s, t, type, dist, moving)
   s.mag -= 1
   s.burstLeft -= 1
   s.shotsInBurst += 1
@@ -712,6 +823,35 @@ function hitSoldier(w, s, part, damage, dx, dy, dz, shooter, hx, hy, hz) {
   }
 }
 
+/**
+ * A blast reaching soldier `s` (ordnance.js): `dmg` damage, pushed along (nx, nz), `k`
+ * how close to the centre (0 edge .. 1 point blank). Wounds land mostly on the legs;
+ * survivors are left reeling, close ones knocked flat.
+ */
+export function blastHit(w, s, dmg, nx, nz, k, attacker) {
+  s.hp -= dmg
+  s.hurtT = 0
+  s.staggerT = 0.5 + k
+  s.suppress = 1
+  const r = rand()
+  if (r < 0.35) s.legL += 1
+  else if (r < 0.7) s.legR += 1
+  else if (r < 0.85) s.torsoW += 1
+  else if (r < 0.93) s.armL += 1
+  else s.armR += 1
+  s.bleed += 0.5 + k
+  s.flinchX += nx * k * 2
+  s.flinchZ += nz * k * 2
+  emitImpact(w.fx, s.x, 1, s.z, 1, w.time)
+  if (s.hp <= 0) {
+    const up = 0.75 + rand() * 0.35
+    const l = Math.hypot(nx, up, nz)
+    kill(w, s, -1, nx / l, up / l, nz / l, attacker, 9 + 22 * k, true)
+    return
+  }
+  if (!s.downed && k > 0.35 && rand() < k) setDowned(w, s)
+}
+
 function setDowned(w, s) {
   s.downed = true
   s.downT = 0
@@ -724,13 +864,16 @@ function setDowned(w, s) {
   w.version += 1
 }
 
-function kill(w, s, part, dx, dy, dz, killer, power) {
+function kill(w, s, part, dx, dy, dz, killer, power, blast = false) {
   s.alive = false
   s.deadT = w.time
   s.selected = false
   releaseCover(w, s)
+  if (s.patient) clearPatient(s)
+  // The charred keep smouldering a while.
+  if (s.charred) s.burnT = Math.max(s.burnT, 3)
   w.stats.lost[s.team] += 1
-  if (killer && killer.alive) {
+  if (killer && killer.alive && killer.team !== s.team) {
     killer.kills += 1
     w.stats.kills[killer.team] += 1
   }
@@ -740,12 +883,68 @@ function kill(w, s, part, dx, dy, dz, killer, power) {
     startRagdoll(s, s.vx, s.vz, part, dx, dy, dz, power)
     w.ragdolls.push(s)
   } else {
-    // Over the ragdoll budget: crumple to the ground with a canned fall instead.
+    // Over the ragdoll budget: crumple to the ground with a canned fall instead - thrown
+    // through the air first, tumbling once, when a blast did it.
     s.crumple = true
     s.downed = true
+    if (blast) startFling(s, dx, dy, dz, power)
   }
   w.bodies.push(s)
   w.version += 1
+}
+
+function startFling(s, dx, dy, dz, power) {
+  s.flinging = true
+  s.flingVX = dx * power * 0.4
+  s.flingVZ = dz * power * 0.4
+  s.flingVY = 3 + dy * power * 0.32
+  s.flingY = 0
+  s.flingAng = 0
+  const T = (2 * s.flingVY) / GRAVITY
+  s.flingSpin = ((Math.PI * 2) / T) * (rand() < 0.5 ? 1 : -1)
+  const l = Math.hypot(dx, dz)
+  s.flingAX = l > 1e-3 ? -dz / l : 1
+  s.flingAZ = l > 1e-3 ? dx / l : 0
+}
+
+/** Moves a flung body along its arc (the joints are turned to match in applyFling). */
+function stepFling(w, s, h) {
+  s.x = clamp(s.x + s.flingVX * h, -w.obs.limitX, w.obs.limitX)
+  s.z = clamp(s.z + s.flingVZ * h, -w.obs.limitZ, w.obs.limitZ)
+  s.flingVY -= GRAVITY * h
+  s.flingY += s.flingVY * h
+  s.flingAng += s.flingSpin * h
+  if (s.flingY <= 0 && s.flingVY < 0) {
+    s.flinging = false
+    s.flingY = 0
+    s.flingAng = 0
+    emitImpact(w.fx, s.x, 0.05, s.z, 3, w.time)
+    emitSound(w.fx, 'thud', s.x, 0.2, s.z, 0)
+  }
+}
+
+function applyFling(s) {
+  const j = s.joints
+  const px = j[J_PELVIS * 3]
+  const py = j[J_PELVIS * 3 + 1]
+  const pz = j[J_PELVIS * 3 + 2]
+  const c = Math.cos(s.flingAng)
+  const sn = Math.sin(s.flingAng)
+  const kx = s.flingAX
+  const kz = s.flingAZ
+  for (let i = 0; i < j.length; i += 3) {
+    const vx = j[i] - px
+    const vy = j[i + 1] - py
+    const vz = j[i + 2] - pz
+    // Rodrigues: rotate about the horizontal axis (kx, 0, kz).
+    const dot = kx * vx + kz * vz
+    const cx = -kz * vy
+    const cy = kz * vx - kx * vz
+    const cz = kx * vy
+    j[i] = px + vx * c + cx * sn + kx * dot * (1 - c)
+    j[i + 1] = py + vy * c + cy * sn + s.flingY
+    j[i + 2] = pz + vz * c + cz * sn + kz * dot * (1 - c)
+  }
 }
 
 function updateBodies(w, h) {
@@ -768,15 +967,18 @@ function updateBodies(w, h) {
   let m = 0
   for (let i = 0; i < bodies.length; i += 1) {
     const s = bodies[i]
+    if (s.burnT > 0) s.burnT -= h
     if (s.crumple) {
       s.wDown = Math.min(1, s.wDown + h * 2.4)
       s.wCrouch = Math.max(0, s.wCrouch - h * 4)
       s.animMove = 0
       s.ready = 0
       s.dropY = 0
+      if (s.flinging) stepFling(w, s, h)
       animate(s, s.joints, s.deadT)
+      if (s.flinging) applyFling(s)
       s.poseVersion += 1
-      if (s.wDown >= 1) {
+      if (s.wDown >= 1 && !s.flinging) {
         s.crumple = false
         onSettled(w, s)
       }
@@ -810,6 +1012,9 @@ function onSettled(w, s) {
 function freeSlot(w, s) {
   if (!s.used) return
   releaseCover(w, s)
+  if (s.patient) clearPatient(s)
+  s.flinging = false
+  s.burnT = 0
   s.used = false
   s.alive = false
   s.selected = false
@@ -869,6 +1074,7 @@ function move(w, s, type, h) {
         dirZ /= l
       }
       speed = type.speed
+      if (s.burnT > 0 && !s.downed) speed *= 1.15
       if (s.downed) speed = 0.45
       else if (crawling) speed = 0.7
       else {
@@ -973,6 +1179,7 @@ const teamCount = (w, team) => w.slots.reduce((n, s) => n + (s.used && s.alive &
 export function spawnUnits(w, typeKey, team, x, z, count, order) {
   const type = UNIT_TYPES[typeKey]
   if (!type) return { spawned: 0, limited: null }
+  if (type.trap) return placeMines(w, team, x, z, count)
   let room = w.caps.units - teamCount(w, team)
   let limited = null
   if (room <= 0) return { spawned: 0, limited: `Team limit reached (${w.caps.units})` }
@@ -981,6 +1188,11 @@ export function spawnUnits(w, typeKey, team, x, z, count, order) {
     const have = w.slots.reduce((n, s) => n + (s.used && s.alive && s.team === team && s.type === typeKey ? 1 : 0), 0)
     if (have >= cap) return { spawned: 0, limited: `Max ${cap} ${type.name} per team` }
     if (cap - have < room) room = cap - have
+  }
+  if (type.max) {
+    const have = w.slots.reduce((n, s) => n + (s.used && s.alive && s.team === team && s.type === typeKey ? 1 : 0), 0)
+    if (have >= type.max) return { spawned: 0, limited: `Max ${type.max} ${type.name}s per team` }
+    if (type.max - have < room) room = type.max - have
   }
   if (count > room) {
     limited = `Team limit reached (${w.caps.units})`
@@ -1114,11 +1326,13 @@ export function clearAll(w) {
   w.ragdolls.length = 0
   for (const b of w.bullets) w.bulletPool.push(b)
   w.bullets.length = 0
+  clearOrdnance(w)
   for (const sp of w.coverSpots) sp.taken = -1
   w.stats.lost[0] = w.stats.lost[1] = 0
   w.stats.kills[0] = w.stats.kills[1] = 0
   w.stats.deployed[0] = w.stats.deployed[1] = 0
   w.fx.clearDecals = true
+  w.fx.clearScorches = true
   w.version += 1
 }
 

@@ -16,14 +16,15 @@ import {
 import { useQuality } from '../../store/quality'
 import { MAX_SLOTS } from '../sim/constants'
 import { animate, buildParts, J_PELVIS, PART_COUNT, P_WEAPON, TRS } from '../sim/rig'
-import { UNIT_ORDER } from '../sim/units'
+import { WEAPON_MODELS, weaponModelIndex } from '../sim/units'
 import { addFrameHook, PHASE } from '../state'
 import { buildSoldierGeometries, buildWeaponGeometries } from './models'
 import { getTextures } from './textures'
 
 /**
  * Every soldier, alive or dead, drawn with one instanced mesh per body part (11) plus
- * one per weapon (6): ~17 draw calls for the whole army however big it gets. With
+ * one per weapon model (9; empty ones are hidden and cost nothing): ~20 draw calls for
+ * the whole army however big it gets. With
  * realtime shadows on, bodies on the ground go into a second set of meshes that casts
  * none (their shadows are invisible anyway, and it halves the shadow pass).
  *
@@ -55,6 +56,9 @@ const toRGB = (hex) => {
 const PALETTE = TEAM_COLORS.map((roles) => roles.map((h) => (h ? toRGB(h) : null)))
 const SKIN_RGB = SKIN.map(toRGB)
 const RING_RGB = [toRGB('#7fb4ff'), toRGB('#ff8a8a')]
+/** Medics wear white helmets. */
+const MEDIC_HELMET = toRGB('#eceae4')
+const HELMET_PART = 4
 
 const frustum = new Frustum()
 const projView = new Matrix4()
@@ -130,9 +134,9 @@ export default function Soldiers({ getWorld, capacity = MAX_SLOTS }) {
     const material = new MeshLambertMaterial({ vertexColors: true })
     const makeSet = () => ({
       parts: MESH_KEYS.map((k, i) => makeMesh(geos[k], material, capacity * PER_SOLDIER[i], true)),
-      weapons: UNIT_ORDER.map((k) => makeMesh(weaponGeos[k], material, capacity, true)),
+      weapons: WEAPON_MODELS.map((k) => makeMesh(weaponGeos[k], material, capacity, true)),
       counts: new Int32Array(MESH_KEYS.length),
-      wcounts: new Int32Array(UNIT_ORDER.length),
+      wcounts: new Int32Array(WEAPON_MODELS.length),
     })
     const tex = getTextures()
     const shadowMat = new MeshBasicMaterial({ map: tex.blob, transparent: true, depthWrite: false })
@@ -234,7 +238,9 @@ export default function Soldiers({ getWorld, capacity = MAX_SLOTS }) {
           const pal = PALETTE[s.team]
           const skin = SKIN_RGB[Math.floor(s.seed) % SKIN_RGB.length]
           const vary = 0.92 + ((s.seed * 7.31) % 1) * 0.16
-          const shade = (s.alive ? 1 : 0.72) * (s.selected ? 1.18 : 1) * vary
+          // The burnt end up charred black.
+          const shade = (s.alive ? 1 : 0.72) * (s.selected ? 1.18 : 1) * (s.charred ? 0.28 : 1) * vary
+          const medic = s.type === 'medic'
           for (let p = 0; p < P_WEAPON; p += 1) {
             const mi = PART_TO_MESH[p]
             const mesh = set.parts[mi]
@@ -242,14 +248,14 @@ export default function Soldiers({ getWorld, capacity = MAX_SLOTS }) {
             const o = p * TRS
             writeMatrix(mesh.instanceMatrix.array, idx * 16, trs[o], trs[o + 1], trs[o + 2], trs[o + 3], trs[o + 4], trs[o + 5], trs[o + 6], trs[o + 7])
             const role = PART_ROLE[p]
-            const col = role === 4 ? skin : pal[role]
-            const k = role === 4 ? 1 : shade
+            const col = role === 4 ? skin : medic && p === HELMET_PART ? MEDIC_HELMET : pal[role]
+            const k = role === 4 ? (s.charred ? 0.3 : 1) : shade
             const ca = mesh.instanceColor.array
             ca[idx * 3] = col[0] * k
             ca[idx * 3 + 1] = col[1] * k
             ca[idx * 3 + 2] = col[2] * k
           }
-          const wi = UNIT_ORDER.indexOf(s.type)
+          const wi = weaponModelIndex(s.type)
           if (wi >= 0) {
             const mesh = set.weapons[wi]
             const idx = wcounts[wi]++
@@ -275,8 +281,16 @@ export default function Soldiers({ getWorld, capacity = MAX_SLOTS }) {
         }
 
         for (const set of rig.sets) {
-          for (let m = 0; m < set.parts.length; m += 1) flush(set.parts[m], set.counts[m], true)
-          for (let m = 0; m < set.weapons.length; m += 1) flush(set.weapons[m], set.wcounts[m], true)
+          // Empty meshes are hidden: an instanced mesh with no instances still costs a
+          // draw call otherwise.
+          for (let m = 0; m < set.parts.length; m += 1) {
+            flush(set.parts[m], set.counts[m], true)
+            set.parts[m].visible = set.counts[m] > 0
+          }
+          for (let m = 0; m < set.weapons.length; m += 1) {
+            flush(set.weapons[m], set.wcounts[m], true)
+            set.weapons[m].visible = set.wcounts[m] > 0
+          }
         }
         flush(rig.shadows, nShadow, false)
         flush(rig.rings, nRing, true)

@@ -248,6 +248,34 @@ export function worldSound(kind, x, y, z, meta, listener) {
     if (!dest) return
     noise(dest, t, { type: 'highpass', freq: 3000, q: 2, decay: 0.02, gain: 1 })
     noise(dest, t + 0.35, { type: 'highpass', freq: 2500, q: 2, decay: 0.025, gain: 1 })
+  } else if (kind === 'boom') {
+    // Explosions: a deep thump, a long rumble, and a sharp crack when close.
+    const r = meta || 4
+    const dest = spatial(dist, pan, 1.6 + r * 0.15)
+    if (!dest) return
+    thump(dest, t, { from: 110, to: 28, gain: 1.2, decay: 0.45 })
+    noise(dest, t, { type: 'lowpass', freq: 1400, q: 0.5, gain: 1.1, attack: 0.004, decay: 1.1, sweepTo: 160 })
+    if (dist < 45) noise(dest, t, { type: 'highpass', freq: 2200, q: 0.5, gain: 0.5, decay: 0.08 })
+    noise(dest, t + 0.18, { type: 'lowpass', freq: 380, q: 0.4, gain: 0.45, attack: 0.08, decay: 1.4 })
+  } else if (kind === 'launch') {
+    const dest = spatial(dist, pan, 0.8)
+    if (!dest) return
+    thump(dest, t, { from: 140, to: 60, gain: 0.6, decay: 0.12 })
+    noise(dest, t, { freq: 1600, q: 0.7, attack: 0.01, decay: 0.55, gain: 0.9, sweepTo: 450 })
+  } else if (kind === 'mortar') {
+    const dest = spatial(dist, pan, 0.75)
+    if (!dest) return
+    thump(dest, t, { from: 95, to: 38, gain: 0.9, decay: 0.2 })
+    noise(dest, t, { type: 'lowpass', freq: 800, q: 0.6, decay: 0.25, gain: 0.7 })
+  } else if (kind === 'flame') {
+    const dest = spatial(dist, pan, 0.4)
+    if (!dest) return
+    noise(dest, t, { type: 'bandpass', freq: 650, q: 0.5, attack: 0.03, decay: 0.32, gain: 1 })
+  } else if (kind === 'heal') {
+    const dest = spatial(dist, pan, 0.35)
+    if (!dest) return
+    tone(dest, t, 880, 0.18, 0.25, 'sine', 990)
+    tone(dest, t + 0.1, 1320, 0.22, 0.2, 'sine')
   } else if (kind === 'spawn') {
     const dest = spatial(dist, pan, 0.45)
     if (!dest) return

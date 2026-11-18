@@ -124,7 +124,7 @@ export const HELIPAD = { x: 0, z: 0, size: 9 }
 export const WINDSOCK = { x: 8.7, z: 6.4, height: 4.2 }
 
 /** The armory line-up: one of each type, standing at ease facing the hub. */
-export const ARMORY_LINE = { x0: 1.5, x1: 8.5, z: 28.8, yaw: Math.PI }
+export const ARMORY_LINE = { x0: 0.4, x1: 9.3, z: 28.8, yaw: Math.PI }
 
 export const SEA_FORT = {
   id: 'seafort',
@@ -161,7 +161,7 @@ export const SEA_FORT = {
     box('post', RADIO_MAST.x, RADIO_MAST.z, 0.35, 0.35, RADIO_MAST.height, { color: '#8a8f94' }),
     box('crate', 23.6, 5.4, 1.25, 1.25, 1.25),
     // South - Armory and Field Notes.
-    box('sandbag', 5, 30.6, 9, 0.9, 0.95),
+    box('sandbag', 4.85, 30.6, 10.2, 0.9, 0.95),
     box('board', -5, 29.6, 3.4, 0.3, 2.6),
     box('crate', -9, 30.6, 1.25, 1.25, 1.25),
     box('crate', -9, 29.3, 1.25, 1.25, 2.5),

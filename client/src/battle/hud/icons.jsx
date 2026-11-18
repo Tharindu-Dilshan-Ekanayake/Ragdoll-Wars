@@ -10,6 +10,11 @@ const WEAPON_PATHS = {
   shotgun: 'M2 21l12-4h28l2-2h20v3H46v4H30l-2 3H16l-2-3z M30 22h12v3H30z',
   sniper: 'M1 21l11-4h12v-3h12v3h8l2-2h20v3H48l-3 3H30l-1 4h-5l1-4H13l-12 3z M50 21l4 9h-2l-4-8z',
   mg: 'M1 20l11-4h30l3-3h17v5H48l-2 3h-6v4h-9v-4h-4l-2 6h-6l2-6H12l-11 2z M44 22l4 10h-2l-5-9z M38 21l-3 10h-2l3-10z',
+  rocket: 'M2 15h44v8H2z M46 14l12 5-12 5z M14 23h5l-2 9h-5z M28 23h5l-2 7h-5z M20 10h8v5h-8z',
+  flame: 'M4 18h26v6H4z M30 19h10v4H30z M40 17l4 1v6l-4 1z M8 24h16a4 4 0 0 1 0 8H8a4 4 0 0 1 0-8z M12 24l-2 8h4l2-8z M46 21c6-6 10-2 14-6-1 5-4 6-2 9-4-1-6 3-12 0z',
+  medic: 'M26 4h12v12h12v12H38v12H26V28H14V16h12z',
+  mortar: 'M14 26l26-20 4 5-26 20z M10 30h22v3H10z M22 29l-6-9 3-2 6 9z M38 9l6-5 3 4-6 5z',
+  mine: 'M8 22c0-5 11-8 24-8s24 3 24 8v4H8z M27 10h10v5H27z M6 26h52v4H6z',
 }
 
 export function WeaponIcon({ type, className }) {

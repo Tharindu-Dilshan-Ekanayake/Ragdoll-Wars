@@ -13,7 +13,7 @@ import {
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
 /**
- * Low-poly geometry for the soldier's parts and the six weapons, built from primitives
+ * Low-poly geometry for the soldier's parts and the weapons, built from primitives
  * in code (no model files). Baked vertex colours carry the small details - eyes, pouches,
  * wood and steel - while each instance's colour carries team and skin tone.
  *
@@ -199,8 +199,45 @@ function mg() {
   ])
 }
 
+/** Shoulder-fired tube: olive launcher, a rocket's warhead poking out, grips and sight. */
+function rocket() {
+  return merge([
+    place(cyl(0.055, 0.055, 1.0, 8, OLIVE), 0, 0.07, -0.06, Math.PI / 2),
+    place(cyl(0.062, 0.062, 0.08, 8, BLACK), 0, 0.07, 0.44, Math.PI / 2),
+    place(cyl(0.065, 0.062, 0.1, 8, BLACK), 0, 0.07, -0.55, Math.PI / 2),
+    place(tint(new CylinderGeometry(0.01, 0.05, 0.16, 6), 0.55, 0.5, 0.36), 0, 0.07, 0.56, Math.PI / 2),
+    place(box(0.03, 0.09, 0.04, BLACK), 0, -0.02, 0, -0.2),
+    place(box(0.03, 0.08, 0.04, BLACK), 0, -0.01, 0.22, -0.2),
+    place(box(0.035, 0.05, 0.06, BLACK), -0.06, 0.13, 0.1),
+  ])
+}
+
+/** Flame gun with a fuel tank slung under it and a pilot-light nozzle. */
+function flame() {
+  const tank = [0.62, 0.16, 0.1]
+  return merge([
+    place(box(0.05, 0.07, 0.36, GUNMETAL), 0, 0.04, 0.1),
+    place(cyl(0.022, 0.03, 0.22, 6, STEEL), 0, 0.045, 0.38, Math.PI / 2),
+    place(cyl(0.035, 0.035, 0.05, 6, BLACK), 0, 0.045, 0.5, Math.PI / 2),
+    place(cyl(0.05, 0.05, 0.26, 8, tank), 0, -0.04, 0.12, Math.PI / 2),
+    place(box(0.03, 0.09, 0.04, BLACK), 0, -0.03, -0.02, -0.25),
+    place(box(0.04, 0.07, 0.16, GUNMETAL), 0, 0.02, -0.14),
+  ])
+}
+
+/** Mortar tube with its base plate at the back. */
+function mortar() {
+  return merge([
+    place(cyl(0.05, 0.055, 0.78, 8, OLIVE), 0, 0.05, 0.08, Math.PI / 2),
+    place(cyl(0.06, 0.06, 0.05, 8, BLACK), 0, 0.05, 0.47, Math.PI / 2),
+    place(box(0.26, 0.03, 0.22, STEEL), 0, 0.05, -0.32, Math.PI / 2),
+    place(box(0.02, 0.2, 0.02, BLACK), 0.05, -0.05, 0.12, 0.4),
+    place(box(0.02, 0.2, 0.02, BLACK), -0.05, -0.05, 0.12, 0.4),
+  ])
+}
+
 export function buildWeaponGeometries() {
-  return { pistol: pistol(), smg: smg(), rifle: rifle(), shotgun: shotgun(), sniper: sniper(), mg: mg() }
+  return { pistol: pistol(), smg: smg(), rifle: rifle(), shotgun: shotgun(), sniper: sniper(), mg: mg(), rocket: rocket(), flame: flame(), mortar: mortar() }
 }
 
 /** Triangle count of a geometry (for the perf report). */

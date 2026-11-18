@@ -109,7 +109,7 @@ async function fill() {
     const W = await window.__ff.world()
     const w = b.world
     W.clearAll(w)
-    const types = ['rifle','rifle','smg','pistol','shotgun','rifle','mg','sniper']
+    const types = ['rifle','rifle','smg','pistol','shotgun','rifle','mg','sniper','rocket','flame','medic','mortar']
     for (let team = 0; team < 2; team++) {
       const x = team === 0 ? -62 : 62
       for (let i = 0; i < 200; i++) {
@@ -117,6 +117,8 @@ async function fill() {
         if (!r.spawned && r.limited && r.limited.startsWith('Team')) break
       }
     }
+    W.spawnUnits(w, 'mine', 0, -25, 0, 15, 'attack')
+    W.spawnUnits(w, 'mine', 1, 25, 0, 15, 'attack')
     const count = (t) => w.slots.filter((s) => s.used && s.alive && s.team === t).length
     return { blue: count(0), red: count(1) }
   })()`)
@@ -156,8 +158,35 @@ async function measure(level, seconds) {
   console.log('battle', level, JSON.stringify(report.presets[level]))
 }
 
+// Close-up of the support weapons: rockets, mortars, fire, medics and a minefield.
+async function showcase() {
+  await setLevel('HIGH')
+  await sleep(2500)
+  await evaluate(`(async () => {
+    const b = await window.__ff.battle()
+    const W = await window.__ff.world()
+    const w = b.world
+    W.clearAll(w)
+    const plan = [['rifle', 6], ['rocket', 3], ['flame', 3], ['medic', 3], ['mortar', 2], ['mg', 2]]
+    for (let team = 0; team < 2; team++) {
+      let z = -14
+      for (const [type, n] of plan) { W.spawnUnits(w, type, team, team ? 20 : -20, z, n, 'attack'); z += 6 }
+    }
+    W.spawnUnits(w, 'mine', 1, 8, 0, 12, 'attack')
+    Object.assign(b.view.goal, { tx: 0, tz: 0, dist: 46, pitch: 0.8, yaw: 0.35 })
+  })()`)
+  for (const t of [4, 7, 10, 14]) {
+    await sleep(t === 4 ? 4000 : 3000)
+    await shot(`06-support-${t}s`)
+  }
+  const s = await evaluate(`(async () => { const b = await window.__ff.battle(); const w = b.world; return { explosions: w.fx.explosions.head, flames: w.fx.flames.head, mines: w.ord.mines.filter((m) => m.active).length, perf: window.__ffPerf } })()`)
+  report.showcase = s
+  console.log('showcase', JSON.stringify(s))
+}
+
 try {
   for (const level of ['LOW', 'MEDIUM', 'HIGH']) await measure(level, 10)
+  await showcase()
 } catch (err) {
   console.error('perf check failed:', err.message)
   await shot('99-failure').catch(() => {})

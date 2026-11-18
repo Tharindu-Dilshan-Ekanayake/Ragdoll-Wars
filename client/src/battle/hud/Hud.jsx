@@ -4,7 +4,7 @@ import { sfx } from '../../audio/sfx'
 import { useApp } from '../../store/app'
 import { useQuality } from '../../store/quality'
 import { TEAMS } from '../sim/constants'
-import { UNIT_ORDER, UNIT_TYPES } from '../sim/units'
+import { DOCK_GROUPS, UNIT_ORDER, UNIT_TYPES } from '../sim/units'
 import { deleteSelection, deselect, focusSelection, giveOrder, quickBattle, selectAll } from '../commands'
 import { BodyDiagram, Glyph, WeaponIcon } from './icons'
 import { useHud } from './hudStore'
@@ -172,25 +172,31 @@ function Tray() {
         <button type="button" className="ff-tray__fold" onClick={toggleDock} title={hidden ? 'Show units' : 'Hide units'}>
           <Glyph name="chevron" className={`ff-ico ${hidden ? 'is-flipped' : ''}`} />
         </button>
-        {UNIT_ORDER.map((key, i) => {
-          const u = UNIT_TYPES[key]
-          return (
-            <button
-              type="button"
-              key={key}
-              className={`ff-card ff-card--team${team} ${placing === key ? 'is-on' : ''}`}
-              onClick={() => {
-                setPlacing(key)
-                sfx.toggle()
-              }}
-            >
-              <span className="ff-card__key">{i + 1}</span>
-              <WeaponIcon type={key} className="ff-card__icon" />
-              <span className="ff-card__name">{u.name}</span>
-              <span className="ff-card__role">{u.role}</span>
-            </button>
-          )
-        })}
+        {DOCK_GROUPS.map((group) => [
+          <span key={group.label} className="ff-tray__group">
+            {group.label}
+          </span>,
+          ...group.keys.map((key) => {
+            const u = UNIT_TYPES[key]
+            const i = UNIT_ORDER.indexOf(key)
+            return (
+              <button
+                type="button"
+                key={key}
+                className={`ff-card ff-card--team${team} ${placing === key ? 'is-on' : ''}`}
+                onClick={() => {
+                  setPlacing(key)
+                  sfx.toggle()
+                }}
+              >
+                {i >= 0 && <span className="ff-card__key">{(i + 1) % 10}</span>}
+                <WeaponIcon type={key} className="ff-card__icon" />
+                <span className="ff-card__name">{u.name}</span>
+                <span className="ff-card__role">{u.role}</span>
+              </button>
+            )
+          }),
+        ])}
       </div>
     </div>
   )
@@ -204,8 +210,10 @@ function Hint() {
   const alive = useHud((s) => s.stats.alive)
   let text
   if (placing) {
-    const name = UNIT_TYPES[placing].name
-    text = `${isTouch ? 'Tap' : 'Click'} the ground to drop ${count} ${name}${count > 1 ? 's' : ''} for ${TEAMS[team].name}  ·  ${isTouch ? 'tap the card again' : 'right-click / Esc'} to stop`
+    const u = UNIT_TYPES[placing]
+    const name = u.name
+    const what = u.trap ? `lay ${count} ${name.toLowerCase()}${count > 1 ? 's' : ''}` : `drop ${count} ${name}${count > 1 ? 's' : ''}`
+    text = `${isTouch ? 'Tap' : 'Click'} the ground to ${what} for ${TEAMS[team].name}  ·  ${isTouch ? 'tap the card again' : 'right-click / Esc'} to stop`
   } else if (selection) {
     text = `${selection.count} selected  ·  ${isTouch ? 'tap' : 'click'} the ground to move them  ·  Attack / Hold / Flank to give orders`
   } else if (alive[0] + alive[1] === 0) {

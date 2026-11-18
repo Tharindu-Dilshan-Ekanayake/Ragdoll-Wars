@@ -24,10 +24,19 @@ export function createFx() {
     /** kind: 0 dirt, 1 blood, 2 concrete, 3 dust puff (landing / spawn). */
     impacts: ring(256, () => ({ x: 0, y: 0, z: 0, kind: 0, t0: -99 })),
     decals: ring(180, () => ({ x: 0, z: 0, size: 0, rot: 0, t0: -99 })),
-    /** kind: 'shot' (meta: weapon key), 'impact', 'hit', 'thud', 'spawn', 'reload'. */
+    /** kind: 'shot' (meta: weapon key), 'impact', 'hit', 'thud', 'spawn', 'reload',
+     *  'boom' (meta: radius), 'launch', 'mortar', 'flame', 'heal'. */
     sounds: ring(160, () => ({ kind: '', x: 0, y: 0, z: 0, meta: null })),
+    /** Explosions: fireball, shockwave, smoke. */
+    explosions: ring(32, () => ({ x: 0, y: 0, z: 0, radius: 0, t0: -99 })),
+    /** Scorch marks left by explosions (always drawn, unlike blood). */
+    scorches: ring(48, () => ({ x: 0, z: 0, size: 0, rot: 0, t0: -99 })),
+    /** Flamethrower bursts: a cone from (x, y, z) along (dx, dy, dz), `len` long. */
+    flames: ring(48, () => ({ x: 0, y: 0, z: 0, dx: 0, dy: 0, dz: 1, len: 0, t0: -99 })),
     /** Set by clearAll: the renderer wipes the blood pools. */
     clearDecals: false,
+    /** Set by clearAll: the renderer wipes the scorch marks. */
+    clearScorches: false,
   }
 }
 
@@ -72,6 +81,33 @@ export function emitDecal(fx, x, z, size, t0) {
   d.size = size
   d.rot = Math.random() * Math.PI * 2
   d.t0 = t0
+}
+
+export function emitExplosion(fx, x, y, z, radius, t0) {
+  const e = next(fx.explosions)
+  e.x = x
+  e.y = y
+  e.z = z
+  e.radius = radius
+  e.t0 = t0
+  const s = next(fx.scorches)
+  s.x = x
+  s.z = z
+  s.size = radius * (0.55 + Math.random() * 0.2)
+  s.rot = Math.random() * Math.PI * 2
+  s.t0 = t0
+}
+
+export function emitFlame(fx, x, y, z, dx, dy, dz, len, t0) {
+  const f = next(fx.flames)
+  f.x = x
+  f.y = y
+  f.z = z
+  f.dx = dx
+  f.dy = dy
+  f.dz = dz
+  f.len = len
+  f.t0 = t0
 }
 
 export function emitSound(fx, kind, x, y, z, meta) {

@@ -457,6 +457,22 @@ button {
   max-width: 100%;
   scrollbar-width: thin;
 }
+.ff-tray__group {
+  flex: none;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  align-self: stretch;
+  display: grid;
+  place-items: center;
+  padding: 0 calc(var(--u) * 3);
+  border-radius: 8px;
+  background: rgba(255, 138, 31, 0.1);
+  color: var(--ff-accent);
+  font-family: var(--ff-display);
+  font-size: calc(var(--u) * 12);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
 .ff-tray__fold {
   display: grid;
   place-items: center;
