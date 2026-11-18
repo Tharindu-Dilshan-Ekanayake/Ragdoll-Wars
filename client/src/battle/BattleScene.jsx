@@ -11,6 +11,7 @@ import Soldiers from './render/Soldiers'
 import Structures from './render/Structures'
 import Vehicles from './render/Vehicles'
 import { drain } from './sim/fx'
+import { netStep } from './net/netWorld'
 import { stepWorld } from './sim/world'
 import { addFrameHook, battle, PHASE } from './state'
 
@@ -20,7 +21,11 @@ function SimAndSound() {
   useEffect(() => {
     const listener = { x: 0, y: 0, z: 0, rx: 1, rz: 0 }
     const offSim = addFrameHook(PHASE.SIM, (_s, delta) => {
-      if (battle.world) stepWorld(battle.world, delta)
+      const w = battle.world
+      if (!w) return
+      // Online, the server simulates: the mirror just glides and plays the bodies.
+      if (w.netMirror) netStep(w, w.netMirror, delta)
+      else stepWorld(w, delta)
     })
     const offSound = addFrameHook(PHASE.AFTER, (state) => {
       const w = battle.world

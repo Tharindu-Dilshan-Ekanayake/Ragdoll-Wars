@@ -12,6 +12,9 @@ import { startHudTicker } from './hud/hudTicker'
 import { mapById } from './maps'
 import { disposeTextures } from './render/textures'
 import { createWorld, initZombieMode, setCaps } from './sim/world'
+import { leaveBattle, net } from '../net/battleNet'
+import { me, useNet } from '../store/net'
+import { applySnapshot, createNetMirror } from './net/netWorld'
 import { applySave } from './sim/saveGame'
 import { battle } from './state'
 
@@ -50,7 +53,7 @@ function BattleLoader({ done }) {
  * Makes `world` the live battle: camera reset, caps following the graphics preset,
  * speed following the HUD, the HUD ticker and the wind. Returns the teardown.
  */
-function installWorld(world) {
+function installWorld(world, online = false) {
   battle.world = world
   // Look along the map's long side: across it on a wide screen, down it on a phone held
   // upright (so both armies fit).
@@ -68,13 +71,41 @@ function installWorld(world) {
     const h = useHud.getState()
     world.timeScale = h.paused ? 0 : h.speed
   }
-  syncTime()
-  const offHud = useHud.subscribe(syncTime)
+  let offHud = () => {}
+  let offNet = () => {}
+  if (online) {
+    // The server's clock and the server's word: snapshots drive the world, and your
+    // team comes from the room's player list.
+    net.onSnapshot = (snap) => applySnapshot(world, world.netMirror, snap)
+    if (net.pending) {
+      applySnapshot(world, world.netMirror, net.pending)
+      net.pending = null
+    }
+    net.onToast = (t) => useHud.getState().showToast(t.text, t.kind)
+    net.onSpeed = (s) => useHud.setState({ speed: s.speed, paused: s.paused })
+    net.onDisconnect = () => useHud.getState().showToast('Disconnected from the battle')
+    const syncTeam = () => {
+      const mine = me()
+      if (mine && mine.team !== useHud.getState().team) useHud.setState({ team: mine.team })
+    }
+    syncTeam()
+    offNet = useNet.subscribe(syncTeam)
+  } else {
+    syncTime()
+    offHud = useHud.subscribe(syncTime)
+  }
   const stopTicker = startHudTicker()
   startAmbience()
   return () => {
     offQuality()
     offHud()
+    offNet()
+    if (online) {
+      net.onSnapshot = null
+      net.onToast = null
+      net.onSpeed = null
+      net.onDisconnect = null
+    }
     stopTicker()
     stopAmbience()
     if (battle.world === world) battle.world = null
@@ -96,19 +127,23 @@ export default function Battle({ mapId, mode = 'sandbox', onExit }) {
       .load()
       .then((m) => {
         if (cancelled) return
+        const online = net.online()
         const world = createWorld(m.default, capsFrom(useQuality.getState().settings), mode)
-        if (mode === 'zombies') initZombieMode(world)
+        if (online) world.netMirror = createNetMirror()
+        else if (mode === 'zombies') initZombieMode(world)
         // Opening a saved battlefield (from the lobby or another map's Saves tab).
         const saveId = useApp.getState().takePendingSave()
         const save = saveId ? getSave(saveId) : null
-        if (save && save.mapId === m.default.id && mode === 'sandbox') applySave(world, save.data)
+        if (!online && save && save.mapId === m.default.id && mode === 'sandbox') applySave(world, save.data)
         useHud.setState({ mode, team: 0, zombie: null, placing: null, dockTab: 'units' })
-        teardown = installWorld(world)
+        teardown = installWorld(world, online)
         setMap(m.default)
       })
     return () => {
       cancelled = true
       teardown?.()
+      // Leaving the battle screen leaves the multiplayer room too.
+      if (net.online()) leaveBattle()
     }
   }, [mapId, mode])
 

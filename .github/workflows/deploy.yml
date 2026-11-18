@@ -4,8 +4,8 @@
 # id `1-phone-drop` belongs to Phone Plunge) and add the deploy token secrets below.
 #
 #   server   -> Docker image in this repo's GitHub Container Registry, then Legion rolls
-#               it out behind its matchmaker. Phase 1 (battle sandbox) doesn't use it yet:
-#               the server is rebuilt for saves and multiplayer in a later phase.
+#               it out behind its matchmaker: the multiplayer battle rooms (server/), which
+#               run the game's own simulation (client/src/battle/sim, copied in the image).
 #   frontend -> the built client, served at https://floppy-front.play.bloxity.io
 #               (prod) and https://floppy-front.dev.play.bloxity.io (dev)
 #
@@ -37,9 +37,9 @@ on:
 
 env:
   GAME_ID: floppy-front
-  # Seats per pod: the Colyseus room's maxClients (GameRoom.js MAX_CLIENTS). When a pod
-  # fills to it, Legion's matchmaker starts another.
-  SEAT_CAP: 8
+  # Seats per pod: the battle room's maxClients (server/src/rooms/BattleRoom.js
+  # MAX_PLAYERS). When a pod fills to it, Legion's matchmaker starts another.
+  SEAT_CAP: 4
 
 concurrency:
   group: deploy-${{ github.ref_name }}

@@ -470,6 +470,20 @@ export const VEHICLE_KEYS = ['jeep', 'apc', 'tank', 'gunship', 'scout']
 export const WEAPON_MODELS = ['pistol', 'smg', 'rifle', 'shotgun', 'sniper', 'mg', 'rocket', 'flame', 'mortar']
 export const weaponModelIndex = (key) => WEAPON_MODELS.indexOf(UNIT_TYPES[key]?.model || key)
 
+/** Quick battle: the same mixed army for each side, as [type, count, z offset]. */
+export const QUICK_SQUADS = [
+  ['rifle', 5, -6],
+  ['smg', 3, 6],
+  ['mg', 1, -14],
+  ['sniper', 1, 14],
+  ['shotgun', 2, 0],
+  ['flame', 1, 2],
+  ['rocket', 1, -10],
+  ['medic', 2, 10],
+  ['mortar', 1, 24],
+  ['rifle', 4, -22],
+]
+
 /** Heavy types (sniper, machine gun) may make up at most this share of a team. */
 export const HEAVY_SHARE = 0.2
 

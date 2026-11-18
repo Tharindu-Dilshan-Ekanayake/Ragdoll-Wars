@@ -108,7 +108,7 @@ export function clampWalkable(pos, radius) {
 export const STATIONS = [
   { id: 'sandbox', title: 'Single Player', sub: 'Sandbox battle · step in', x: -27.5, z: 0, live: true },
   { id: 'zombies', title: 'Zombie Horde', sub: 'Survive the waves · step in', x: 0, z: -27, live: true },
-  { id: 'multiplayer', title: 'Multiplayer', sub: 'Coming soon', x: 27.5, z: 0, live: false },
+  { id: 'multiplayer', title: 'Multiplayer', sub: 'Play with friends · step in', x: 27.5, z: 0, live: true },
   { id: 'armory', title: 'Armory', sub: 'Meet the troops', x: 5, z: 25, live: true },
   { id: 'notes', title: 'Field Notes', sub: 'How to play', x: -5, z: 25, live: true },
 ]

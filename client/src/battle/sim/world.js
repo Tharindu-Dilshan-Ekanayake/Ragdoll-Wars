@@ -968,6 +968,9 @@ function setDowned(w, s) {
 }
 
 function kill(w, s, part, dx, dy, dz, killer, power, blast = false) {
+  // Multiplayer: the server tells clients how each soldier died so they can play the
+  // ragdoll themselves (bodies are cosmetic).
+  if (w.deaths) w.deaths.push(s.id, part, dx, dy, dz, power, blast ? 1 : 0, s.charred ? 1 : 0)
   s.alive = false
   s.deadT = w.time
   s.selected = false
@@ -995,6 +998,51 @@ function kill(w, s, part, dx, dy, dz, killer, power, blast = false) {
   }
   w.bodies.push(s)
   w.version += 1
+}
+
+/**
+ * A multiplayer client's half of a death: the body falls (ragdoll within the budget,
+ * otherwise a crumple - flung by a blast) but no stats or kills, which the server owns.
+ */
+export function localKill(w, s, part, dx, dy, dz, power, blast, charred) {
+  s.alive = false
+  s.deadT = w.time
+  s.selected = false
+  s.charred = Boolean(charred)
+  if (s.charred) s.burnT = Math.max(s.burnT, 3)
+  s.patient = null
+  animate(s, s.joints, w.time)
+  s.poseVersion += 1
+  if (w.ragdolls.length < w.caps.ragdolls) {
+    startRagdoll(s, s.vx, s.vz, part, dx, dy, dz, power)
+    w.ragdolls.push(s)
+  } else {
+    s.crumple = true
+    s.downed = true
+    if (blast) startFling(s, dx, dy, dz, power)
+  }
+  w.bodies.push(s)
+  w.version += 1
+}
+
+/** A multiplayer client's bodies: ragdolls, falls, sinking (no soldiers simulated). */
+export function stepBodies(w, h) {
+  w.time += h
+  updateBodies(w, h)
+}
+
+/** Frees a slot on a multiplayer client (a soldier the server removed). */
+export function dropSlot(w, s) {
+  const i = w.bodies.indexOf(s)
+  if (i >= 0) w.bodies.splice(i, 1)
+  const r = w.ragdolls.indexOf(s)
+  if (r >= 0) w.ragdolls.splice(r, 1)
+  freeSlot(w, s)
+}
+
+/** A free slot (for a multiplayer client mirroring a new soldier), or null. */
+export function takeSlot(w) {
+  return allocSlot(w)
 }
 
 function startFling(s, dx, dy, dz, power) {
@@ -1442,6 +1490,21 @@ export function moveSelected(w, x, z) {
     s.progressD = Infinity
   }
   return units.length + vehicles
+}
+
+/**
+ * Multiplayer commands name units by id (the server keeps no one's selection): selects
+ * exactly those of `team`'s living units, runs `fn`, and clears the selection again.
+ */
+export function withUnits(w, team, soldierIds, vehicleIds, fn) {
+  const want = new Set(soldierIds || [])
+  const wantV = new Set(vehicleIds || [])
+  for (const s of w.slots) s.selected = s.used && s.alive && s.team === team && want.has(s.id)
+  for (const v of w.veh.list) v.selected = v.used && v.alive && v.team === team && wantV.has(v.id)
+  const out = fn()
+  for (const s of w.slots) s.selected = false
+  for (const v of w.veh.list) v.selected = false
+  return out
 }
 
 /** Removes the selected living soldiers at once (no ragdoll). */

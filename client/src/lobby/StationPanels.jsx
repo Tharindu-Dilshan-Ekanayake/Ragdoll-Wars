@@ -4,6 +4,11 @@ import { MAPS } from '../battle/maps'
 import { UNIT_ORDER, UNIT_TYPES } from '../battle/sim/units'
 import { useApp } from '../store/app'
 import { useProgress, ZOMBIE_BADGES } from '../store/progress'
+import { useState } from 'react'
+
+import { useBloxity } from '../bloxity/BloxityContext'
+import { joinBattle } from '../net/battleNet'
+import { useNet } from '../store/net'
 import { useSaves } from '../store/saves'
 import { HelpBody, SettingsBody } from '../ui/SettingsHelp'
 import { STATIONS } from './seaFort'
@@ -197,16 +202,72 @@ function ZombiePanel() {
   )
 }
 
-function SoonPanel({ text, points }) {
+function MultiplayerPanel() {
+  const { identity } = useBloxity()
+  const status = useNet((s) => s.status)
+  const message = useNet((s) => s.message)
+  const [mapId, setMapId] = useState('training')
+  const [mode, setMode] = useState('sandbox')
+  const [code, setCode] = useState('')
+  const name = identity?.displayName || identity?.username || 'Commander'
+  const busy = status === 'connecting'
+  const go = (how) => {
+    sfx.click()
+    joinBattle(how, name)
+  }
   return (
-    <div className="ff-soon">
-      <p>{text}</p>
-      <ul>
-        {points.map((p) => (
-          <li key={p}>{p}</li>
-        ))}
-      </ul>
-      <div className="ff-tag ff-tag--warn">In the works</div>
+    <div className="ff-mp">
+      <section className="ff-mp__card">
+        <h3>Quick match</h3>
+        <p>Jump into an open battle with other players, or start one they can join.</p>
+        <div className="ff-mp__row">
+          <button type="button" className="ff-btn ff-btn--accent" disabled={busy} onClick={() => go({ kind: 'quick', mode: 'sandbox' })}>
+            Sandbox battle
+          </button>
+          <button type="button" className="ff-btn ff-btn--accent" disabled={busy} onClick={() => go({ kind: 'quick', mode: 'zombies' })}>
+            Co-op Zombie Horde
+          </button>
+        </div>
+      </section>
+      <section className="ff-mp__card">
+        <h3>Private battle</h3>
+        <p>Start a battle only friends with the code can join (up to 4 players).</p>
+        <div className="ff-mp__row">
+          <select className="ff-select" value={mode} onChange={(e) => setMode(e.target.value)} aria-label="Mode">
+            <option value="sandbox">Sandbox battle</option>
+            <option value="zombies">Co-op Zombie Horde</option>
+          </select>
+          {mode === 'sandbox' && (
+            <select className="ff-select" value={mapId} onChange={(e) => setMapId(e.target.value)} aria-label="Map">
+              {MAPS.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          )}
+          <button type="button" className="ff-btn" disabled={busy} onClick={() => go({ kind: 'private', mode, mapId })}>
+            Create
+          </button>
+        </div>
+      </section>
+      <section className="ff-mp__card">
+        <h3>Join a friend</h3>
+        <div className="ff-mp__row">
+          <input
+            className="ff-input"
+            value={code}
+            maxLength={8}
+            placeholder="Battle code"
+            onChange={(e) => setCode(e.target.value.toUpperCase())}
+            onKeyDown={(e) => e.key === 'Enter' && code.trim() && go({ kind: 'code', code })}
+          />
+          <button type="button" className="ff-btn" disabled={busy || !code.trim()} onClick={() => go({ kind: 'code', code })}>
+            Join
+          </button>
+        </div>
+      </section>
+      {(busy || status === 'error') && <div className={`ff-mp__status ${status === 'error' ? 'is-error' : ''}`}>{message}</div>}
     </div>
   )
 }
@@ -272,11 +333,8 @@ export default function StationPanels() {
       </Modal>
     )
   return (
-    <Modal title="Multiplayer" kicker="Coming soon" onClose={close}>
-      <SoonPanel
-        text="Play with friends: everyone commands their own army on the same battlefield."
-        points={['Make a lobby and share its code', 'Team up or fight each other', 'Meet other players here at the Sea Fort']}
-      />
+    <Modal title="Multiplayer" kicker="Play with friends" onClose={close} wide>
+      <MultiplayerPanel />
     </Modal>
   )
 }

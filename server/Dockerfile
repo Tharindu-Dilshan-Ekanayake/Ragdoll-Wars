@@ -1,16 +1,14 @@
-# The Phone Plunge game server, as Bloxity Legion runs it. Build from the repo root,
-# since the server imports the rules shared with the client:
+# The Floppy Front game server, as Bloxity Legion runs it. Build from the repo root,
+# since the server runs the game's own battle simulation from the client's source:
 #   docker build -f server/Dockerfile .
 FROM node:24-alpine
 
 ENV NODE_ENV=production
-# Only used if MONGODB_URI is missing (Legion always sets it): a scratch SQLite file
-# somewhere the non-root user may write.
-ENV DB_PATH=/tmp/game.db
 
 WORKDIR /app
-# Game rules and world layout, shared with the client (plain ESM, no dependencies).
-COPY shared ./shared
+# The battle simulation and maps (plain ESM, no dependencies), shared with the client.
+COPY client/src/battle/sim ./client/src/battle/sim
+COPY client/src/battle/maps ./client/src/battle/maps
 COPY server/package.json server/package-lock.json ./server/
 RUN cd server && npm ci --omit=dev && npm cache clean --force
 COPY server/src ./server/src

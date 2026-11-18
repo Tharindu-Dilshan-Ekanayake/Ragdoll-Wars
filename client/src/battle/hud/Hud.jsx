@@ -11,7 +11,9 @@ import { MAX_SAVES, useSaves } from '../../store/saves'
 import { MAPS } from '../maps'
 import { applySave, saveCounts, serialize } from '../sim/saveGame'
 import { battle } from '../state'
-import { deleteSelection, deselect, focusSelection, giveOrder, quickBattle, restartRun, selectAll, startWaveNow } from '../commands'
+import { deleteSelection, deselect, focusSelection, giveOrder, quickBattle, restartRun, selectAll, setSpeedCmd, setTeamCmd, startWaveNow, togglePauseCmd } from '../commands'
+import { net } from '../../net/battleNet'
+import { me, useNet } from '../../store/net'
 import { PRICES } from '../sim/zombies'
 import { BodyDiagram, Glyph, WeaponIcon } from './icons'
 import { useHud } from './hudStore'
@@ -119,8 +121,6 @@ function TopBar() {
   const stats = useHud((s) => s.stats)
   const speed = useHud((s) => s.speed)
   const paused = useHud((s) => s.paused)
-  const setSpeed = useHud((s) => s.setSpeed)
-  const togglePause = useHud((s) => s.togglePause)
   const speeds = [0.5, 1, 2]
   if (mode === 'zombies')
     return (
@@ -131,7 +131,7 @@ function TopBar() {
             type="button"
             className={`ff-chip ${paused ? 'is-on' : ''}`}
             onClick={() => {
-              togglePause()
+              togglePauseCmd()
               sfx.toggle()
             }}
             title="Pause (Space)"
@@ -144,7 +144,7 @@ function TopBar() {
               key={v}
               className={`ff-chip ${!paused && speed === v ? 'is-on' : ''}`}
               onClick={() => {
-                setSpeed(v)
+                setSpeedCmd(v)
                 sfx.toggle()
               }}
             >
@@ -169,7 +169,7 @@ function TopBar() {
           type="button"
           className={`ff-chip ${paused ? 'is-on' : ''}`}
           onClick={() => {
-            togglePause()
+            togglePauseCmd()
             sfx.toggle()
           }}
           title="Pause (Space)"
@@ -182,7 +182,7 @@ function TopBar() {
             key={v}
             className={`ff-chip ${!paused && speed === v ? 'is-on' : ''}`}
             onClick={() => {
-              setSpeed(v)
+              setSpeedCmd(v)
               sfx.toggle()
             }}
           >
@@ -231,7 +231,6 @@ function Rail() {
   const order = useHud((s) => s.order)
   const count = useHud((s) => s.count)
   const selectMode = useHud((s) => s.selectMode)
-  const setTeam = useHud((s) => s.setTeam)
   const setCount = useHud((s) => s.setCount)
   const toggleSelectMode = useHud((s) => s.toggleSelectMode)
   const zombies = useHud((s) => s.mode === 'zombies')
@@ -245,7 +244,7 @@ function Rail() {
             key={t.id}
             className={`ff-team ff-team--${t.key} ${team === t.id ? 'is-on' : ''}`}
             onClick={() => {
-              setTeam(t.id)
+              setTeamCmd(t.id)
               sfx.toggle()
             }}
             title="Switch team (Tab)"
@@ -319,6 +318,12 @@ function SavesPanel() {
   const load = (s) => {
     const w = battle.world
     if (!w) return
+    if (net.online()) {
+      if (!me()?.host) return showToast('Only the host can load a battlefield', 'info')
+      if (s.mapId !== w.map.id) return showToast('That save is for another map')
+      net.send('load', s.data)
+      return
+    }
     if (s.mapId === w.map.id) {
       applySave(w, s.data)
       showToast(`Loaded ${s.name}`, 'info')
@@ -642,6 +647,37 @@ function Inspector() {
   )
 }
 
+/** Multiplayer: the room's code (private rooms) and who's playing on which side. */
+function RoomPanel() {
+  const status = useNet((s) => s.status)
+  const players = useNet((s) => s.players)
+  const code = useNet((s) => s.code)
+  const sid = useNet((s) => s.sessionId)
+  if (status !== 'online') return null
+  return (
+    <div className="ff-room">
+      <div className="ff-room__head">
+        <span className="ff-room__title">Multiplayer</span>
+        {code && (
+          <span className="ff-room__code" title="Friends join with this code">
+            Code <b>{code}</b>
+          </span>
+        )}
+      </div>
+      {players.map((p) => (
+        <div key={p.sid} className="ff-room__player">
+          <span className={`ff-room__dot ff-room__dot--${p.team}`} />
+          <span className="ff-room__name">
+            {p.name}
+            {p.sid === sid ? ' (you)' : ''}
+          </span>
+          {p.host && <span className="ff-room__host" title="Host">★</span>}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function Toast() {
   const toast = useHud((s) => s.toast)
   const clearToast = useHud((s) => s.clearToast)
@@ -674,6 +710,7 @@ export default function Hud({ onExit }) {
       <Tray />
       <Actions />
       <Toast />
+      <RoomPanel />
       <ZombieResult onExit={onExit} />
     </div>
   )

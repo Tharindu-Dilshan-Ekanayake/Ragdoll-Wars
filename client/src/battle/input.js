@@ -4,16 +4,7 @@ import { sfx } from '../audio/sfx'
 import { getBloxityState } from '../bloxity/store'
 import { UNIT_ORDER } from './sim/units'
 import { anySelected } from './sim/world'
-import {
-  deleteSelection,
-  deselect,
-  focusSelection,
-  giveOrder,
-  moveTo,
-  placeUnits,
-  select,
-  selectAll,
-} from './commands'
+import { deleteSelection, deselect, focusSelection, giveOrder, moveTo, placeUnits, select, selectAll, setTeamCmd, togglePauseCmd } from './commands'
 import { getHud } from './hud/hudStore'
 import { battle } from './state'
 
@@ -356,14 +347,14 @@ export function attachInput(canvas, boxEl) {
       else deselect()
     } else if (k === ' ') {
       e.preventDefault()
-      hud.togglePause()
+      togglePauseCmd()
       sfx.toggle()
     } else if (k === 'r' && hud.dockTab === 'build') {
       hud.rotateBuild()
       sfx.toggle()
     } else if (k === 'tab' && hud.mode !== 'zombies') {
       e.preventDefault()
-      hud.setTeam(1 - hud.team)
+      setTeamCmd(1 - hud.team)
       sfx.toggle()
     } else if (k === 'delete' || k === 'backspace') {
       deleteSelection()
