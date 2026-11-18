@@ -3,6 +3,7 @@ import { Glyph, WeaponIcon } from '../battle/hud/icons'
 import { MAPS } from '../battle/maps'
 import { UNIT_ORDER, UNIT_TYPES } from '../battle/sim/units'
 import { useApp } from '../store/app'
+import { useProgress, ZOMBIE_BADGES } from '../store/progress'
 import { HelpBody, SettingsBody } from '../ui/SettingsHelp'
 import { STATIONS } from './seaFort'
 import { useLobby } from './lobbyState'
@@ -124,6 +125,52 @@ function ArmoryPanel() {
   )
 }
 
+function ZombiePanel() {
+  const startBattle = useApp((s) => s.startBattle)
+  const best = useProgress((s) => s.zombieBest)
+  const badges = useProgress((s) => s.badges)
+  return (
+    <div className="ff-zpanel">
+      <div className="ff-zpanel__hero">
+        <div className="ff-zpanel__tags">
+          <span className="ff-tag ff-tag--warn">15 waves</span>
+          <span className="ff-tag">Best: wave {best || '-'}</span>
+        </div>
+        <div className="ff-zpanel__title">Dig in. Hold on.</div>
+      </div>
+      <p>
+        The dead are coming over the hills from the east. Spend the quiet between waves building defences and buying troops; every zombie you drop pays a bounty, every wave you
+        clear pays a bonus. Ten zombies through your line and it's over.
+      </p>
+      <ul>
+        <li>Walkers, fast Runners, hulking Brutes - and a giant Behemoth on waves 10 and 15</li>
+        <li>Start with $500; flamethrowers, machine guns and mines are your friends</li>
+      </ul>
+      <div className="ff-badges">
+        {ZOMBIE_BADGES.map((b) => (
+          <div key={b.id} className={`ff-badge ff-badge--${b.id} ${badges[b.id] ? '' : 'is-locked'}`} title={b.text}>
+            <span className="ff-badge__star">★</span>
+            <span>
+              {b.name}
+              <small>{b.text}</small>
+            </span>
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        className="ff-btn ff-btn--accent ff-btn--big"
+        onClick={() => {
+          sfx.click()
+          startBattle('training', 'zombies')
+        }}
+      >
+        Play Zombie Horde
+      </button>
+    </div>
+  )
+}
+
 function SoonPanel({ text, points }) {
   return (
     <div className="ff-soon">
@@ -194,11 +241,8 @@ export default function StationPanels() {
     )
   if (panel === 'zombies')
     return (
-      <Modal title="Zombie Horde" kicker="Coming soon" onClose={close}>
-        <SoonPanel
-          text="Dig in behind your defences while bigger and bigger hordes of floppy zombies shamble out of the fog."
-          points={['Earn cash for every zombie you drop', 'Spend it on troops between hordes', 'Survive long enough to unlock rewards']}
-        />
+      <Modal title="Zombie Horde" kicker="Wave survival" onClose={close} wide>
+        <ZombiePanel />
       </Modal>
     )
   return (

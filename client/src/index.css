@@ -457,6 +457,145 @@ button {
   max-width: 100%;
   scrollbar-width: thin;
 }
+/* --- Zombie Horde ------------------------------------------------------------------- */
+.ff-top--zombies {
+  gap: calc(var(--u) * 8);
+}
+.ff-zbar {
+  display: flex;
+  align-items: stretch;
+  gap: calc(var(--u) * 4);
+  padding: calc(var(--u) * 4);
+  background: var(--ff-bg);
+  border: 1px solid var(--ff-line);
+  border-radius: var(--ff-radius);
+}
+.ff-zbar__cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: calc(var(--u) * 70);
+  padding: calc(var(--u) * 3) calc(var(--u) * 8);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+}
+.ff-zbar__cell.is-danger {
+  background: rgba(220, 60, 50, 0.3);
+}
+.ff-zbar__cell--cash .ff-zbar__num {
+  color: #8ee07a;
+}
+.ff-zbar__label {
+  font-size: calc(var(--u) * 11);
+  color: var(--ff-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.ff-zbar__num {
+  font-family: var(--ff-display);
+  font-size: calc(var(--u) * 22);
+  line-height: 1.1;
+}
+.ff-zbar__num small {
+  font-size: 0.6em;
+  color: var(--ff-dim);
+}
+.ff-zbar__go {
+  align-self: center;
+}
+.ff-card__price {
+  position: absolute;
+  top: calc(var(--u) * 6);
+  right: calc(var(--u) * 6);
+  padding: 0.1em 0.45em;
+  border-radius: 6px;
+  background: rgba(142, 224, 122, 0.18);
+  color: #9ef08a;
+  font-size: calc(var(--u) * 11);
+  font-weight: 700;
+}
+.ff-rail__group.is-gone {
+  display: none;
+}
+.ff-zresult {
+  text-align: center;
+  max-width: 480px;
+}
+.ff-zresult h2 {
+  font-size: calc(var(--u) * 30);
+}
+.ff-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--u) * 8);
+  justify-content: center;
+  margin: calc(var(--u) * 10) 0;
+}
+.ff-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.45em 0.9em;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--ff-line);
+  font-size: calc(var(--u) * 13);
+  text-align: left;
+}
+.ff-badge small {
+  display: block;
+  color: var(--ff-dim);
+  font-size: 0.85em;
+}
+.ff-badge__star {
+  font-size: 1.5em;
+  line-height: 1;
+}
+.ff-badge--bronze .ff-badge__star {
+  color: #d0884a;
+}
+.ff-badge--silver .ff-badge__star {
+  color: #cfd6dc;
+}
+.ff-badge--gold .ff-badge__star {
+  color: #ffcf3a;
+}
+.ff-badge.is-locked {
+  opacity: 0.45;
+  filter: grayscale(1);
+}
+.ff-zpanel {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--u) * 10);
+}
+.ff-zpanel__hero {
+  position: relative;
+  min-height: calc(var(--u) * 120);
+  padding: calc(var(--u) * 14);
+  border-radius: var(--ff-radius);
+  background: radial-gradient(circle at 70% 40%, rgba(130, 170, 100, 0.35), transparent 60%), linear-gradient(160deg, #22301f, #121810);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.ff-zpanel__tags {
+  display: flex;
+  gap: 0.5em;
+}
+.ff-zpanel__title {
+  font-family: var(--ff-display);
+  font-size: calc(var(--u) * 30);
+  color: #b8e08e;
+}
+.ff-zpanel ul {
+  margin: 0;
+  padding-left: 1.2em;
+  color: var(--ff-dim);
+}
+.ff-zpanel .ff-badges {
+  justify-content: flex-start;
+}
 .ff-tray__tabs {
   display: flex;
   gap: calc(var(--u) * 6);

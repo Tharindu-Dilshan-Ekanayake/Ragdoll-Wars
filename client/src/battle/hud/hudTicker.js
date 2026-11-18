@@ -65,11 +65,21 @@ function summarise(w) {
 }
 
 export function startHudTicker() {
+  let lastZombie = ''
   let lastStats = ''
   let lastSel = ''
   const id = setInterval(() => {
     const w = battle.world
     if (!w) return
+    const z = w.zmode
+    if (z) {
+      const buildT = Math.max(0, Math.ceil(z.buildT))
+      const key = `${z.wave},${z.state},${z.cash},${z.left},${buildT},${z.breaches},${z.result}`
+      if (key !== lastZombie) {
+        lastZombie = key
+        useHud.setState({ zombie: { wave: z.wave, total: z.total, state: z.state, cash: z.cash, left: z.left, buildT, breaches: z.breaches, maxBreaches: z.maxBreaches, kills: z.kills, result: z.result } })
+      }
+    }
     const st = w.stats
     const statsKey = `${st.alive[0]},${st.alive[1]},${st.lost[0]},${st.lost[1]},${st.downed[0]},${st.downed[1]}`
     if (statsKey !== lastStats) {

@@ -8,13 +8,15 @@ export const useApp = create((set) => ({
   /** 'lobby' (the Sea Fort) | 'battle' */
   screen: 'lobby',
   mapId: 'training',
+  /** 'sandbox' or 'zombies' (Zombie Horde). */
+  mode: 'sandbox',
   /** True once the lobby has drawn its first frame: the game is playable. */
   playable: false,
   /** True while a modal panel covers the game. */
   panel: false,
   setPlayable: () => set({ playable: true }),
   setPanel: (panel) => set({ panel: Boolean(panel) }),
-  startBattle: (mapId) => set({ screen: 'battle', mapId, panel: false }),
+  startBattle: (mapId, mode = 'sandbox') => set({ screen: 'battle', mapId, mode, panel: false }),
   toLobby: () => set({ screen: 'lobby', panel: false }),
 }))
 

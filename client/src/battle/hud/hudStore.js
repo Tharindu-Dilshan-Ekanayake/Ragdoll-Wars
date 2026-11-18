@@ -17,6 +17,10 @@ export const useHud = create((set, get) => ({
   selectMode: false,
   /** Whether the dock is collapsed. */
   dockHidden: false,
+  /** 'sandbox' or 'zombies'. */
+  mode: 'sandbox',
+  /** Zombie Horde summary from the ticker: { wave, total, state, cash, left, buildT, breaches, maxBreaches, kills, result } */
+  zombie: null,
   /** Which dock page is showing: 'units' or 'build'. */
   dockTab: 'units',
   /** Build mode: pieces go down turned a quarter turn (1) or not (0). */

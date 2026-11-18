@@ -16,7 +16,7 @@ import {
 import { useQuality } from '../../store/quality'
 import { MAX_SLOTS } from '../sim/constants'
 import { animate, buildParts, J_PELVIS, PART_COUNT, P_WEAPON, TRS } from '../sim/rig'
-import { WEAPON_MODELS, weaponModelIndex } from '../sim/units'
+import { UNIT_TYPES, WEAPON_MODELS, weaponModelIndex } from '../sim/units'
 import { addFrameHook, PHASE } from '../state'
 import { buildSoldierGeometries, buildWeaponGeometries } from './models'
 import { getTextures } from './textures'
@@ -56,6 +56,15 @@ const toRGB = (hex) => {
 const PALETTE = TEAM_COLORS.map((roles) => roles.map((h) => (h ? toRGB(h) : null)))
 const SKIN_RGB = SKIN.map(toRGB)
 const RING_RGB = [toRGB('#7fb4ff'), toRGB('#ff8a8a')]
+// Zombies: torn clothes, green skin, hair where the helmet would be; per type.
+const ZOMBIE_COLORS = {
+  zombie: ['#5f6a52', '#4b4237', '#3c4454', '#2b2620', '#86a86e', '#2a2520'],
+  runner: ['#7a5f4a', '#5a4434', '#4a4a40', '#3a2a1e', '#93b07a', '#2a2520'],
+  brute: ['#6b3f33', '#4e3a2c', '#3a3f48', '#221d18', '#7a9a62', '#231f1b'],
+  behemoth: ['#4d4f3a', '#3a3328', '#2e3238', '#1a1714', '#6c8a58', '#1d1a17'],
+}
+const ZOMBIE_PAL = Object.fromEntries(Object.entries(ZOMBIE_COLORS).map(([k, roles]) => [k, roles.map(toRGB)]))
+
 /** Medics wear white helmets. */
 const MEDIC_HELMET = toRGB('#eceae4')
 const HELMET_PART = 4
@@ -214,7 +223,17 @@ export default function Soldiers({ getWorld, capacity = MAX_SLOTS }) {
             const skip = valid && ((d2 > lodFar2 && (frame + i) % 3 !== 0) || (d2 > lodNear2 && (frame + i) % 2 !== 0))
             if (!skip) {
               animate(s, s.joints, w.time)
-              buildParts(s.joints, trs, s.scale)
+              // Big zombies: the whole pose scaled up from the feet.
+              const size = UNIT_TYPES[s.type].size || 1
+              if (size !== 1) {
+                const j = s.joints
+                for (let k = 0; k < j.length; k += 3) {
+                  j[k] = s.x + (j[k] - s.x) * size
+                  j[k + 1] *= size
+                  j[k + 2] = s.z + (j[k + 2] - s.z) * size
+                }
+              }
+              buildParts(s.joints, trs, s.scale * size)
               rig.cacheKey[i] = s.id
             }
           } else {
@@ -225,7 +244,7 @@ export default function Soldiers({ getWorld, capacity = MAX_SLOTS }) {
             if (!frustum.intersectsSphere(sphere)) continue
             const key = -s.id * 100000 - s.poseVersion
             if (rig.cacheKey[i] !== key) {
-              buildParts(s.joints, trs, 1)
+              buildParts(s.joints, trs, UNIT_TYPES[s.type].size || 1)
               rig.cacheKey[i] = key
             }
           }
@@ -235,8 +254,9 @@ export default function Soldiers({ getWorld, capacity = MAX_SLOTS }) {
           const wcounts = set.wcounts
           // Colours: team palette, skin by seed, a little variation; bodies darker,
           // the selected brighter.
-          const pal = PALETTE[s.team]
-          const skin = SKIN_RGB[Math.floor(s.seed) % SKIN_RGB.length]
+          const zpal = ZOMBIE_PAL[s.type]
+          const pal = zpal || PALETTE[s.team]
+          const skin = zpal ? zpal[4] : SKIN_RGB[Math.floor(s.seed) % SKIN_RGB.length]
           const vary = 0.92 + ((s.seed * 7.31) % 1) * 0.16
           // The burnt end up charred black.
           const shade = (s.alive ? 1 : 0.72) * (s.selected ? 1.18 : 1) * (s.charred ? 0.28 : 1) * vary

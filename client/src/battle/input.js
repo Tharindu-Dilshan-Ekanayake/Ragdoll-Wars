@@ -361,7 +361,7 @@ export function attachInput(canvas, boxEl) {
     } else if (k === 'r' && hud.dockTab === 'build') {
       hud.rotateBuild()
       sfx.toggle()
-    } else if (k === 'tab') {
+    } else if (k === 'tab' && hud.mode !== 'zombies') {
       e.preventDefault()
       hud.setTeam(1 - hud.team)
       sfx.toggle()

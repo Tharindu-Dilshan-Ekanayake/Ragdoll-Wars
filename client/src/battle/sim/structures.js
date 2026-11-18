@@ -201,6 +201,29 @@ export function blastStructures(w, x, y, z, radius, damage, anti) {
   }
 }
 
+/**
+ * A zombie (or anything) hitting whatever piece is within `reach` of (x, z) for `dmg`.
+ * Returns whether it hit something.
+ */
+export function damageStructureNear(w, x, z, reach, dmg) {
+  const list = w.build.list
+  for (let i = 0; i < list.length; i += 1) {
+    const st = list[i]
+    if (st.dead || st.hp === Infinity || !BUILD_TYPES[st.key].boxes.length) continue
+    const t = BUILD_TYPES[st.key]
+    const rx = (st.rot ? t.size[1] : t.size[0]) / 2
+    const rz = (st.rot ? t.size[0] : t.size[1]) / 2
+    const dx = Math.max(0, Math.abs(x - st.x) - rx)
+    const dz = Math.max(0, Math.abs(z - st.z) - rz)
+    if (dx * dx + dz * dz > reach * reach) continue
+    st.hp -= dmg
+    emitImpact(w.fx, x, 0.8, z, 2, w.time)
+    if (st.hp <= 0) destroy(w, st)
+    return true
+  }
+  return false
+}
+
 /** A vehicle flattening the flimsy pieces it drives into. */
 export function crushStructures(w, x, z, radius) {
   const list = w.build.list

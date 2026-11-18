@@ -362,6 +362,13 @@ export const UNIT_TYPES = {
   ...nonSoldier('heavybomb', 'Heavy Bomb', 'Huge blast', {
     strike: { bombs: 1, spacing: 0, blast: { radius: 16, damage: 420, anti: 3 }, cooldown: 75, fall: 14, big: true },
   }),
+  // Zombie Horde (zombies.js): no guns - they shamble at you with arms out and hit
+  // what they reach. `zombieAI`: { damage, interval, reach, reward, anti (vs vehicles),
+  // bash (vs structures) }; `size` scales the whole body.
+  zombie: zombieType('zombie', 'Walker', 'Shambles', { hp: 80, speed: 2.5 }, { damage: 12, interval: 1.0, reach: 1.15, reward: 10, anti: 0.15, bash: 1 }),
+  runner: zombieType('runner', 'Runner', 'Fast', { hp: 55, speed: 5.2 }, { damage: 9, interval: 0.75, reach: 1.15, reward: 15, anti: 0.1, bash: 0.7 }),
+  brute: zombieType('brute', 'Brute', 'Big and angry', { hp: 420, speed: 2.0, size: 1.35 }, { damage: 32, interval: 1.4, reach: 1.5, reward: 60, anti: 0.6, bash: 3 }),
+  behemoth: zombieType('behemoth', 'Behemoth', 'Boss', { hp: 2600, speed: 1.6, size: 2.1 }, { damage: 85, interval: 1.8, reach: 2.4, reward: 500, anti: 1.5, bash: 7 }),
   mine: {
     key: 'mine',
     name: 'Landmine',
@@ -386,6 +393,35 @@ export const UNIT_TYPES = {
     back: 0,
     foregrip: 0,
   },
+}
+
+/** A zombie: a soldier with no weapon (hands together out front) and melee instead. */
+function zombieType(key, name, role, stats, ai) {
+  return {
+    key,
+    name,
+    role,
+    hp: stats.hp,
+    speed: stats.speed,
+    size: stats.size || 1,
+    range: 200,
+    engage: ai.reach,
+    damage: 0,
+    pellets: 1,
+    interval: ai.interval,
+    burst: [1, 1],
+    pause: 0,
+    mag: 1,
+    reload: 1,
+    spread: 0,
+    runAndGun: true,
+    prone: false,
+    heavy: false,
+    zombieAI: ai,
+    front: 0,
+    back: 0,
+    foregrip: 0,
+  }
 }
 
 /** A non-soldier dock entry (vehicle, strike), with the soldier fields filled in harmlessly. */

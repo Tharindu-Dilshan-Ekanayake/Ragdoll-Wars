@@ -260,6 +260,36 @@ export function worldSound(kind, x, y, z, meta, listener) {
     noise(dest, t, { type: 'lowpass', freq: 1400, q: 0.5, gain: 1.1, attack: 0.004, decay: 1.1, sweepTo: 160 })
     if (dist < 45) noise(dest, t, { type: 'highpass', freq: 2200, q: 0.5, gain: 0.5, decay: 0.08 })
     noise(dest, t + 0.18, { type: 'lowpass', freq: 380, q: 0.4, gain: 0.45, attack: 0.08, decay: 1.4 })
+  } else if (kind === 'groan') {
+    // A zombie's moan: a low, wobbling, filtered buzz (deeper for big ones).
+    const size = meta || 1
+    const dest = spatial(dist, pan, 0.28 * Math.min(2, size))
+    if (!dest) return
+    const o = ctx.createOscillator()
+    o.type = 'sawtooth'
+    const f = (95 + Math.random() * 40) / size
+    o.frequency.setValueAtTime(f, t)
+    o.frequency.linearRampToValueAtTime(f * 0.7, t + 0.9)
+    const lp = ctx.createBiquadFilter()
+    lp.type = 'lowpass'
+    lp.frequency.value = 420
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0, t)
+    g.gain.linearRampToValueAtTime(0.5, t + 0.15)
+    g.gain.exponentialRampToValueAtTime(0.001, t + 1.0)
+    o.connect(lp)
+    lp.connect(g)
+    g.connect(dest)
+    o.start(t)
+    o.stop(t + 1.05)
+  } else if (kind === 'horn') {
+    // The wave alarm: two long horn blasts, heard everywhere.
+    for (const at of [0, 0.75]) {
+      tone(sfxBus, t + at, 220, 0.6, 0.18, 'sawtooth', 200)
+      tone(sfxBus, t + at, 330, 0.6, 0.1, 'square', 300)
+    }
+  } else if (kind === 'breach') {
+    tone(sfxBus, t, 180, 0.25, 0.16, 'square', 120)
   } else if (kind === 'build') {
     const dest = spatial(dist, pan, 0.5)
     if (!dest) return

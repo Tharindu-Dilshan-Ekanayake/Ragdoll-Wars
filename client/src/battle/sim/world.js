@@ -32,6 +32,7 @@ import { animate, J_PELVIS, wrapAngle } from './rig.js'
 import { makeSoldier, resetSoldier } from './soldier.js'
 import { createSpatial, rebuildSpatial } from './spatial.js'
 import { BUILD_TYPES, clearStructures, createBuild, inWire, placeStructures, settleStructures, wireZones } from './structures.js'
+import { initZombieMode, onZombieKilled, updateZombieMode, zombieStep } from './zombies.js'
 import { HEAVY_SHARE, UNIT_TYPES } from './units.js'
 import {
   callStrike,
@@ -79,7 +80,7 @@ function coverSpotsFor(obs) {
   })
 }
 
-export function createWorld(map, caps) {
+export function createWorld(map, caps, mode = 'sandbox') {
   // The map's own obstacles plus whatever gets built (structures.js) live here.
   const obsMap = { ...map, obstacles: map.obstacles.slice() }
   const obs = buildObstacles(obsMap)
@@ -93,6 +94,9 @@ export function createWorld(map, caps) {
     flow: new FlowFields(grid, { budget: 1 }),
     coverSpots: coverSpotsFor(obs),
     build: createBuild(),
+    /** 'sandbox' or 'zombies' (Zombie Horde: zombies.js keeps its state in `zmode`). */
+    mode,
+    zmode: null,
     slots,
     free: slots.map((s) => s.slot).reverse(),
     living: [],
@@ -118,6 +122,8 @@ export function createWorld(map, caps) {
     version: 0,
   }
 }
+
+export { initZombieMode }
 
 export function setCaps(w, caps) {
   Object.assign(w.caps, caps)
@@ -216,6 +222,7 @@ function tick(w, h) {
   updateMines(w, h)
   updateBodies(w, h)
   settleStructures(w)
+  if (w.zmode) updateZombieMode(w, h)
 }
 
 // --- Soldiers ------------------------------------------------------------------------
@@ -253,7 +260,7 @@ function updateSoldier(w, s, h) {
       kill(w, s, -1, 0, 0, 0, b && b.id === s.burnerId ? b : null, 1.5)
       return
     }
-    if (!s.downed && s.dropY <= 0) {
+    if (!s.downed && s.dropY <= 0 && !type.zombieAI) {
       if (s.patient) clearPatient(s)
       releaseCover(w, s)
       s.target = null
@@ -285,6 +292,13 @@ function updateSoldier(w, s, h) {
     return
   }
 
+  // Zombies have their own simple mind (zombies.js).
+  if (type.zombieAI) {
+    zombieStep(w, s, type, h)
+    move(w, s, type, h)
+    animStep(s, h)
+    return
+  }
   s.thinkT -= h
   if (s.thinkT <= 0) {
     s.thinkT = 0.2 + rand() * 0.14
@@ -903,7 +917,7 @@ function hitSoldier(w, s, part, damage, dx, dy, dz, shooter, hx, hy, hz) {
     kill(w, s, part, dx, dy, dz, shooter, clamp(damage / 9, 2.5, 9))
     return
   }
-  if (!s.downed && part !== PART_HEAD) {
+  if (!s.downed && part !== PART_HEAD && !UNIT_TYPES[s.type].zombieAI) {
     const legs = s.legL > 0 && s.legR > 0
     if ((s.hp < s.maxHp * 0.22 && rand() < 0.5) || (legs && s.hp < s.maxHp * 0.5 && rand() < 0.5)) setDowned(w, s)
   }
@@ -935,7 +949,7 @@ export function blastHit(w, s, dmg, nx, nz, k, attacker) {
     kill(w, s, -1, nx / l, up / l, nz / l, attacker, 9 + 22 * k, true)
     return
   }
-  if (!s.downed && k > 0.35 && rand() < k) setDowned(w, s)
+  if (!s.downed && k > 0.35 && rand() < k && !UNIT_TYPES[s.type].zombieAI) setDowned(w, s)
 }
 
 function setDowned(w, s) {
@@ -959,6 +973,7 @@ function kill(w, s, part, dx, dy, dz, killer, power, blast = false) {
   // The charred keep smouldering a while.
   if (s.charred) s.burnT = Math.max(s.burnT, 3)
   w.stats.lost[s.team] += 1
+  if (UNIT_TYPES[s.type].zombieAI) onZombieKilled(w, s)
   if (killer && killer.alive && killer.team !== s.team) {
     killer.kills += 1
     w.stats.kills[killer.team] += 1
@@ -1160,7 +1175,9 @@ function move(w, s, type, h) {
         dirZ /= l
       }
       speed = type.speed
-      if (s.burnT > 0 && !s.downed) speed *= 1.15
+      // Zombies each shamble at their own pace.
+      if (type.zombieAI) speed *= 0.82 + ((s.seed * 0.37) % 0.36)
+      if (s.burnT > 0 && !s.downed && !type.zombieAI) speed *= 1.15
       // Barbed wire: picking a way through is slow going.
       if (w.build.wire.length && inWire(w, s.x, s.z)) speed *= 0.32
       if (s.downed) speed = 0.45
@@ -1318,6 +1335,30 @@ export function spawnUnits(w, typeKey, team, x, z, count, order, rot = 0) {
     w.version += 1
   }
   return { spawned, limited }
+}
+
+/** One soldier of `type` at exactly (x, z) (no drop-in), within the team cap; or null. */
+export function spawnOne(w, type, team, x, z, yaw, order) {
+  if (teamCount(w, team) >= w.caps.units) return null
+  const s = allocSlot(w)
+  if (!s) return null
+  POS.x = x
+  POS.z = z
+  collideCircle(w.obs, POS, SOLDIER_RADIUS)
+  resetSoldier(s, type, team, POS.x, POS.z, yaw, order)
+  w.stats.deployed[team] += 1
+  w.version += 1
+  return s
+}
+
+/** Takes a living soldier off the field at once (no body). */
+export function removeSoldier(w, s) {
+  freeSlot(w, s)
+}
+
+/** A melee blow (zombies): `dmg` to the body, pushed along (dx, dz). */
+export function meleeHit(w, t, dmg, dx, dz, attacker) {
+  hitSoldier(w, t, PART_TORSO, dmg, dx, 0.1, dz, attacker, t.x - dx * 0.2, 1.2, t.z - dz * 0.2)
 }
 
 function allocSlot(w) {

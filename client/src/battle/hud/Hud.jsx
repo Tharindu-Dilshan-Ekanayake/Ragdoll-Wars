@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { sfx } from '../../audio/sfx'
 import { useApp } from '../../store/app'
@@ -6,7 +6,9 @@ import { useQuality } from '../../store/quality'
 import { TEAMS } from '../sim/constants'
 import { BUILD_GROUPS, BUILD_TYPES } from '../sim/structures'
 import { DOCK_GROUPS, UNIT_ORDER, UNIT_TYPES } from '../sim/units'
-import { deleteSelection, deselect, focusSelection, giveOrder, quickBattle, selectAll } from '../commands'
+import { useProgress } from '../../store/progress'
+import { deleteSelection, deselect, focusSelection, giveOrder, quickBattle, restartRun, selectAll, startWaveNow } from '../commands'
+import { PRICES } from '../sim/zombies'
 import { BodyDiagram, Glyph, WeaponIcon } from './icons'
 import { useHud } from './hudStore'
 import Panels from './Panels'
@@ -19,13 +21,136 @@ import Panels from './Panels'
 
 const isTouch = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches
 
+/** Zombie Horde's top bar: wave, zombies left, cash, breaches, and Start wave. */
+function ZombieBar() {
+  const z = useHud((s) => s.zombie)
+  if (!z) return null
+  const building = z.state === 'build' && !z.result
+  return (
+    <div className="ff-zbar">
+      <div className="ff-zbar__cell">
+        <span className="ff-zbar__label">Wave</span>
+        <span className="ff-zbar__num">
+          {Math.max(1, z.wave + (building ? 1 : 0))}
+          <small>/{z.total}</small>
+        </span>
+      </div>
+      <div className="ff-zbar__cell">
+        <span className="ff-zbar__label">{building ? 'Next wave' : 'Zombies'}</span>
+        <span className="ff-zbar__num">{building ? `${z.buildT}s` : z.left}</span>
+      </div>
+      <div className="ff-zbar__cell ff-zbar__cell--cash">
+        <span className="ff-zbar__label">Cash</span>
+        <span className="ff-zbar__num">${z.cash}</span>
+      </div>
+      <div className={`ff-zbar__cell ${z.breaches >= z.maxBreaches - 3 ? 'is-danger' : ''}`}>
+        <span className="ff-zbar__label">Breaches</span>
+        <span className="ff-zbar__num">
+          {z.breaches}
+          <small>/{z.maxBreaches}</small>
+        </span>
+      </div>
+      {building && (
+        <button type="button" className="ff-btn ff-btn--accent ff-zbar__go" onClick={startWaveNow}>
+          Start wave
+          <Glyph name="play" className="ff-ico" />
+        </button>
+      )}
+    </div>
+  )
+}
+
+/** Zombie Horde's end screen; records the run once. */
+function ZombieResult({ onExit }) {
+  const z = useHud((s) => s.zombie)
+  const result = z?.result
+  const best = useProgress((s) => s.zombieBest)
+  const [fresh, setFresh] = useState([])
+  const recorded = useRef(null)
+  useEffect(() => {
+    if (!result || recorded.current === result) return
+    recorded.current = result
+    const earned = useProgress.getState().recordZombieRun(z.wave, result === 'won')
+    setFresh(earned)
+    sfx[result === 'won' ? 'select' : 'error']()
+  }, [result, z])
+  useEffect(() => {
+    if (!result) recorded.current = null
+  }, [result])
+  if (!result) return null
+  const won = result === 'won'
+  return (
+    <div className="ff-modal" role="dialog" aria-label="Zombie Horde">
+      <div className="ff-modal__card ff-zresult">
+        <div className="ff-modal__kicker">Zombie Horde</div>
+        <h2>{won ? 'You held the line!' : `Overrun on wave ${z.wave}`}</h2>
+        <p className="ff-modal__text">
+          {won ? `All ${z.total} waves survived` : `${z.breaches} zombies broke through`} · {z.kills} zombies dropped · best wave {Math.max(best, won ? z.total : z.wave)}
+        </p>
+        {fresh.length > 0 && (
+          <div className="ff-badges">
+            {fresh.map((b) => (
+              <div key={b.id} className={`ff-badge ff-badge--${b.id}`}>
+                <span className="ff-badge__star">★</span>
+                <span>{b.name} earned!</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="ff-modal__buttons">
+          <button type="button" className="ff-btn" onClick={onExit}>
+            Back to the Sea Fort
+          </button>
+          <button type="button" className="ff-btn ff-btn--accent" onClick={restartRun}>
+            Try again
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function TopBar() {
+  const mode = useHud((s) => s.mode)
   const stats = useHud((s) => s.stats)
   const speed = useHud((s) => s.speed)
   const paused = useHud((s) => s.paused)
   const setSpeed = useHud((s) => s.setSpeed)
   const togglePause = useHud((s) => s.togglePause)
   const speeds = [0.5, 1, 2]
+  if (mode === 'zombies')
+    return (
+      <div className="ff-top ff-top--zombies">
+        <ZombieBar />
+        <div className="ff-speed">
+          <button
+            type="button"
+            className={`ff-chip ${paused ? 'is-on' : ''}`}
+            onClick={() => {
+              togglePause()
+              sfx.toggle()
+            }}
+            title="Pause (Space)"
+          >
+            <Glyph name={paused ? 'play' : 'pause'} className="ff-ico" />
+          </button>
+          {speeds.map((v) => (
+            <button
+              type="button"
+              key={v}
+              className={`ff-chip ${!paused && speed === v ? 'is-on' : ''}`}
+              onClick={() => {
+                setSpeed(v)
+                sfx.toggle()
+              }}
+            >
+              {v === 0.5 ? '½×' : `${v}×`}
+            </button>
+          ))}
+        </div>
+        {paused && <div className="ff-paused">Paused</div>}
+      </div>
+    )
   return (
     <div className="ff-top">
       <div className="ff-score ff-score--blue">
@@ -105,9 +230,10 @@ function Rail() {
   const setTeam = useHud((s) => s.setTeam)
   const setCount = useHud((s) => s.setCount)
   const toggleSelectMode = useHud((s) => s.toggleSelectMode)
+  const zombies = useHud((s) => s.mode === 'zombies')
   return (
     <div className="ff-rail">
-      <div className="ff-rail__group">
+      <div className={`ff-rail__group ${zombies ? 'is-gone' : ''}`}>
         <div className="ff-rail__label">Team</div>
         {TEAMS.map((t) => (
           <button
@@ -171,6 +297,8 @@ function Tray() {
   const rot = useHud((s) => s.buildRot)
   const rotate = useHud((s) => s.rotateBuild)
   const building = tab === 'build'
+  const priced = useHud((s) => s.mode === 'zombies')
+  const price = (key) => (priced && PRICES[key] ? <span className="ff-card__price">${PRICES[key]}</span> : null)
   return (
     <div className={`ff-tray ${hidden ? 'is-hidden' : ''}`}>
       <Hint />
@@ -226,6 +354,7 @@ function Tray() {
                     sfx.toggle()
                   }}
                 >
+                  {price(key)}
                   <WeaponIcon type={key} className="ff-card__icon" />
                   <span className="ff-card__name">{t.name}</span>
                   <span className="ff-card__role">{t.role}</span>
@@ -257,6 +386,7 @@ function Tray() {
                 }}
               >
                 {i >= 0 && <span className="ff-card__key">{(i + 1) % 10}</span>}
+                {price(key)}
                 <WeaponIcon type={key} className="ff-card__icon" />
                 <span className="ff-card__name">{u.name}</span>
                 <span className="ff-card__role">{u.role}</span>
@@ -272,6 +402,8 @@ function Tray() {
 
 function Hint() {
   const placing = useHud((s) => s.placing)
+  const mode = useHud((s) => s.mode)
+  const zombie = useHud((s) => s.zombie)
   const count = useHud((s) => s.count)
   const team = useHud((s) => s.team)
   const selection = useHud((s) => s.selection)
@@ -293,6 +425,8 @@ function Hint() {
     text = `${isTouch ? 'Tap' : 'Click'} the ground to ${what}${piece ? '' : ` for ${TEAMS[team].name}`}  ·  ${isTouch ? 'tap the card again' : 'right-click / Esc'} to stop`
   } else if (selection) {
     text = `${selection.count} selected  ·  ${isTouch ? 'tap' : 'click'} the ground to move them  ·  Attack / Hold / Flank to give orders`
+  } else if (mode === 'zombies' && zombie && zombie.state === 'build' && !zombie.result) {
+    text = 'Buy troops and build defences on the west side, then press Start wave'
   } else if (alive[0] + alive[1] === 0) {
     text = 'Pick a unit below, then click the battlefield to deploy it — or press Quick battle'
   } else if (isTouch) {
@@ -305,12 +439,15 @@ function Hint() {
 
 function Actions() {
   const setPanel = useHud((s) => s.setPanel)
+  const zombies = useHud((s) => s.mode === 'zombies')
   return (
     <div className="ff-actions">
-      <button type="button" className="ff-action ff-action--accent" onClick={quickBattle} title="Drop two matching armies">
-        <Glyph name="bolt" className="ff-ico" />
-        <span>Quick battle</span>
-      </button>
+      {!zombies && (
+        <button type="button" className="ff-action ff-action--accent" onClick={quickBattle} title="Drop two matching armies">
+          <Glyph name="bolt" className="ff-ico" />
+          <span>Quick battle</span>
+        </button>
+      )}
       <button type="button" className="ff-action" onClick={selectAll} title="Select your whole team (Ctrl+A)">
         <Glyph name="select" className="ff-ico" />
         <span>Select team</span>
@@ -323,10 +460,12 @@ function Actions() {
         <Glyph name="trash" className="ff-ico" />
         <span>Delete</span>
       </button>
-      <button type="button" className="ff-action ff-action--danger" onClick={() => setPanel('clear')} title="Clear the battlefield">
-        <Glyph name="clear" className="ff-ico" />
-        <span>Clear all</span>
-      </button>
+      {!zombies && (
+        <button type="button" className="ff-action ff-action--danger" onClick={() => setPanel('clear')} title="Clear the battlefield">
+          <Glyph name="clear" className="ff-ico" />
+          <span>Clear all</span>
+        </button>
+      )}
     </div>
   )
 }
@@ -449,6 +588,7 @@ export default function Hud({ onExit }) {
       <Tray />
       <Actions />
       <Toast />
+      <ZombieResult onExit={onExit} />
     </div>
   )
 }

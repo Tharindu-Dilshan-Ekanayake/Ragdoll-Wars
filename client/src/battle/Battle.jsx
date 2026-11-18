@@ -9,7 +9,7 @@ import { useHud } from './hud/hudStore'
 import { startHudTicker } from './hud/hudTicker'
 import { mapById } from './maps'
 import { disposeTextures } from './render/textures'
-import { createWorld, setCaps } from './sim/world'
+import { createWorld, initZombieMode, setCaps } from './sim/world'
 import { battle } from './state'
 
 /**
@@ -81,7 +81,7 @@ function installWorld(world) {
   }
 }
 
-export default function Battle({ mapId, onExit }) {
+export default function Battle({ mapId, mode = 'sandbox', onExit }) {
   const [map, setMap] = useState(null)
   const [ready, setReady] = useState(false)
 
@@ -93,14 +93,17 @@ export default function Battle({ mapId, onExit }) {
       .load()
       .then((m) => {
         if (cancelled) return
-        teardown = installWorld(createWorld(m.default, capsFrom(useQuality.getState().settings)))
+        const world = createWorld(m.default, capsFrom(useQuality.getState().settings), mode)
+        if (mode === 'zombies') initZombieMode(world)
+        useHud.setState({ mode, team: 0, zombie: null, placing: null, dockTab: 'units' })
+        teardown = installWorld(world)
         setMap(m.default)
       })
     return () => {
       cancelled = true
       teardown?.()
     }
-  }, [mapId])
+  }, [mapId, mode])
 
   const handleReady = useCallback(() => setReady(true), [])
 

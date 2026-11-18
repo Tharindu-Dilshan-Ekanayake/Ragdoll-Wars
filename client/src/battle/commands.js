@@ -1,6 +1,7 @@
 import { sfx } from '../audio/sfx'
 import { clearAll, clearSelection, deleteSelected, moveSelected, orderSelected, selectTeam, setSelection, spawnUnits } from './sim/world'
 import { getHud } from './hud/hudStore'
+import { PRICES, restartZombies, startWave } from './sim/zombies'
 import { battle } from './state'
 
 /**
@@ -13,13 +14,43 @@ export function placeUnits(x, z) {
   const w = battle.world
   const hud = getHud()
   if (!w || !hud.placing) return
-  const { spawned, limited, info } = spawnUnits(w, hud.placing, hud.team, x, z, hud.count, hud.order, hud.buildRot)
+  // Zombie Horde: everything costs cash, and you're always the defenders (blue).
+  let count = hud.count
+  const price = w.zmode ? PRICES[hud.placing] || 0 : 0
+  if (w.zmode) {
+    if (w.zmode.result) return
+    const afford = price > 0 ? Math.floor(w.zmode.cash / price) : count
+    if (afford <= 0) {
+      hud.showToast(`Not enough cash - that costs $${price}`)
+      sfx.error()
+      return
+    }
+    count = Math.min(count, afford)
+  }
+  const team = w.zmode ? 0 : hud.team
+  const { spawned, limited, info } = spawnUnits(w, hud.placing, team, x, z, count, hud.order, hud.buildRot)
+  if (w.zmode && spawned) w.zmode.cash -= spawned * price
   if (spawned) sfx.place()
   if (info) hud.showToast(info, 'info')
   if (limited) {
     hud.showToast(limited)
     if (!spawned) sfx.error()
   }
+}
+
+/** Zombie Horde: start the next wave now. */
+export function startWaveNow() {
+  const w = battle.world
+  if (w && startWave(w)) sfx.order()
+}
+
+/** Zombie Horde: clear everything and start the run again. */
+export function restartRun() {
+  const w = battle.world
+  if (!w || !w.zmode) return
+  clearAll(w)
+  restartZombies(w)
+  sfx.place()
 }
 
 export function moveTo(x, z) {

@@ -11,6 +11,7 @@ const Battle = lazy(() => import('./battle/Battle.jsx'))
 function App() {
   const screen = useApp((s) => s.screen)
   const mapId = useApp((s) => s.mapId)
+  const mode = useApp((s) => s.mode)
   const toLobby = useApp((s) => s.toLobby)
 
   return (
@@ -18,7 +19,7 @@ function App() {
       {screen === 'lobby' && <Lobby />}
       {screen === 'battle' && (
         <Suspense fallback={<LoadingScreen label="Marching to the front…" />}>
-          <Battle mapId={mapId} onExit={toLobby} />
+          <Battle mapId={mapId} mode={mode} onExit={toLobby} />
         </Suspense>
       )}
     </div>
