@@ -27,7 +27,7 @@ export const PRESETS = {
     /** Max side of any generated texture. */
     maxTexture: 512,
     /** Soldiers per team, bodies left on the ground, ragdolls simulating at once. */
-    units: 30,
+    units: 24,
     corpses: 30,
     ragdolls: 3,
     vehicles: 4,
