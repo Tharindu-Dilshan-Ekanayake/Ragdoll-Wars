@@ -4,7 +4,7 @@
  *   npx vite build && npx vite preview --port 4173 &
  *   node scripts/perf-check.mjs [outDir]
  *
- * 1. Base Camp: time to playable, the helicopter arrival played through (screenshots of
+ * 1. Sea Fort: time to playable, the helicopter arrival played through (screenshots of
  *    each beat), then walks your avatar around and onto a station pad. Draw calls /
  *    triangles / FPS on every quality preset, both during a replayed arrival (worst case:
  *    helicopter, dust and the whole camp) and standing in the camp.
@@ -32,7 +32,7 @@ async function walk(k, ms) {
   await key(k, 'keyUp')
 }
 
-// --- Base Camp -----------------------------------------------------------------------
+// --- Sea Fort ------------------------------------------------------------------------
 await waitFor(`!!window.__ff && window.__ff.lobbyStore.getState().ready`, 60000)
 report.lobby.playableMs = Date.now() - page.navigatedAt
 // The arrival flight, beat by beat (times are flight seconds).
@@ -86,10 +86,10 @@ for (const level of ['LOW', 'MEDIUM', 'HIGH']) {
 // Let the replayed helicopter finish its flight before moving on.
 await waitFor(`!window.__ff.lobby.intro.running`, 15000)
 // Over to the armory, then onto the Sandbox pad.
-await evaluate(`(() => { const p = window.__ff.lobby.player; p.x = 9; p.z = 6; window.__ff.lobby.camera.yaw = 2.6; window.__ff.lobby.camera.snap = true })()`)
+await evaluate(`(() => { const p = window.__ff.lobby.player; p.x = 5; p.z = 21; window.__ff.lobby.camera.yaw = Math.PI; window.__ff.lobby.camera.snap = true })()`)
 await sleep(1500)
 await shot('03-lobby-armory')
-await evaluate(`(() => { const p = window.__ff.lobby.player; p.x = -10; p.z = -5; window.__ff.lobby.camera.yaw = 0.8; window.__ff.lobby.camera.snap = true })()`)
+await evaluate(`(() => { const p = window.__ff.lobby.player; p.x = -22.5; p.z = 0; window.__ff.lobby.camera.yaw = Math.PI / 2; window.__ff.lobby.camera.snap = true })()`)
 await sleep(800)
 await walk('w', 900)
 await sleep(800)

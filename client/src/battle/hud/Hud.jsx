@@ -76,7 +76,7 @@ function Corner({ onExit }) {
   const setPanel = useHud((s) => s.setPanel)
   return (
     <div className="ff-corner">
-      <button type="button" className="ff-iconbtn" title="Back to Base Camp" onClick={() => setPanel('exit')}>
+      <button type="button" className="ff-iconbtn" title="Back to the Sea Fort" onClick={() => setPanel('exit')}>
         <Glyph name="menu" className="ff-ico" />
       </button>
       <button type="button" className="ff-iconbtn" title="Settings" onClick={() => setPanel('settings')}>

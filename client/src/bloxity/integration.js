@@ -22,7 +22,7 @@ export const AD_SCREENS = { panel: {}, gameplay: {} }
 
 /** Once per page, right after `Legion.SDK.init()`. */
 export function setupOnce(sdk) {
-  // Boxity draws its emote picker once a game says it can play emotes (Base Camp can).
+  // Boxity draws its emote picker once a game says it can play emotes (the Sea Fort can).
   safeCall(sdk.game?.registerFeature?.bind(sdk.game), 'emotes')
   safeCall(sdk.ads?.declareScreens?.bind(sdk.ads), AD_SCREENS)
 }

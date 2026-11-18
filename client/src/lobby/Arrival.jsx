@@ -7,11 +7,11 @@ import { getTextures } from '../battle/render/textures'
 import { addFrameHook, PHASE } from '../battle/state'
 import { useQuality } from '../store/quality'
 import { ARRIVAL, cinematicCamera, DROP, heliPose, ROTOR_SPEED, scriptPlayer, smooth } from './flightPath'
-import { HELIPAD, WINDSOCK } from './baseCamp'
+import { HELIPAD, WINDSOCK } from './seaFort'
 import { CAMERA_HOME, lobby, LOOK_HEIGHT } from './lobbyState'
 
 /**
- * The helipad at Base Camp's south gate and the helicopter that flies you in.
+ * The helipad in the middle of the Sea Fort's hub and the helicopter that flies you in.
  *
  * One frame hook (CAMERA phase: before your controller and the follow camera) plays the
  * flight from flightPath.js: poses the helicopter and spins its rotors, moves you while

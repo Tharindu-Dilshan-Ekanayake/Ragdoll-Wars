@@ -3,7 +3,7 @@ import { useEffect } from 'react'
 import { sfx } from '../audio/sfx'
 import { useBloxity } from '../bloxity/BloxityContext'
 import { Glyph } from '../battle/hud/icons'
-import { STATIONS } from './baseCamp'
+import { STATIONS } from './seaFort'
 import { lobby, useLobby } from './lobbyState'
 import StationPanels from './StationPanels'
 import TouchStick from './TouchStick'
@@ -54,7 +54,7 @@ export default function LobbyHud() {
     return (
       <div className="ff-hud ff-lobbyhud">
         <div className="ff-arrival">
-          <span className="ff-arrival__title">Base Camp</span>
+          <span className="ff-arrival__title">Sea Fort</span>
           <span className="ff-arrival__sub">Inbound to the helipad</span>
         </div>
         <button
@@ -82,8 +82,8 @@ export default function LobbyHud() {
         </button>
       </div>
       <div className="ff-campname">
-        <span className="ff-campname__title">Base Camp</span>
-        <span className="ff-campname__sub">{isTouch ? 'Walk into a glowing circle' : 'WASD to walk · drag to look · step into a glowing circle'}</span>
+        <span className="ff-campname__title">Sea Fort</span>
+        <span className="ff-campname__sub">{isTouch ? 'Cross a bridge, step into a circle' : 'WASD to walk · drag to look · cross a bridge and step into a circle'}</span>
       </div>
       <div className="ff-player ff-player--hud">
         <span className="ff-player__dot" />

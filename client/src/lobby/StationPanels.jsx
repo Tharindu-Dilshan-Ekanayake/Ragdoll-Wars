@@ -4,7 +4,7 @@ import { MAPS } from '../battle/maps'
 import { UNIT_ORDER, UNIT_TYPES } from '../battle/sim/units'
 import { useApp } from '../store/app'
 import { HelpBody, SettingsBody } from '../ui/SettingsHelp'
-import { STATIONS } from './baseCamp'
+import { STATIONS } from './seaFort'
 import { useLobby } from './lobbyState'
 import MapPreview from './MapPreview'
 
@@ -125,7 +125,7 @@ function LobbyControls() {
   return (
     <div className="ff-help">
       <section>
-        <h3>Getting around Base Camp</h3>
+        <h3>Getting around the Sea Fort</h3>
         <ul>
           <li>
             <b>WASD</b> or the arrow keys to walk · <b>Space</b> to jump
@@ -188,7 +188,7 @@ export default function StationPanels() {
     <Modal title="Multiplayer" kicker="Coming soon" onClose={close}>
       <SoonPanel
         text="Play with friends: everyone commands their own army on the same battlefield."
-        points={['Make a lobby and share its code', 'Team up or fight each other', 'Meet other players here at Base Camp']}
+        points={['Make a lobby and share its code', 'Team up or fight each other', 'Meet other players here at the Sea Fort']}
       />
     </Modal>
   )

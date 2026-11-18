@@ -8,12 +8,12 @@ import ErrorBoundary from '../ui/ErrorBoundary'
 import FallbackAvatar from './avatar/FallbackAvatar'
 import PlayerAvatar from './avatar/PlayerAvatar'
 import useKeyboard from './avatar/useKeyboard'
-import { BASE_CAMP } from './baseCamp'
+import { clampWalkable, SEA_FORT } from './seaFort'
 import { lobby } from './lobbyState'
 
 /**
- * You, in the lobby: a kinematic character controller (no physics engine - the camp is
- * flat ground and boxes, which a circle push-out handles exactly) driving your Bloxity
+ * You, in the lobby: a kinematic character controller (no physics engine - the fort is
+ * flat decks and boxes: a circle push-out for the props, a clamp to the deck outlines) driving your Bloxity
  * avatar. WASD / arrows or the touch joystick move you relative to the camera; Space or
  * the jump button jumps.
  *
@@ -37,7 +37,7 @@ export default function LobbyPlayer({ onAvatarReady }) {
   const keys = useKeyboard()
   const velocity = useRef(new Vector3())
   const vy = useRef(0)
-  const obstacles = useMemo(() => buildObstacles(BASE_CAMP), [])
+  const obstacles = useMemo(() => buildObstacles(SEA_FORT), [])
   const motionRef = useRef({ time: 0, speed: 0, grounded: true, maxSpeed: RUN_SPEED, vy: 0, stride: 0, salute: 0 })
 
   // A soft round shadow under your feet on every preset (cheap, and it grounds you).
@@ -99,10 +99,12 @@ export default function LobbyPlayer({ onAvatarReady }) {
           _pos.x = p.x + velocity.current.x * delta
           _pos.z = p.z + velocity.current.z * delta
           collideCircle(obstacles, _pos, RADIUS)
+          // Stay on the decks (railings all round; the sea below).
+          clampWalkable(_pos, RADIUS)
           p.x = _pos.x
           p.z = _pos.z
 
-          // Jump and fall (the camp floor is flat: y = 0).
+          // Jump and fall (the decks are flat: y = 0).
           if ((k.jump || joy.jump) && p.grounded && !p.frozen) {
             vy.current = JUMP_SPEED
             p.grounded = false

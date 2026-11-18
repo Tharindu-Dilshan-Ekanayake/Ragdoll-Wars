@@ -4,7 +4,7 @@ import Lobby from './lobby/Lobby'
 import { useApp } from './store/app'
 import LoadingScreen from './ui/LoadingScreen'
 
-// Base Camp (the lobby) loads first. The battle - its simulation, effects and HUD - is
+// The Sea Fort (the lobby) loads first. The battle - its simulation, effects and HUD - is
 // its own chunk, fetched quietly while you walk around the camp.
 const Battle = lazy(() => import('./battle/Battle.jsx'))
 

@@ -5,13 +5,13 @@ import { sfx } from '../audio/sfx'
 import { useBloxity } from '../bloxity/BloxityContext'
 import { disposeTextures } from '../battle/render/textures'
 import { useApp } from '../store/app'
-import { PAD_RADIUS, STATIONS } from './baseCamp'
+import { PAD_RADIUS, STATIONS } from './seaFort'
 import LobbyHud from './LobbyHud'
 import LobbyScene from './LobbyScene'
 import { beginArrival, lobby, respawnLobby, useLobby } from './lobbyState'
 
 /**
- * The lobby screen - what loads first. Base Camp in 3D with your avatar, the HUD over it,
+ * The lobby screen - what loads first. The Sea Fort in 3D with your avatar, the HUD over it,
  * and a loading cover until the first frame is drawn. You arrive by helicopter
  * (Arrival.jsx); the flight starts the moment the camp is on screen and can be skipped.
  *
@@ -39,7 +39,7 @@ function LobbyLoader({ done }) {
         <div className="ff-loader__bar">
           <span style={{ width: `${done ? 100 : active ? Math.max(25, progress) : 60}%` }} />
         </div>
-        <div className="ff-loader__step">{done ? 'Ready!' : 'Pitching tents at Base Camp…'}</div>
+        <div className="ff-loader__step">{done ? 'Ready!' : 'Raising the Sea Fort…'}</div>
       </div>
     </div>
   )
@@ -82,7 +82,7 @@ export default function Lobby() {
     respawnLobby()
     beginArrival()
     useLobby.setState({ zone: null, panel: null, ready: false, arriving: true })
-    if (!loadingEnded) game.loadingStep('Pitching tents at Base Camp…')
+    if (!loadingEnded) game.loadingStep('Raising the Sea Fort…')
     const stop = startZoneTicker()
     return () => {
       stop()

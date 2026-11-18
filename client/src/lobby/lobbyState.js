@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
 import { ARRIVAL } from './flightPath'
-import { SPAWN } from './baseCamp'
+import { SPAWN } from './seaFort'
 
 /**
  * The lobby's per-frame state (outside React: written every frame by the player
@@ -81,7 +81,7 @@ export function endArrival() {
   if (intro.t < ARRIVAL.out) intro.t = ARRIVAL.skipTo
 }
 
-/** Back to the camp's flagpole (Boxity's respawn, or returning from a battle). */
+/** Back to the hub (Boxity's respawn). */
 export function respawnLobby() {
   endArrival()
   Object.assign(lobby.player, { x: SPAWN.x, y: 0, z: SPAWN.z, yaw: SPAWN.yaw, speed: 0, grounded: true })

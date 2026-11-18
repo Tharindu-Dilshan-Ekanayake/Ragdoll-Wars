@@ -603,6 +603,9 @@ const up = new Vector3(0, 1, 0)
  *   `focus` tells the sun where to centre its shadow box (the camera's focus).
  */
 export default function MapView({ map, focus }) {
+  // `terrain: false` (the lobby's Sea Fort): no ground, hills, fence or trees - just the
+  // sky, the sun and the props; the scene draws its own floor.
+  const terrain = map.terrain !== false
   const decor = useQuality((s) => s.settings.decorDensity)
   const viewDistance = useQuality((s) => s.settings.viewDistance)
   const shadows = useQuality((s) => s.settings.shadows === 'realtime')
@@ -610,13 +613,13 @@ export default function MapView({ map, focus }) {
   const world = useMemo(() => {
     const tex = getTextures()
     tex.grass.repeat.set(1, 1)
-    const ground = buildGround(map)
-    const groundMap = paintGround(map)
+    const ground = terrain ? buildGround(map) : null
+    const groundMap = terrain ? paintGround(map) : null
     const cover = buildCover(map)
-    const fence = buildFence(map)
-    const hills = buildHills(...(map.hills || [165, 260]), map.hillScale ?? 1)
+    const fence = terrain ? buildFence(map) : null
+    const hills = terrain ? buildHills(...(map.hills || [165, 260]), map.hillScale ?? 1) : null
     const mats = {
-      ground: groundMaterial(groundMap, tex.grass),
+      ground: groundMap ? groundMaterial(groundMap, tex.grass) : null,
       concrete: new MeshLambertMaterial({ vertexColors: true, map: tex.concrete }),
       bags: new MeshLambertMaterial({ vertexColors: true, map: tex.sandbags }),
       crates: new MeshLambertMaterial({ vertexColors: true, map: tex.crate }),
@@ -626,11 +629,11 @@ export default function MapView({ map, focus }) {
       plain: new MeshLambertMaterial({ vertexColors: true }),
     }
     return { ground, groundMap, cover, fence, hills, mats }
-  }, [map])
+  }, [map, terrain])
 
   // Trees: scenery outside the fence (thinned by the preset) plus the few inside.
   const trees = useMemo(() => {
-    const outside = map.trees.filter((_, i) => (i * 0.618) % 1 < decor)
+    const outside = terrain ? map.trees.filter((_, i) => (i * 0.618) % 1 < decor) : []
     const inside = map.obstacles.filter((o) => o.kind === 'tree').map((o) => ({ x: o.x, z: o.z, s: 0.9, r: 0 }))
     const all = [...outside, ...inside]
     const trunkGeo = new CylinderGeometry(0.2, 0.3, 2.4, 6).translate(0, 1.2, 0)
@@ -655,16 +658,16 @@ export default function MapView({ map, focus }) {
     trunks.computeBoundingSphere()
     crowns.computeBoundingSphere()
     return { trunks, crowns, trunkGeo, crownGeo, trunkMat, crownMat }
-  }, [map, decor])
+  }, [map, decor, terrain])
 
   useEffect(
     () => () => {
-      world.ground.dispose()
-      world.groundMap.dispose()
+      world.ground?.dispose()
+      world.groundMap?.dispose()
       for (const g of Object.values(world.cover)) g?.dispose()
-      world.fence.dispose()
-      world.hills.dispose()
-      for (const m of Object.values(world.mats)) m.dispose()
+      world.fence?.dispose()
+      world.hills?.dispose()
+      for (const m of Object.values(world.mats)) m?.dispose()
     },
     [world],
   )
@@ -683,17 +686,17 @@ export default function MapView({ map, focus }) {
     <group>
       <Sky map={map} radius={Math.min(600, viewDistance * 0.92)} />
       <Lights focus={focus} />
-      <mesh geometry={world.ground} material={mats.ground} receiveShadow={shadows} />
-      <mesh geometry={world.hills} material={mats.plain} />
+      {world.ground && <mesh geometry={world.ground} material={mats.ground} receiveShadow={shadows} />}
+      {world.hills && <mesh geometry={world.hills} material={mats.plain} />}
       <mesh geometry={cover.concrete} material={mats.concrete} castShadow={shadows} receiveShadow={shadows} />
       <mesh geometry={cover.bags} material={mats.bags} castShadow={shadows} receiveShadow={shadows} />
       <mesh geometry={cover.crates} material={mats.crates} castShadow={shadows} receiveShadow={shadows} />
       <mesh geometry={cover.steel} material={mats.steel} castShadow={shadows} receiveShadow={shadows} />
       <mesh geometry={cover.wood} material={mats.wood} castShadow={shadows} receiveShadow={shadows} />
       {cover.roofs && <mesh geometry={cover.roofs} material={mats.roof} castShadow={shadows} />}
-      <mesh geometry={world.fence} material={mats.plain} />
-      <primitive object={trees.trunks} castShadow={shadows} />
-      <primitive object={trees.crowns} castShadow={shadows} />
+      {world.fence && <mesh geometry={world.fence} material={mats.plain} />}
+      {trees.trunks.count > 0 && <primitive object={trees.trunks} castShadow={shadows} />}
+      {trees.crowns.count > 0 && <primitive object={trees.crowns} castShadow={shadows} />}
     </group>
   )
 }

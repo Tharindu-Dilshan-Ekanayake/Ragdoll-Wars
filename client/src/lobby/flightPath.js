@@ -1,15 +1,15 @@
-import { HELIPAD } from './baseCamp.js'
+import { HELIPAD } from './seaFort.js'
 
 /**
- * The arrival flight into Base Camp (drawn and played by Arrival.jsx), as plain functions of time (seconds since the flight
+ * The arrival flight into the Sea Fort (drawn and played by Arrival.jsx), as plain functions of time (seconds since the flight
  * started), so every frame is a lookup with no state to drift and Skip is just "jump to
  * time X".
  *
- *   0.0  the helicopter comes in out of the haze from the east, nose down
+ *   0.0  the helicopter comes in low over the sea from the east, nose down
  *   3.6  flares over the helipad and hovers
  *   4.6  touches down
  *   4.75 you appear in the door, hop down and jog towards the camp
- *   5.0  it lifts straight off behind you, turns north and flies away over the camp
+ *   5.0  it lifts straight off behind you, turns north and flies away over the fort
  *   6.1  you turn round and salute it
  *   7.0  you're in control (the camera has swung round behind you)
  *  14.1  it's gone over the hills

@@ -1,7 +1,8 @@
 import GameCanvas from '../battle/render/GameCanvas'
 import MapView from '../battle/render/MapView'
 import Arrival from './Arrival'
-import { BASE_CAMP } from './baseCamp'
+import FortDecks from './FortDecks'
+import { SEA_FORT } from './seaFort'
 import FollowCamera from './FollowCamera'
 import LobbyPlayer from './LobbyPlayer'
 import LobbyProps from './LobbyProps'
@@ -15,11 +16,12 @@ const lobbyFocus = () => {
   return focus
 }
 
-/** Base Camp in 3D: the camp, its live props, the helipad and your ride in, you, and the camera. */
+/** The Sea Fort in 3D: sea and decks, props, the helipad and your ride in, you, and the camera. */
 export default function LobbyScene({ onReady }) {
   return (
-    <GameCanvas clearColor={BASE_CAMP.fog} fogColor={BASE_CAMP.fog} fogRange={BASE_CAMP.fogRange} cameraFov={60} onReady={onReady}>
-      <MapView map={BASE_CAMP} focus={lobbyFocus} />
+    <GameCanvas clearColor={SEA_FORT.fog} fogColor={SEA_FORT.fog} fogRange={SEA_FORT.fogRange} cameraFov={60} onReady={onReady}>
+      <MapView map={SEA_FORT} focus={lobbyFocus} />
+      <FortDecks />
       <LobbyProps />
       <Arrival />
       <LobbyPlayer />

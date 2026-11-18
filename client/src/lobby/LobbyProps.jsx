@@ -24,11 +24,11 @@ import Soldiers from '../battle/render/Soldiers'
 import { makeSoldier, resetSoldier } from '../battle/sim/soldier'
 import { UNIT_ORDER, UNIT_TYPES } from '../battle/sim/units'
 import { addFrameHook, PHASE } from '../battle/state'
-import { ARMORY_LINE, FLAGPOLE, PAD_RADIUS, RADIO_MAST, STATIONS } from './baseCamp'
+import { ARMORY_LINE, FLAGPOLE, PAD_RADIUS, RADIO_MAST, STATIONS } from './seaFort'
 import { lobby, useLobby } from './lobbyState'
 
 /**
- * Base Camp's live props: the station pads (glowing rings you step into), their floating
+ * The Sea Fort's live props: the station pads (glowing rings you step into), their floating
  * signs, the camp flag waving on its pole, the radio mast's warning light and the armory
  * line-up of your troops standing at ease.
  */

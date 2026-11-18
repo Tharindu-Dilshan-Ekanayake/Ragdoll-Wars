@@ -98,7 +98,7 @@ export async function openChrome({ url, outDir, chrome = DEFAULT_CHROME, port = 
   }
 }
 
-/** From Base Camp into a battle on the first map (opens the Sandbox station, Deploy). */
+/** From the Sea Fort into a battle on the first map (opens the Sandbox station, Deploy). */
 export async function enterBattle(page) {
   await page.waitFor(`!!window.__ff && window.__ff.lobbyStore.getState().ready`, 60000)
   await skipArrival(page)

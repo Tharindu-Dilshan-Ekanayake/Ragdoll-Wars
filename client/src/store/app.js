@@ -5,7 +5,7 @@ import { create } from 'zustand'
  * screen ads and gameplay lifecycle follow these; see bloxity/integration.js).
  */
 export const useApp = create((set) => ({
-  /** 'lobby' (Base Camp) | 'battle' */
+  /** 'lobby' (the Sea Fort) | 'battle' */
   screen: 'lobby',
   mapId: 'training',
   /** True once the lobby has drawn its first frame: the game is playable. */
