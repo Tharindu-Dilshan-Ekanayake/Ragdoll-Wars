@@ -282,6 +282,70 @@ export function pushOutSphere(obs, arr, i, r) {
   return touched
 }
 
+/**
+ * Walk mode's body: pushes the circle at `p` out of the boxes that stand higher than
+ * `stepTop` (anything lower you step up onto or are already standing above), and keeps
+ * it inside the fence. Returns true if it bumped something.
+ */
+export function collideWalker(obs, p, r, stepTop) {
+  let pushed = false
+  const list = bucketAt(obs, p.x, p.z)
+  if (list) {
+    const d = obs.data
+    for (let k = 0; k < list.length; k += 1) {
+      const o = list[k] * 5
+      if (d[o + 4] <= stepTop) continue
+      const cx = Math.max(d[o], Math.min(p.x, d[o + 2]))
+      const cz = Math.max(d[o + 1], Math.min(p.z, d[o + 3]))
+      const ox = p.x - cx
+      const oz = p.z - cz
+      const dist2 = ox * ox + oz * oz
+      if (dist2 >= r * r) continue
+      if (dist2 > 1e-10) {
+        const dist = Math.sqrt(dist2)
+        p.x = cx + (ox / dist) * r
+        p.z = cz + (oz / dist) * r
+      } else {
+        const left = p.x - d[o]
+        const right = d[o + 2] - p.x
+        const back = p.z - d[o + 1]
+        const front = d[o + 3] - p.z
+        const m = Math.min(left, right, back, front)
+        if (m === left) p.x = d[o] - r
+        else if (m === right) p.x = d[o + 2] + r
+        else if (m === back) p.z = d[o + 1] - r
+        else p.z = d[o + 3] + r
+      }
+      pushed = true
+    }
+  }
+  const lx = obs.limitX + 1
+  const lz = obs.limitZ + 1
+  if (p.x < -lx || p.x > lx || p.z < -lz || p.z > lz) pushed = true
+  p.x = Math.max(-lx, Math.min(lx, p.x))
+  p.z = Math.max(-lz, Math.min(lz, p.z))
+  return pushed
+}
+
+/**
+ * The floor under a body of radius `r` at (x, z): the highest box top no higher than
+ * `maxTop` that it overlaps, or 0 on open ground.
+ */
+export function floorUnder(obs, x, z, r, maxTop) {
+  const list = bucketAt(obs, x, z)
+  if (!list) return 0
+  const d = obs.data
+  let h = 0
+  const m = r * 0.5
+  for (let k = 0; k < list.length; k += 1) {
+    const o = list[k] * 5
+    const top = d[o + 4]
+    if (top <= h || top > maxTop) continue
+    if (x > d[o] - m && x < d[o + 2] + m && z > d[o + 1] - m && z < d[o + 3] + m) h = top
+  }
+  return h
+}
+
 /** Height of the top of whatever box is under (x, z), or 0 on open ground. */
 export function supportHeight(obs, x, z) {
   const list = bucketAt(obs, x, z)

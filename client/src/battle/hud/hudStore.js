@@ -23,6 +23,10 @@ export const useHud = create((set, get) => ({
   zombie: null,
   /** Which dock page is showing: 'units' or 'build'. */
   dockTab: 'units',
+  /** Walk mode: you're out on foot as your avatar (walk/walkMode.js), and whether you
+   *  have been this battle (your avatar stays loaded once it is). */
+  walking: false,
+  walked: false,
   /** Build mode: pieces go down turned a quarter turn (1) or not (0). */
   buildRot: 0,
 

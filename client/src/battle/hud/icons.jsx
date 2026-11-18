@@ -78,6 +78,8 @@ const GLYPHS = {
   focus: 'M16 9a7 7 0 1 0 0 14 7 7 0 0 0 0-14z M15 2h2v6h-2z M15 24h2v6h-2z M2 15h6v2H2z M24 15h6v2h-6z',
   chevron: 'M8 12l8 8 8-8 2 2-10 10L6 14z',
   box: 'M4 4h24v24H4z M7 7v18h18V7z',
+  walk: 'M17 2a3 3 0 1 0 0.01 0z M14 9h5l3 6 4 2-1 3-6-3-1-2-1 5 4 4 1 7h-3l-1-6-4-3-2 9H9l3-14-3 2-1 5H5l1-7z',
+  command: 'M4 22l12-6 12 6-12 6z M4 15l12-6 12 6-12 6z M16 3l12 6-12 6-12-6z',
 }
 
 export function Glyph({ name, className }) {

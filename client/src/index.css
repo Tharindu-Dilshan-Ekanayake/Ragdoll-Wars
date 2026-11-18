@@ -1646,3 +1646,49 @@ button {
     top: 56px;
   }
 }
+
+/* --- Walk mode (battle/walk) ------------------------------------------------------- */
+.ff-iconbtn--walk.is-on {
+  background: var(--ff-accent);
+  color: #1e1206;
+  border-color: transparent;
+}
+.ff-hud .ff-walkhint {
+  position: absolute;
+  top: calc(var(--u) * 74);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 14px;
+  border-radius: 99px;
+  font-size: calc(var(--u) * 13);
+  white-space: nowrap;
+  color: #fff;
+  background: rgba(10, 12, 16, 0.62);
+  pointer-events: none;
+}
+/* On a phone the stick and jump button need the corners: the dock steps aside. */
+@media (pointer: coarse) {
+  .ff-hud.is-walking .ff-tray,
+  .ff-hud.is-walking .ff-rail,
+  .ff-hud.is-walking .ff-actions {
+    display: none;
+  }
+}
+.ff-walker-tag {
+  pointer-events: none;
+}
+.ff-walker-tag__name {
+  display: block;
+  padding: 2px 9px;
+  border-radius: 99px;
+  font-family: var(--ff-display);
+  font-size: 13px;
+  white-space: nowrap;
+  color: #fff;
+  background: rgba(10, 12, 16, 0.6);
+  border: 2px solid #3d8bff;
+  transform: translateY(-50%);
+}
+.ff-walker-tag__name--1 {
+  border-color: #ff4d4d;
+}

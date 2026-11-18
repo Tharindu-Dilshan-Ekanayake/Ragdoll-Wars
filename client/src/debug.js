@@ -26,5 +26,8 @@ export function installDebugHooks() {
     async hud() {
       return (await import('./battle/hud/hudStore.js')).useHud
     },
+    async walk() {
+      return import('./battle/walk/walkMode.js')
+    },
   }
 }

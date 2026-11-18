@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 
+import { battle } from '../battle/state'
 import { lobby } from './lobbyState'
+
+/** Where each stick's input goes: the lobby walk, or walk mode in a battle. */
+const INPUTS = { lobby: () => lobby.input, walk: () => battle.walk.input }
 
 /** Joystick travel radius, in CSS pixels. */
 const RADIUS = 54
@@ -12,10 +16,11 @@ function detectTouch() {
 
 /**
  * Touch controls for walking: a floating joystick wherever the bottom-left of the screen
- * is touched, and a jump button. Writes straight into `lobby.input` and moves the knob
+ * is touched, and a jump button. Writes straight into `input` (the lobby's, or walk mode's in a battle) and moves the knob
  * through refs, so dragging never re-renders React.
  */
-export default function TouchStick() {
+export default function TouchStick({ target = 'lobby' }) {
+  const inputOf = INPUTS[target] || INPUTS.lobby
   const [isTouch, setIsTouch] = useState(detectTouch)
   const baseRef = useRef(null)
   const knobRef = useRef(null)
@@ -33,11 +38,12 @@ export default function TouchStick() {
 
   useEffect(
     () => () => {
-      lobby.input.joyX = 0
-      lobby.input.joyY = 0
-      lobby.input.jump = false
+      const input = inputOf()
+      input.joyX = 0
+      input.joyY = 0
+      input.jump = false
     },
-    [],
+    [inputOf],
   )
 
   if (!isTouch) return null
@@ -68,14 +74,16 @@ export default function TouchStick() {
     if (knobRef.current) knobRef.current.style.transform = `translate(${dx}px, ${dy}px)`
     // Small dead zone so a resting thumb doesn't creep.
     const strength = Math.max(0, Math.min(len, RADIUS) / RADIUS - 0.08) / 0.92
-    lobby.input.joyX = len > 0 ? (dx / Math.min(len, RADIUS)) * strength : 0
-    lobby.input.joyY = len > 0 ? (-dy / Math.min(len, RADIUS)) * strength : 0
+    const input = inputOf()
+    input.joyX = len > 0 ? (dx / Math.min(len, RADIUS)) * strength : 0
+    input.joyY = len > 0 ? (-dy / Math.min(len, RADIUS)) * strength : 0
   }
   const onUp = (e) => {
     if (active.current.id !== e.pointerId) return
     active.current.id = null
-    lobby.input.joyX = 0
-    lobby.input.joyY = 0
+    const input = inputOf()
+    input.joyX = 0
+    input.joyY = 0
     if (knobRef.current) knobRef.current.style.transform = 'translate(0px, 0px)'
     if (baseRef.current) {
       baseRef.current.style.opacity = '0.45'
@@ -85,7 +93,7 @@ export default function TouchStick() {
   }
   const jump = (on) => (e) => {
     e.preventDefault()
-    lobby.input.jump = on
+    inputOf().jump = on
   }
 
   return (

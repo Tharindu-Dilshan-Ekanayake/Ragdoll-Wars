@@ -18,6 +18,9 @@ import { UNIT_TYPES } from './units.js'
  *   st           stats [alive0, alive1, lost0, lost1, downed0, downed1, kills0, kills1]
  *   z            Zombie Horde [wave, total, state, cash, left, buildT x10, breaches, max, kills, result] or null
  *   b            built pieces [key, x, z, rot, ...] when they changed (else absent)
+ *   a            players out walking (walk mode): sid, x, y, z (cm), yaw (mrad),
+ *                speed (cm/s), grounded - WALKER_STRIDE each; added by the room, absent
+ *                when nobody walks
  *
  * Bodies, ragdolls and their blood are left to each client: they're cosmetic, so the
  * server just says who died and how hard they were hit.
@@ -39,6 +42,7 @@ export const SOLDIER_STRIDE = 20
 export const VEHICLE_STRIDE = 14
 export const PROJECTILE_STRIDE = 8
 export const MINE_STRIDE = 5
+export const WALKER_STRIDE = 7
 
 /** Soldier flag bits. */
 export const F_DOWNED = 1

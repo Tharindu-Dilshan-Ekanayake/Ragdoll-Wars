@@ -25,6 +25,32 @@ export const battle = {
     keys: new Set(),
   },
 
+  /**
+   * Walk mode (walk/Walker.jsx): you, as your Bloxity avatar, on foot among the troops.
+   * A spectator - the battle can't see or hurt you, but blasts still knock you about.
+   * `cam` is the third-person orbit (yaw 0: camera south of you, looking north).
+   */
+  walk: {
+    on: false,
+    x: 0,
+    y: 0,
+    z: 0,
+    vx: 0,
+    vy: 0,
+    vz: 0,
+    yaw: 0,
+    speed: 0,
+    grounded: true,
+    /** The floor under you (0, or the top of the box you're over). */
+    floor: 0,
+    /** Seconds of tumble left after a blast threw you, and the somersault angle. */
+    tumble: 0,
+    spin: 0,
+    cam: { yaw: 0, pitch: 0.32, dist: 7 },
+    /** Touch joystick (-1..1, +y forward) and jump button. */
+    input: { joyX: 0, joyY: 0, jump: false },
+  },
+
   /** Ground point under the pointer (for the placement ghost), or null. */
   hover: null,
   /** Last move order, for the destination marker: { x, z, t } (t = performance time). */

@@ -1,3 +1,4 @@
+import { useQuality } from '../store/quality'
 import { useSettings } from '../store/settings'
 
 /**
@@ -28,6 +29,35 @@ let shotsThisFrame = 0
 let lastFrame = 0
 const MAX_SHOT_VOICES = 14
 const MAX_SHOTS_PER_FRAME = 5
+
+/**
+ * Sounds per second of audio time, as token buckets: shots, and the small stuff
+ * (impacts, hits, thuds, clicks, flames, heals...). A firefight heard from inside it -
+ * walk mode, or a close camera - otherwise asks for hundreds of voices a second, and
+ * building Web Audio nodes that fast is what costs (far more than the battle). Booms,
+ * groans, horns and jets always play. Very close sounds skip the queue.
+ */
+const shotBudget = { rate: 22, tokens: 22, at: 0 }
+const minorBudget = { rate: 18, tokens: 18, at: 0 }
+const CLOSE = 5
+function spend(b, dist) {
+  const t = ctx.currentTime
+  // The LOW preset (phones, small laptops) gets fewer voices.
+  const rate = useQuality.getState().level === 'LOW' ? b.rate * 0.6 : b.rate
+  b.tokens = Math.min(rate, b.tokens + (t - b.at) * rate)
+  b.at = t
+  if (b.tokens >= 1) {
+    b.tokens -= 1
+    return true
+  }
+  // Right beside you it still plays, borrowing a little against the next second.
+  if (dist < CLOSE && b.tokens > -6) {
+    b.tokens -= 1
+    return true
+  }
+  return false
+}
+const MINOR = new Set(['impact', 'hit', 'thud', 'reload', 'build', 'launch', 'mortar', 'flame', 'heal', 'spawn'])
 
 function ensure() {
   if (ctx) return ctx
@@ -160,16 +190,22 @@ function spatial(dist, pan, baseGain) {
   if (gain < 0.012) return null
   const g = ctx.createGain()
   g.gain.value = gain
-  const lp = ctx.createBiquadFilter()
-  lp.type = 'lowpass'
-  lp.frequency.value = 16000 / (1 + dist / 22)
+  // Distance muffling; close by it would sit above 10 kHz and change nothing, so the
+  // filter (the priciest node to make) is left out.
+  let out = g
+  if (dist > 12) {
+    const lp = ctx.createBiquadFilter()
+    lp.type = 'lowpass'
+    lp.frequency.value = 16000 / (1 + dist / 22)
+    g.connect(lp)
+    out = lp
+  }
   const p = ctx.createStereoPanner ? ctx.createStereoPanner() : null
-  g.connect(lp)
   if (p) {
     p.pan.value = Math.max(-1, Math.min(1, pan))
-    lp.connect(p)
+    out.connect(p)
     p.connect(sfxBus)
-  } else lp.connect(sfxBus)
+  } else out.connect(sfxBus)
   return g
 }
 
@@ -192,6 +228,7 @@ function playShot(key, dist, pan) {
     // Over budget: only close shots get through.
     if (dist > 12) return
   }
+  if (!spend(shotBudget, dist)) return
   const dest = spatial(dist, pan, r.vol)
   if (!dest) return
   shotsThisFrame += 1
@@ -225,6 +262,7 @@ export function worldSound(kind, x, y, z, meta, listener) {
   const dz = z - listener.z
   const dist = Math.sqrt(dx * dx + dy * dy + dz * dz)
   const pan = ((dx * listener.rx + dz * listener.rz) / (dist + 6)) * 1.4
+  if (MINOR.has(kind) && !spend(minorBudget, dist)) return
   const t = ctx.currentTime
   if (kind === 'shot') {
     playShot(meta, dist, pan)

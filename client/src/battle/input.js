@@ -7,6 +7,7 @@ import { anySelected } from './sim/world'
 import { deleteSelection, deselect, focusSelection, giveOrder, moveTo, placeUnits, select, selectAll, setTeamCmd, togglePauseCmd } from './commands'
 import { getHud } from './hud/hudStore'
 import { battle } from './state'
+import { toggleWalk, WALK } from './walk/walkMode'
 
 /**
  * Mouse, touch and keyboard on the battle canvas.
@@ -16,6 +17,10 @@ import { battle } from './state'
  * middle drag pans; the wheel zooms towards the cursor.
  * Touch: tap = left click; one-finger drag pans (or draws a box in select mode);
  * pinch zooms, twist orbits, two-finger drag pans.
+ *
+ * Walk mode (walk/walkMode.js): any drag looks around, the wheel or a pinch zooms the
+ * camera behind you, Space jumps (the walker reads the held keys); clicks still place
+ * and select. V steps out to walk or back to command.
  *
  * Nothing here re-renders React per pointer move: the selection box is a DOM element
  * styled directly, and the hover point is written into `battle`.
@@ -161,7 +166,24 @@ function pan(dxPx, dyPx) {
   v.tz = v.goal.tz
 }
 
+/** Walk mode's look-around: drag (mouse or one finger). */
+function lookWalk(dx, dy) {
+  const c = battle.walk.cam
+  const k = 0.005 * (getBloxityState().cameraSensitivity || 1)
+  c.yaw -= dx * k
+  c.pitch = Math.min(WALK.maxPitch, Math.max(WALK.minPitch, c.pitch + dy * k))
+}
+
+const zoomWalk = (factor) => {
+  const c = battle.walk.cam
+  c.dist = Math.min(WALK.maxDist, Math.max(WALK.minDist, c.dist * factor))
+}
+
 export function zoomBy(factor, cx, cy) {
+  if (battle.walk.on) {
+    zoomWalk(factor)
+    return
+  }
   const v = battle.view
   const before = v.goal.dist
   v.goal.dist = Math.min(140, Math.max(6, v.goal.dist * factor))
@@ -203,6 +225,7 @@ export function attachInput(canvas, boxEl) {
       my: (a.y + b.y) / 2,
       startDist: battle.view.goal.dist,
       startYaw: battle.view.goal.yaw,
+      startWalkDist: battle.walk.cam.dist,
     }
     drag = null
     hideBox()
@@ -241,6 +264,12 @@ export function attachInput(canvas, boxEl) {
       const angle = Math.atan2(b.y - a.y, b.x - a.x)
       const mx = (a.x + b.x) / 2
       const my = (a.y + b.y) / 2
+      if (battle.walk.on) {
+        // Pinch: the walk camera comes in or backs off.
+        const c = battle.walk.cam
+        c.dist = Math.min(WALK.maxDist, Math.max(WALK.minDist, (gesture.startWalkDist * gesture.dist) / dist))
+        return
+      }
       const v = battle.view
       v.goal.dist = Math.min(140, Math.max(6, (gesture.startDist * gesture.dist) / dist))
       v.goal.yaw = gesture.startYaw - (angle - gesture.angle)
@@ -258,12 +287,17 @@ export function attachInput(canvas, boxEl) {
       drag.moved = true
       if (drag.mode === 'click') {
         const hud = getHud()
-        if (drag.touch && !hud.selectMode) drag.mode = 'pan'
+        if (battle.walk.on) drag.mode = 'look'
+        else if (drag.touch && !hud.selectMode) drag.mode = 'pan'
         else if (hud.placing) drag.mode = drag.touch ? 'pan' : 'none'
         else drag.mode = 'box'
       }
     }
     if (!drag.moved) return
+    if (battle.walk.on && drag.mode !== 'none' && drag.mode !== 'box') {
+      lookWalk(dx, dy)
+      return
+    }
     const sens = getBloxityState().cameraSensitivity || 1
     if (drag.mode === 'orbit') {
       const g = battle.view.goal
@@ -347,7 +381,12 @@ export function attachInput(canvas, boxEl) {
       else deselect()
     } else if (k === ' ') {
       e.preventDefault()
+      // On foot Space jumps (the walker reads it from the held keys).
+      if (battle.walk.on) return
       togglePauseCmd()
+      sfx.toggle()
+    } else if (k === 'v') {
+      toggleWalk()
       sfx.toggle()
     } else if (k === 'r' && hud.dockTab === 'build') {
       hud.rotateBuild()

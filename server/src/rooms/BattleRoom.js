@@ -47,6 +47,35 @@ const ORDERS = new Set(['attack', 'hold', 'flank'])
 /** What players may build (the dock's pieces and the Remove tool; not map scenery). */
 const BUILDABLE = new Set(BUILD_GROUPS.flatMap((g) => g.keys))
 const SPEEDS = new Set([0.5, 1, 2])
+/** Walk mode updates: at most one per this many ms per player (they send 10 a second). */
+const WALK_MIN_MS = 50
+const PROPORTION_KEYS = ['height', 'shoulderWidth', 'armLength', 'legOffsetX', 'torsoScaleX', 'neckHeight', 'headScale']
+
+/**
+ * What a player's avatar wears, as the other players' games need it to draw them:
+ * { e: equipped ids (Bloxity's `avatar.getEquipped()`), p: body proportions }. Only
+ * short id strings and in-range numbers get through.
+ */
+function cleanAvatar(raw) {
+  if (!raw || typeof raw !== 'object') return null
+  const e = {}
+  if (raw.e && typeof raw.e === 'object') {
+    let n = 0
+    for (const [k, v] of Object.entries(raw.e)) {
+      if (n >= 32 || !/^[a-zA-Z]{1,16}Id$/.test(k)) continue
+      if ((typeof v === 'string' && v.length <= 64) || (typeof v === 'number' && Number.isFinite(v))) {
+        e[k] = typeof v === 'string' ? v.replace(/[^\w.:-]/g, '') : v
+        n += 1
+      }
+    }
+  }
+  const p = {}
+  for (const k of PROPORTION_KEYS) {
+    const v = raw.p?.[k]
+    p[k] = typeof v === 'number' && Number.isFinite(v) ? Math.max(0.5, Math.min(1.6, v)) : 1
+  }
+  return { e, p }
+}
 
 export class BattleRoom extends Room {
   maxClients = MAX_PLAYERS
@@ -89,10 +118,21 @@ export class BattleRoom extends Room {
     return { name: cleanName(identity?.name || options?.name), uid: identity?.verified ? identity.playerId : '' }
   }
 
-  onJoin(client, _options, auth) {
+  onJoin(client, options, auth) {
     const team = this.mode === 'zombies' ? 0 : this.emptierTeam()
     const host = ![...this.players.values()].some((p) => p.host)
-    this.players.set(client.sessionId, { name: auth?.name || 'Commander', uid: auth?.uid || '', team, host, tokens: RATE, refillAt: Date.now() })
+    this.players.set(client.sessionId, {
+      name: auth?.name || 'Commander',
+      uid: auth?.uid || '',
+      team,
+      host,
+      tokens: RATE,
+      refillAt: Date.now(),
+      avatar: cleanAvatar(options?.avatar),
+      /** Walk mode: [x, y, z, yaw, speed, grounded] (cm, mrad), or null while commanding. */
+      walk: null,
+      walkAt: 0,
+    })
     // The newcomer needs every built piece: resend the list with the next snapshot.
     this.enc.buildVersion = -1
     client.send('welcome', { mapId: this.mapId, mode: this.mode, code: this.code, team, host, speed: this.speed, paused: this.paused })
@@ -127,7 +167,7 @@ export class BattleRoom extends Room {
   }
 
   sendPlayers() {
-    const list = [...this.players.entries()].map(([sid, p]) => ({ sid, name: p.name, team: p.team, host: p.host }))
+    const list = [...this.players.entries()].map(([sid, p]) => ({ sid, name: p.name, team: p.team, host: p.host, avatar: p.avatar }))
     this.broadcast('players', list)
   }
 
@@ -136,7 +176,32 @@ export class BattleRoom extends Room {
     w.timeScale = this.paused ? 0 : this.speed
     stepWorld(w, Math.min(0.1, dtMs / 1000))
     this.frame += 1
-    if (this.frame % SNAP_EVERY === 0 && this.clients.length) this.broadcast('snap', encodeSnapshot(w, this.enc))
+    if (this.frame % SNAP_EVERY === 0 && this.clients.length) {
+      const snap = encodeSnapshot(w, this.enc)
+      let a = null
+      for (const [sid, p] of this.players) {
+        if (!p.walk) continue
+        a = a || []
+        a.push(sid, ...p.walk)
+      }
+      if (a) snap.a = a
+      this.broadcast('snap', snap)
+    }
+  }
+
+  /** Walk mode: where a player's avatar is (or null: back to commanding). */
+  walk(p, v) {
+    if (v === null) {
+      p.walk = null
+      return
+    }
+    const now = Date.now()
+    if (!Array.isArray(v) || v.length !== 6 || !v.every(Number.isInteger) || now - p.walkAt < WALK_MIN_MS) return
+    p.walkAt = now
+    const lx = (this.w.obs.limitX + 2) * 100
+    const lz = (this.w.obs.limitZ + 2) * 100
+    const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x))
+    p.walk = [clamp(v[0], -lx, lx), clamp(v[1], 0, 3000), clamp(v[2], -lz, lz), clamp(v[3], -3200, 3200), clamp(v[4], 0, 3000), v[5] ? 1 : 0]
   }
 
   toast(client, text, kind = 'warn') {
@@ -155,7 +220,10 @@ export class BattleRoom extends Room {
 
   command(client, type, payload) {
     const p = this.players.get(client.sessionId)
-    if (!p || !this.allow(p)) return
+    if (!p) return
+    // Walk updates come steadily ten a second, so they have their own limit.
+    if (type === 'walk') return this.walk(p, payload)
+    if (!this.allow(p)) return
     const w = this.w
     const msg = payload && typeof payload === 'object' ? payload : {}
     switch (type) {

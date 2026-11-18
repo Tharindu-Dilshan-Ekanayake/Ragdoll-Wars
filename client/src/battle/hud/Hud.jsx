@@ -15,6 +15,8 @@ import { deleteSelection, deselect, focusSelection, giveOrder, quickBattle, rest
 import { net } from '../../net/battleNet'
 import { me, useNet } from '../../store/net'
 import { PRICES } from '../sim/zombies'
+import TouchStick from '../../lobby/TouchStick'
+import { toggleWalk } from '../walk/walkMode'
 import { BodyDiagram, Glyph, WeaponIcon } from './icons'
 import { useHud } from './hudStore'
 import Panels from './Panels'
@@ -204,6 +206,7 @@ function TopBar() {
 
 function Corner({ onExit }) {
   const setPanel = useHud((s) => s.setPanel)
+  const walking = useHud((s) => s.walking)
   return (
     <div className="ff-corner">
       <button type="button" className="ff-iconbtn" title="Back to the Sea Fort" onClick={() => setPanel('exit')}>
@@ -214,6 +217,17 @@ function Corner({ onExit }) {
       </button>
       <button type="button" className="ff-iconbtn" title="How to play (H)" onClick={() => setPanel('help')}>
         <Glyph name="help" className="ff-ico" />
+      </button>
+      <button
+        type="button"
+        className={`ff-iconbtn ff-iconbtn--walk ${walking ? 'is-on' : ''}`}
+        title={walking ? 'Back to commanding (V)' : 'Walk the battlefield as your avatar (V)'}
+        onClick={() => {
+          toggleWalk()
+          sfx.toggle()
+        }}
+      >
+        <Glyph name={walking ? 'command' : 'walk'} className="ff-ico" />
       </button>
       <Panels onExit={onExit} />
     </div>
@@ -499,8 +513,12 @@ function Hint() {
   const team = useHud((s) => s.team)
   const selection = useHud((s) => s.selection)
   const alive = useHud((s) => s.stats.alive)
+  const walking = useHud((s) => s.walking)
   let text
-  if (placing) {
+  if (walking && !placing && !selection) {
+    // Walk mode shows its own controls up top.
+    return null
+  } else if (placing) {
     const piece = BUILD_TYPES[placing]
     const u = piece || UNIT_TYPES[placing]
     const name = u.name
@@ -694,15 +712,28 @@ function Toast() {
   )
 }
 
+/** Walk mode: what the keys do, and the touch stick and jump button. */
+function WalkControls() {
+  const walking = useHud((s) => s.walking)
+  if (!walking) return null
+  return (
+    <>
+      <div className="ff-walkhint">{isTouch ? 'Stick to walk · drag to look' : 'WASD walk · Shift run · Space jump · drag to look · V to command'}</div>
+      <TouchStick target="walk" />
+    </>
+  )
+}
+
 export default function Hud({ onExit }) {
   const panel = useHud((s) => s.panel)
+  const walking = useHud((s) => s.walking)
   const level = useQuality((s) => s.level)
   // Boxity's screen ads follow modal panels.
   useEffect(() => {
     useApp.getState().setPanel(Boolean(panel))
   }, [panel])
   return (
-    <div className="ff-hud" data-quality={level}>
+    <div className={`ff-hud ${walking ? 'is-walking' : ''}`} data-quality={level}>
       <TopBar />
       <Corner onExit={onExit} />
       <Rail />
@@ -711,6 +742,7 @@ export default function Hud({ onExit }) {
       <Actions />
       <Toast />
       <RoomPanel />
+      <WalkControls />
       <ZombieResult onExit={onExit} />
     </div>
   )

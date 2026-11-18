@@ -20,6 +20,7 @@ import {
   V_HIT,
   V_WRECK,
   VEHICLE_STRIDE,
+  WALKER_STRIDE,
   ZOMBIE_RESULTS,
   ZOMBIE_STATES,
 } from '../sim/netProtocol'
@@ -50,7 +51,7 @@ const GRAVITY_OF = { rocket: 0.8, shell: 9.8, cannon: 0.8, bomb: 30 }
 const SMOOTH = 14
 
 export function createNetMirror() {
-  return { soldiers: new Map(), vehicles: new Map(), lastBuild: null }
+  return { soldiers: new Map(), vehicles: new Map(), lastBuild: null, walkers: new Map(), walkSeq: 0 }
 }
 
 const cm = (n) => n / 100
@@ -216,6 +217,28 @@ export function applySnapshot(w, net, snap) {
   for (let i = 0; i < e.so.length; i += 5) emitSound(fx, SOUND_KINDS[e.so[i]], cm(e.so[i + 1]), cm(e.so[i + 2]), cm(e.so[i + 3]), decodeMeta(e.so[i + 4]))
 
   // --- Stats, Zombie Horde, built pieces ----------------------------------------------------------
+  // Other players out walking (walk mode): sid -> their latest pose. Flat list, stride
+  // WALKER_STRIDE: sid, x, y, z (cm), yaw (mrad), speed (cm/s), grounded.
+  const seq = (net.walkSeq += 1)
+  const a = snap.a
+  if (a) {
+    for (let i = 0; i + WALKER_STRIDE <= a.length; i += WALKER_STRIDE) {
+      let wk = net.walkers.get(a[i])
+      if (!wk) {
+        wk = { x: 0, y: 0, z: 0, yaw: 0, speed: 0, grounded: true, seq: 0 }
+        net.walkers.set(a[i], wk)
+      }
+      wk.x = cm(a[i + 1])
+      wk.y = cm(a[i + 2])
+      wk.z = cm(a[i + 3])
+      wk.yaw = mrad(a[i + 4])
+      wk.speed = cm(a[i + 5])
+      wk.grounded = a[i + 6] === 1
+      wk.seq = seq
+    }
+  }
+  for (const [sid, wk] of net.walkers) if (wk.seq !== seq) net.walkers.delete(sid)
+
   const st = snap.st
   w.stats.alive[0] = st[0]
   w.stats.alive[1] = st[1]

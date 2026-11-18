@@ -1,5 +1,6 @@
 import { environment } from '../bloxity/env'
 import { GAME_SLUG } from '../bloxity/identity'
+import { getBloxityState } from '../bloxity/store'
 import { getSDK, safeCall, waitForSDK } from '../bloxity/sdk'
 import { useApp } from '../store/app'
 import { getNet, useNet } from '../store/net'
@@ -127,7 +128,9 @@ export async function joinBattle(how, name) {
     const { Client } = await import('@colyseus/sdk')
     const endpoint = withPlayHost(await endpointFor(target))
     const client = new Client(endpoint)
-    const options = { name, token: joinToken(), gameSlug: GAME_SLUG }
+    // What you wear, so the others can draw your avatar when you go walking.
+    const { equipped, proportions } = getBloxityState()
+    const options = { name, token: joinToken(), gameSlug: GAME_SLUG, avatar: { e: equipped || null, p: proportions } }
     let room
     if (how.kind === 'code') room = await client.joinById(String(how.code || '').trim().toUpperCase(), options)
     else if (how.kind === 'private') room = await client.create('battle', { ...options, mode: how.mode, mapId: how.mapId, private: true })

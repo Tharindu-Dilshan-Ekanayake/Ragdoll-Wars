@@ -14,6 +14,9 @@ import { drain } from './sim/fx'
 import { netStep } from './net/netWorld'
 import { stepWorld } from './sim/world'
 import { addFrameHook, battle, PHASE } from './state'
+import { useHud } from './hud/hudStore'
+import RemoteWalkers from './walk/RemoteWalkers'
+import Walker from './walk/Walker'
 
 /** Steps the simulation, and feeds its sound events to the audio engine. */
 function SimAndSound() {
@@ -32,13 +35,23 @@ function SimAndSound() {
       if (!w) return
       const cam = state.camera
       const v = battle.view
-      // Listen from part-way between the focus and the camera: an RTS view hears
-      // the battle it's looking at, not the sky.
-      listener.x = v.tx + (cam.position.x - v.tx) * 0.3
-      listener.y = cam.position.y * 0.3
-      listener.z = v.tz + (cam.position.z - v.tz) * 0.3
-      listener.rx = Math.cos(v.yaw)
-      listener.rz = -Math.sin(v.yaw)
+      const wk = battle.walk
+      if (wk.on) {
+        // On foot you hear the battle from where you stand, facing the way you look.
+        listener.x = wk.x
+        listener.y = wk.y + 1.6
+        listener.z = wk.z
+        listener.rx = Math.cos(wk.cam.yaw)
+        listener.rz = -Math.sin(wk.cam.yaw)
+      } else {
+        // Listen from part-way between the focus and the camera: an RTS view hears
+        // the battle it's looking at, not the sky.
+        listener.x = v.tx + (cam.position.x - v.tx) * 0.3
+        listener.y = cam.position.y * 0.3
+        listener.z = v.tz + (cam.position.z - v.tz) * 0.3
+        listener.rx = Math.cos(v.yaw)
+        listener.rz = -Math.sin(v.yaw)
+      }
       cursor.current = drain(w.fx.sounds, cursor.current, (s) => worldSound(s.kind, s.x, s.y, s.z, s.meta, listener))
     })
     return () => {
@@ -47,6 +60,17 @@ function SimAndSound() {
     }
   }, [])
   return null
+}
+
+/** You on foot, from the first time you walk; and the other players walking about. */
+function WalkLayer() {
+  const walked = useHud((s) => s.walked)
+  return (
+    <>
+      {walked && <Walker />}
+      <RemoteWalkers />
+    </>
+  )
 }
 
 const getBattleWorld = () => battle.world
@@ -66,6 +90,7 @@ export default function BattleScene({ map, onReady }) {
       <Ordnance />
       <Vehicles />
       <Markers map={map} />
+      <WalkLayer />
     </GameCanvas>
   )
 }

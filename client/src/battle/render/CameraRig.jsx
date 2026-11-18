@@ -38,6 +38,8 @@ export default function CameraRig({ map, selectBoxId }) {
   useEffect(
     () =>
       addFrameHook(PHASE.CAMERA, (state, delta) => {
+        // Walk mode has its own camera behind your avatar (walk/Walker.jsx).
+        if (battle.walk.on) return
         const camera = state.camera
         const dt = Math.min(0.05, delta)
         const v = battle.view

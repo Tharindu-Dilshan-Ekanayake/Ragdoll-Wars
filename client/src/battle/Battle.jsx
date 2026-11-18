@@ -63,7 +63,8 @@ function installWorld(world, online = false) {
   const dist = portrait ? 105 : 74
   Object.assign(v, { tx: 0, tz: 6, yaw, pitch: 0.95, dist: dist + 6 })
   Object.assign(v.goal, { tx: 0, tz: portrait ? 0 : 6, yaw, pitch: 0.92, dist })
-  useHud.setState({ placing: null, paused: false, speed: 1, selection: null, panel: null })
+  battle.walk.on = false
+  useHud.setState({ placing: null, paused: false, speed: 1, selection: null, panel: null, walking: false, walked: false })
   const offQuality = useQuality.subscribe((s, prev) => {
     if (s.settings !== prev.settings) setCaps(world, capsFrom(s.settings))
   })
@@ -111,6 +112,7 @@ function installWorld(world, online = false) {
     if (battle.world === world) battle.world = null
     battle.hover = null
     battle.moveMarker = null
+    battle.walk.on = false
     disposeTextures()
   }
 }

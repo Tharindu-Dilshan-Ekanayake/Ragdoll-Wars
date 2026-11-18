@@ -13,7 +13,7 @@ export const useNet = create(() => ({
   mode: 'sandbox',
   mapId: 'training',
   sessionId: null,
-  /** [{ sid, name, team, host }] */
+  /** [{ sid, name, team, host, avatar: { e: equipped ids, p: proportions } | null }] */
   players: [],
 }))
 
