@@ -1648,10 +1648,24 @@ button {
 }
 
 /* --- Walk mode (battle/walk) ------------------------------------------------------- */
-.ff-iconbtn--walk.is-on {
-  background: var(--ff-accent);
+.ff-viewbtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: calc(var(--u) * 44);
+  min-height: 34px;
+  padding: 0 calc(var(--u) * 14) 0 calc(var(--u) * 10);
+  border-radius: 12px;
+  font-family: var(--ff-display);
+  font-size: calc(var(--u) * 16);
   color: #1e1206;
-  border-color: transparent;
+  background: var(--ff-accent);
+  border: 0;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.3);
+}
+.ff-viewbtn .ff-ico {
+  width: 1.3em;
+  height: 1.3em;
 }
 .ff-hud .ff-walkhint {
   position: absolute;

@@ -98,14 +98,27 @@ export async function openChrome({ url, outDir, chrome = DEFAULT_CHROME, port = 
   }
 }
 
-/** From the Sea Fort into a battle on the first map (opens the Sandbox station, Deploy). */
-export async function enterBattle(page) {
+/** From the Sea Fort into a battle on the first map (opens the Sandbox station, Deploy), in the top view unless `walk`. */
+export async function enterBattle(page, { walk = false } = {}) {
   await page.waitFor(`!!window.__ff && window.__ff.lobbyStore.getState().ready`, 60000)
   await skipArrival(page)
   await page.evaluate(`window.__ff.lobbyStore.getState().setPanel('sandbox')`)
   await page.waitFor(`[...document.querySelectorAll('button')].some(b => b.textContent.trim() === 'Deploy')`)
   await clickButton(page, 'Deploy')
   await page.waitFor(`!!document.querySelector('.ff-hud') && !document.querySelector('.ff-lobbyhud')`, 40000)
+  // Battles start with you walking as your avatar; the checks measure the top view
+  // (walk mode has its own test) unless asked not to.
+  // Then the battle's opening view (Battle.jsx installWorld), so numbers compare run to run.
+  if (!walk)
+    await page.evaluate(`(async () => {
+      (await window.__ff.walk()).exitWalk()
+      const b = await window.__ff.battle()
+      const portrait = window.innerWidth < window.innerHeight
+      const yaw = portrait ? Math.PI / 2 : 0
+      const dist = portrait ? 105 : 74
+      Object.assign(b.view, { tx: 0, tz: 6, yaw, pitch: 0.95, dist: dist + 6 })
+      Object.assign(b.view.goal, { tx: 0, tz: portrait ? 0 : 6, yaw, pitch: 0.92, dist })
+    })()`)
 }
 
 /** Skips the helicopter arrival (if it's still playing) and waits for the lobby HUD. */

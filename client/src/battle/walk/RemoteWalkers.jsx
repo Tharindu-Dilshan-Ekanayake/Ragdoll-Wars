@@ -49,6 +49,7 @@ function RemoteWalker({ sid, name, team, avatar }) {
       if (!group || !body) return
       const wk = battle.world?.netMirror?.walkers.get(sid)
       group.visible = Boolean(wk)
+      motionRef.current.paused = !wk
       if (!wk) {
         shown = false
         return

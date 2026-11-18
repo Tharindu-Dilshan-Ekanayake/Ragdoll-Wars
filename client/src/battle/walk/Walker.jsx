@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useMemo, useRef } from 'react'
-import { MeshBasicMaterial, PlaneGeometry, Vector3 } from 'three'
+import { MeshBasicMaterial, PlaneGeometry, RingGeometry, Vector3 } from 'three'
 
 import FallbackAvatar from '../../lobby/avatar/FallbackAvatar'
 import PlayerAvatar from '../../lobby/avatar/PlayerAvatar'
@@ -17,12 +17,15 @@ import { blastWalker, stepWalker, WALK } from './walkMode'
  * camera), Shift sprints, Space or the jump button jumps; dragging looks around and the
  * wheel or a pinch zooms (input.js).
  *
- * Mounted from the first time you walk, then kept (hidden while you command), so
- * stepping out again doesn't rebuild your avatar. Online, your position goes to the
- * server ten times a second for the other players to see.
+ * Your avatar is on the map the whole battle: in the top view it stands where you left
+ * it, with a gold ring (grown with the camera's distance) so you can find yourself.
+ * Online, your position goes to the server ten times a second while you walk, for the
+ * other players to see.
  */
 
 const SEND_EVERY = 0.1
+/** In the top view, your avatar is drawn only with the camera closer than this. */
+const FAR_VIEW = 40
 const _target = new Vector3()
 const _desired = new Vector3()
 const _look = new Vector3()
@@ -36,15 +39,17 @@ export default function Walker() {
   const pivotRef = useRef(null)
   const motionRef = useRef({ time: 0, speed: 0, grounded: true, maxSpeed: WALK.run, vy: 0, stride: 0, salute: 0 })
 
+  const markerRef = useRef(null)
   const shadow = useMemo(() => {
     const geo = new PlaneGeometry(1.1, 1.1).rotateX(-Math.PI / 2)
     const mat = new MeshBasicMaterial({ map: getTextures().blob, transparent: true, depthWrite: false })
-    return { geo, mat }
+    const ring = new RingGeometry(0.55, 0.75, 32).rotateX(-Math.PI / 2)
+    const ringMat = new MeshBasicMaterial({ color: '#ffb52e', transparent: true, opacity: 0.9, depthWrite: false })
+    return { geo, mat, ring, ringMat }
   }, [])
   useEffect(
     () => () => {
-      shadow.geo.dispose()
-      shadow.mat.dispose()
+      for (const v of Object.values(shadow)) v.dispose()
     },
     [shadow],
   )
@@ -59,17 +64,39 @@ export default function Walker() {
       const wk = battle.walk
       const w = battle.world
       const group = groupRef.current
-      if (group) group.visible = wk.on
-      if (!wk.on || !w || !group) {
+      if (group) group.visible = wk.placed
+      if (!wk.placed || !w || !group) {
         wasOn = false
         return
       }
       const dt = Math.min(rawDelta, 0.05)
+      const marker = markerRef.current
+      marker.visible = !wk.on
+      if (!wk.on) {
+        // Top view: you stand and wait; the ring grows so you stay findable from up high.
+        wasOn = false
+        group.position.set(wk.x, wk.floor, wk.z)
+        yawRef.current.position.y = wk.y - wk.floor
+        // Far up, a figure a few pixels tall isn't worth drawing: just the ring then.
+        const near = battle.view.dist < FAR_VIEW
+        yawRef.current.visible = near
+        const s = Math.max(1, battle.view.dist / 16)
+        marker.scale.set(s, 1, s)
+        const motion = motionRef.current
+        motion.paused = !near
+        motion.time += dt
+        motion.speed = 0
+        motion.grounded = true
+        motion.vy = 0
+        return
+      }
       if (!wasOn) {
         // Only blasts from now on.
         blasts = w.fx.explosions.head
         _look.set(battle.view.tx, 0.6, battle.view.tz)
         yawRef.current.rotation.y = wk.yaw
+        yawRef.current.visible = true
+        motionRef.current.paused = false
         wasOn = true
       }
       blasts = drain(w.fx.explosions, blasts, onBlast)
@@ -145,6 +172,7 @@ export default function Walker() {
   return (
     <group ref={groupRef} visible={false}>
       <mesh geometry={shadow.geo} material={shadow.mat} position={[0, 0.03, 0]} renderOrder={1} />
+      <mesh ref={markerRef} geometry={shadow.ring} material={shadow.ringMat} position={[0, 0.05, 0]} renderOrder={2} visible={false} />
       <group ref={yawRef}>
         {/* Somersaults turn about your middle, not your feet. */}
         <group ref={pivotRef} position={[0, 0.9, 0]}>

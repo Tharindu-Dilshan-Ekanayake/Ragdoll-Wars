@@ -31,7 +31,9 @@ export const battle = {
    * `cam` is the third-person orbit (yaw 0: camera south of you, looking north).
    */
   walk: {
+    /** Walking (camera behind you) vs the top view; `placed`: your avatar is on the map. */
     on: false,
+    placed: false,
     x: 0,
     y: 0,
     z: 0,

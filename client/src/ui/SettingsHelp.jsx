@@ -95,7 +95,7 @@ export function HelpBody() {
             <b>Space</b> pause · <b>Del</b> delete selected · <b>F</b> focus · <b>Esc</b> cancel
           </li>
           <li>
-            <b>V</b> walk the battlefield as your avatar: <b>WASD</b> walk · <b>Shift</b> run · <b>Space</b> jump · <b>drag</b> to look
+            You start on the battlefield as your avatar: <b>WASD</b> walk · <b>Shift</b> run · <b>Space</b> jump · <b>drag</b> to look · <b>V</b> or <b>Top view</b> to look down on it all
           </li>
         </ul>
       </section>
@@ -105,7 +105,7 @@ export function HelpBody() {
           <li>Tap a card, then tap the ground to drop soldiers</li>
           <li>Drag to pan · pinch to zoom · twist with two fingers to turn</li>
           <li>Tap a soldier to inspect · turn on Box select to drag-select</li>
-          <li>The walking figure button takes you onto the battlefield: stick to walk, drag to look</li>
+          <li>You start as your avatar: stick to walk, drag to look · Top view to deploy troops, Walk to go back</li>
         </ul>
       </section>
       <section>

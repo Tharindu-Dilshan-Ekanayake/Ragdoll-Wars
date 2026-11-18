@@ -14,7 +14,6 @@ import { drain } from './sim/fx'
 import { netStep } from './net/netWorld'
 import { stepWorld } from './sim/world'
 import { addFrameHook, battle, PHASE } from './state'
-import { useHud } from './hud/hudStore'
 import RemoteWalkers from './walk/RemoteWalkers'
 import Walker from './walk/Walker'
 
@@ -62,12 +61,11 @@ function SimAndSound() {
   return null
 }
 
-/** You on foot, from the first time you walk; and the other players walking about. */
+/** You as your avatar, and the other players' avatars. */
 function WalkLayer() {
-  const walked = useHud((s) => s.walked)
   return (
     <>
-      {walked && <Walker />}
+      <Walker />
       <RemoteWalkers />
     </>
   )

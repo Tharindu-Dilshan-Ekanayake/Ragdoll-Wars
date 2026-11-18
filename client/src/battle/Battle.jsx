@@ -13,10 +13,11 @@ import { mapById } from './maps'
 import { disposeTextures } from './render/textures'
 import { createWorld, initZombieMode, setCaps } from './sim/world'
 import { leaveBattle, net } from '../net/battleNet'
-import { me, useNet } from '../store/net'
+import { getNet, me, useNet } from '../store/net'
 import { applySnapshot, createNetMirror } from './net/netWorld'
 import { applySave } from './sim/saveGame'
 import { battle } from './state'
+import { landWalker } from './walk/walkMode'
 
 /**
  * The battle screen (its own lazily-loaded chunk): loads the map, creates the
@@ -64,7 +65,8 @@ function installWorld(world, online = false) {
   Object.assign(v, { tx: 0, tz: 6, yaw, pitch: 0.95, dist: dist + 6 })
   Object.assign(v.goal, { tx: 0, tz: portrait ? 0 : 6, yaw, pitch: 0.92, dist })
   battle.walk.on = false
-  useHud.setState({ placing: null, paused: false, speed: 1, selection: null, panel: null, walking: false, walked: false })
+  battle.walk.placed = false
+  useHud.setState({ placing: null, paused: false, speed: 1, selection: null, panel: null, walking: false })
   const offQuality = useQuality.subscribe((s, prev) => {
     if (s.settings !== prev.settings) setCaps(world, capsFrom(s.settings))
   })
@@ -95,6 +97,11 @@ function installWorld(world, online = false) {
     syncTime()
     offHud = useHud.subscribe(syncTime)
   }
+  // You land on the battlefield as your avatar, at your side's base.
+  const mine = online ? me() : null
+  const team = mine ? mine.team : useHud.getState().team
+  const slot = mine ? Math.max(0, getNet().players.filter((p) => p.team === team).indexOf(mine)) : 0
+  landWalker(world, team, slot)
   const stopTicker = startHudTicker()
   startAmbience()
   return () => {
@@ -113,6 +120,7 @@ function installWorld(world, online = false) {
     battle.hover = null
     battle.moveMarker = null
     battle.walk.on = false
+    battle.walk.placed = false
     disposeTextures()
   }
 }

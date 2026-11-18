@@ -1,11 +1,12 @@
 import { net } from '../../net/battleNet'
 import { useHud } from '../hud/hudStore'
-import { collideWalker, floorUnder } from '../sim/obstacles'
+import { collideWalker, floorUnder, segmentClear2D } from '../sim/obstacles'
 import { battle } from '../state'
 
 /**
- * Walk mode: drop out of the commander's view and stroll the battlefield as your own
- * Bloxity avatar. You're a spectator - no soldier sees you and no bullet hits you - but
+ * Walk mode: you're on the battlefield as your own Bloxity avatar from the moment it
+ * loads (landed at your side's base), and walk it anywhere; the top view (the
+ * commander's camera) is a button or V away, and your avatar waits where you left it. You're a spectator - no soldier sees you and no bullet hits you - but
  * the ground is real (you bump into cover, step onto low boxes, jump onto sandbags) and
  * blasts throw you about.
  *
@@ -34,35 +35,74 @@ export const WALK = {
 const TAU = Math.PI * 2
 const _p = { x: 0, z: 0 }
 
-/** Steps out at the spot the commander's camera is looking at, facing the same way. */
-export function enterWalk() {
+/** Puts your avatar down at (x, z) (clear of cover), the camera behind it at `camYaw`. */
+export function placeWalker(w, x, z, camYaw) {
   const wk = battle.walk
-  const w = battle.world
-  if (!w || wk.on) return
-  const v = battle.view
-  _p.x = v.tx
-  _p.z = v.tz
+  _p.x = x
+  _p.z = z
   collideWalker(w.obs, _p, WALK.radius, WALK.step)
   Object.assign(wk, {
-    on: true,
+    placed: true,
     x: _p.x,
     z: _p.z,
     y: floorUnder(w.obs, _p.x, _p.z, WALK.radius, WALK.step),
     vx: 0,
     vy: 0,
     vz: 0,
-    yaw: v.yaw + Math.PI,
+    yaw: camYaw + Math.PI,
     speed: 0,
     grounded: true,
     tumble: 0,
     spin: 0,
   })
   wk.floor = wk.y
-  Object.assign(wk.cam, { yaw: v.yaw, pitch: 0.32, dist: 7 })
-  useHud.setState({ walking: true, walked: true, selectMode: false })
+  Object.assign(wk.cam, { yaw: camYaw, pitch: 0.32, dist: 7 })
 }
 
-/** Back to the commander's view, starting from where the walk camera is. */
+/**
+ * Lands you at your side's base as the battle loads, facing the enemy, and starts you
+ * walking. `slot` spreads teammates out (online) so nobody lands inside anyone.
+ */
+export function landWalker(w, team, slot = 0) {
+  const base = w.map.bases[team] || { x: 0, z: 0 }
+  const ahead = team === 0 ? 1 : -1
+  const z0 = base.z + (slot % 2 ? -1 : 1) * Math.ceil(slot / 2) * 2.5
+  // In front of the base, on a spot with open ground ahead (not nose to a sandbag wall).
+  let x = base.x + ahead * 12
+  let z = z0
+  search: for (const dx of [12, 16, 8, 20, 4]) {
+    for (const dz of [0, 3, -3, 6, -6, 9, -9]) {
+      const cx = base.x + ahead * dx
+      const cz = z0 + dz
+      _p.x = cx
+      _p.z = cz
+      if (collideWalker(w.obs, _p, WALK.radius + 0.3, 0)) continue
+      if (!segmentClear2D(w.obs, cx, cz, cx + ahead * 8, cz, WALK.radius + 0.2)) continue
+      x = cx
+      z = cz
+      break search
+    }
+  }
+  // The camera sits behind you: west of you for Blue (facing east), east for Red.
+  placeWalker(w, x, z, -ahead * (Math.PI / 2))
+  battle.walk.on = false
+  enterWalk()
+}
+
+/** Out walking: back to your avatar where you left it (or, first time, where you look). */
+export function enterWalk() {
+  const wk = battle.walk
+  const w = battle.world
+  if (!w || wk.on) return
+  if (!wk.placed) placeWalker(w, battle.view.tx, battle.view.tz, battle.view.yaw)
+  wk.on = true
+  useHud.setState({ walking: true, selectMode: false })
+}
+
+/**
+ * Up to the top view, starting from where the walk camera is. Your avatar stays standing
+ * there (and the other players still see it).
+ */
 export function exitWalk() {
   const wk = battle.walk
   if (!wk.on) return
@@ -74,7 +114,11 @@ export function exitWalk() {
   wk.input.joyX = 0
   wk.input.joyY = 0
   wk.input.jump = false
-  net.send('walk', null)
+  wk.vx = 0
+  wk.vz = 0
+  wk.speed = 0
+  // Tell the room you've stopped (the last position stays shown).
+  net.send('walk', [Math.round(wk.x * 100), Math.round(wk.y * 100), Math.round(wk.z * 100), Math.round(Math.atan2(Math.sin(wk.yaw), Math.cos(wk.yaw)) * 1000), 0, 1])
   useHud.setState({ walking: false })
 }
 

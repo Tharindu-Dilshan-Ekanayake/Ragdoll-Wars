@@ -220,14 +220,15 @@ function Corner({ onExit }) {
       </button>
       <button
         type="button"
-        className={`ff-iconbtn ff-iconbtn--walk ${walking ? 'is-on' : ''}`}
-        title={walking ? 'Back to commanding (V)' : 'Walk the battlefield as your avatar (V)'}
+        className="ff-viewbtn"
+        title={walking ? 'Look down on the whole battle (V)' : 'Back to your avatar (V)'}
         onClick={() => {
           toggleWalk()
           sfx.toggle()
         }}
       >
         <Glyph name={walking ? 'command' : 'walk'} className="ff-ico" />
+        <span>{walking ? 'Top view' : 'Walk'}</span>
       </button>
       <Panels onExit={onExit} />
     </div>
@@ -718,7 +719,7 @@ function WalkControls() {
   if (!walking) return null
   return (
     <>
-      <div className="ff-walkhint">{isTouch ? 'Stick to walk · drag to look' : 'WASD walk · Shift run · Space jump · drag to look · V to command'}</div>
+      <div className="ff-walkhint">{isTouch ? 'Stick to walk · drag to look · Top view to deploy troops' : 'WASD walk · Shift run · Space jump · drag to look · V top view'}</div>
       <TouchStick target="walk" />
     </>
   )

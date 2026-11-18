@@ -278,6 +278,8 @@ export const BloxityAvatar = forwardRef(function BloxityAvatar(
   const emotePlayer = useMemo(() => createEmotePlayer(), [])
 
   useFrame((_state, delta) => {
+    // Not being drawn (`motion.paused`, set by whoever shows it): no posing either.
+    if (motionRef?.current?.paused) return
     try {
       // Order matters: proportions reset every bone to its rest pose, and the
       // animation then rotates on top of that clean base.
