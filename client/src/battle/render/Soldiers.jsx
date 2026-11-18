@@ -41,11 +41,12 @@ const PER_SOLDIER = [1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2]
 /** Parts big enough to be worth a realtime shadow (small ones and weapons skip it). */
 const CASTS_SHADOW = [true, true, true, true, true, true, false, true, true, false, false]
 
-// Colour role per part: 0 shirt, 1 vest, 2 pants, 3 helmet, 4 skin, 5 boots.
-const PART_ROLE = [2, 0, 1, 4, 3, 0, 0, 0, 0, 2, 2, 2, 2, 5, 5, 4, 4]
+// Colour role per part: 0 shirt, 1 vest, 2 pants, 3 helmet, 4 skin, 5 boots. Sleeves are
+// rolled up: shirt on the upper arms (with the cuff baked in, models.js), bare forearms.
+const PART_ROLE = [2, 0, 1, 4, 3, 0, 0, 4, 4, 2, 2, 2, 2, 5, 5, 4, 4]
 const TEAM_COLORS = [
-  ['#3d78dc', '#5b6443', '#34425f', '#2c5bbd', null, '#2a2520'],
-  ['#d64545', '#646043', '#5c3434', '#b33030', null, '#2a2520'],
+  ['#3f7ddf', '#5b6443', '#2f3d5c', '#2d5cc0', null, '#2a2520'],
+  ['#d84848', '#646043', '#583132', '#b53232', null, '#2a2520'],
 ]
 const SKIN = ['#f1c9a5', '#e3b088', '#c98d5f', '#a36a43', '#7c4c2c']
 

@@ -83,7 +83,7 @@ export const PRESETS = {
     structures: 220,
     lodNear: 70,
     decorDensity: 1,
-    scatter: { blades: 3200, props: 540, flowers: 380 },
+    scatter: { blades: 2700, props: 480, flowers: 360 },
     wind: true,
   },
 }

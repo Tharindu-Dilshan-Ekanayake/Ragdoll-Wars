@@ -1,11 +1,11 @@
 import {
   BoxGeometry,
-  CapsuleGeometry,
+  BufferGeometry,
   CylinderGeometry,
-  Float32BufferAttribute,
-  IcosahedronGeometry,
-  Matrix4,
   Euler,
+  Float32BufferAttribute,
+  Matrix4,
+  PlaneGeometry,
   Quaternion,
   SphereGeometry,
   Vector3,
@@ -17,7 +17,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
  * in code (no model files). Baked vertex colours carry the small details - eyes, pouches,
  * wood and steel - while each instance's colour carries team and skin tone.
  *
- * Budget: a whole soldier is ~580 triangles plus ~40-140 for the weapon. Built once per battle,
+ * Budget: a whole soldier is ~600 triangles plus ~40-140 for the weapon. Built once per battle,
  * disposed with it.
  */
 
@@ -60,6 +60,58 @@ const cyl = (rt, rb, h, seg = 6, col = WHITE) => tint(new CylinderGeometry(rt, r
 
 // --- Soldier parts -------------------------------------------------------------------
 
+/**
+ * A limb as a smooth six-sided tube through `rings` ({ y, r, c?, sx?, z? }: height, radius,
+ * vertex shade, side-to-side squash, forward offset), top to bottom, with an optional
+ * rounded cap at either end (`capTop` / `capBottom`: how far the cap pokes out). Shared
+ * ring vertices give smooth shading, so six sides read as round. Ends that sit inside
+ * another part (a wrist in its hand, an ankle in its boot) leave the cap off.
+ */
+function tube(rings, { capTop = 0, capBottom = 0, radial = 6 } = {}) {
+  const pos = []
+  const colors = []
+  const idx = []
+  rings.forEach((ring) => {
+    const c = ring.c ?? 1
+    for (let k = 0; k < radial; k += 1) {
+      const a = (k / radial) * Math.PI * 2
+      pos.push(Math.cos(a) * ring.r * (ring.sx ?? 1), ring.y, Math.sin(a) * ring.r + (ring.z ?? 0))
+      colors.push(c, c, c)
+    }
+  })
+  for (let r = 0; r < rings.length - 1; r += 1) {
+    for (let k = 0; k < radial; k += 1) {
+      const a = r * radial + k
+      const b = r * radial + ((k + 1) % radial)
+      const c = a + radial
+      const d = b + radial
+      // Counter-clockwise seen from outside (normals out).
+      idx.push(a, b, c, b, d, c)
+    }
+  }
+  const cap = (ringIndex, dy, flip) => {
+    const ring = rings[ringIndex]
+    const centre = pos.length / 3
+    const c = ring.c ?? 1
+    pos.push(0, ring.y + dy, ring.z ?? 0)
+    colors.push(c, c, c)
+    for (let k = 0; k < radial; k += 1) {
+      const a = ringIndex * radial + k
+      const b = ringIndex * radial + ((k + 1) % radial)
+      if (flip) idx.push(centre, b, a)
+      else idx.push(centre, a, b)
+    }
+  }
+  if (capTop) cap(0, capTop, true)
+  if (capBottom) cap(rings.length - 1, -capBottom, false)
+  const g = new BufferGeometry()
+  g.setAttribute('position', new Float32BufferAttribute(pos, 3))
+  g.setAttribute('color', new Float32BufferAttribute(colors, 3))
+  g.setIndex(idx)
+  g.computeVertexNormals()
+  return g
+}
+
 function torsoGeometry() {
   const g = box(0.42, 0.52, 0.26)
   // A little V-shape: wider shoulders, narrower waist.
@@ -72,19 +124,39 @@ function torsoGeometry() {
   return g
 }
 
+/** Hips in the trousers' colour, a dark belt round the top. */
+function pelvisGeometry() {
+  const belt = [0.36, 0.33, 0.3]
+  return merge([box(0.34, 0.22, 0.24), place(box(0.355, 0.045, 0.255, belt), 0, 0.085, 0)])
+}
+
+/** The vest with a row of magazine pouches across the front. */
 function vestGeometry() {
   const pouch = [0.8, 0.8, 0.76]
-  return merge([box(0.45, 0.3, 0.29), place(box(0.12, 0.09, 0.05, pouch), -0.09, -0.07, 0.16), place(box(0.12, 0.09, 0.05, pouch), 0.09, -0.07, 0.16)])
+  return merge([box(0.45, 0.3, 0.29), place(box(0.3, 0.09, 0.05, pouch), 0, -0.07, 0.16)])
+}
+
+/** A flat face feature (two triangles facing forward) at (x, y) on the head's front. */
+function facePatch(w, h, x, y, z, col, rz = 0) {
+  return place(tint(new PlaneGeometry(w, h), ...col), x, y, z, 0, 0, rz)
 }
 
 function headGeometry() {
   const eye = [0.07, 0.07, 0.08]
-  return merge([
-    tint(new SphereGeometry(0.16, 8, 6), 1, 1, 1),
-    place(box(0.042, 0.052, 0.03, eye), 0.058, 0.025, 0.145),
-    place(box(0.042, 0.052, 0.03, eye), -0.058, 0.025, 0.145),
-    place(box(0.07, 0.016, 0.02, [0.55, 0.32, 0.3]), 0, -0.055, 0.15),
-  ])
+  const brow = [0.22, 0.16, 0.12]
+  // The crown is always under the helmet (or the zombies' hair): no need for its pole.
+  const head = tint(new SphereGeometry(0.16, 8, 5, 0, Math.PI * 2, Math.PI / 6, (Math.PI * 5) / 6), 1, 1, 1)
+  head.deleteAttribute('uv')
+  const face = [
+    facePatch(0.04, 0.052, 0.058, 0.022, 0.152, eye),
+    facePatch(0.04, 0.052, -0.058, 0.022, 0.152, eye),
+    // Brows, a little frown: a soldier's game face.
+    facePatch(0.056, 0.014, 0.06, 0.066, 0.146, brow, -0.18),
+    facePatch(0.056, 0.014, -0.06, 0.066, 0.146, brow, 0.18),
+    facePatch(0.064, 0.014, 0, -0.056, 0.151, [0.5, 0.3, 0.28]),
+  ]
+  for (const f of face) f.deleteAttribute('uv')
+  return merge([head.toNonIndexed(), ...face.map((f) => f.toNonIndexed())])
 }
 
 function helmetGeometry() {
@@ -94,29 +166,100 @@ function helmetGeometry() {
   ])
 }
 
-/** Capsule hanging down from its top joint, spanning `bone` metres. */
-function limbGeometry(radius, bone) {
-  const g = tint(new CapsuleGeometry(radius, Math.max(0.02, bone - radius * 1.2), 1, 5), 1, 1, 1)
-  return place(g, 0, -bone / 2, 0)
+/** Upper arm (shirt): round shoulder, the sleeve rolled up just above the elbow. */
+function upperArmGeometry() {
+  return tube(
+    [
+      { y: 0.02, r: 0.074 },
+      { y: -0.18, r: 0.065 },
+      { y: -0.192, r: 0.069, c: 1.18 },
+      { y: -0.25, r: 0.066, c: 1.1 },
+    ],
+    { capTop: 0.05, capBottom: 0.025 },
+  )
 }
 
+/** Forearm (bare, sleeves rolled): thick below the elbow, slim at the wrist (in the hand). */
+function foreArmGeometry() {
+  return tube(
+    [
+      { y: 0.015, r: 0.058 },
+      { y: -0.08, r: 0.06, sx: 1.08 },
+      { y: -0.255, r: 0.042, sx: 1.15 },
+    ],
+    { capTop: 0.04 },
+  )
+}
+
+/** Thigh (trousers): full at the hip (inside the pelvis), easing in to the knee. */
+function thighGeometry() {
+  return tube(
+    [
+      { y: 0.03, r: 0.1 },
+      { y: -0.2, r: 0.093, z: 0.008 },
+      { y: -0.41, r: 0.074 },
+    ],
+    { capBottom: 0.045 },
+  )
+}
+
+/** Shin (trousers) with a darker knee pad on top, the calf, down into the boot. */
+function shinGeometry() {
+  return tube(
+    [
+      { y: 0.035, r: 0.083, c: 0.6, z: 0.01 },
+      { y: -0.075, r: 0.08, c: 0.6, z: 0.01 },
+      { y: -0.09, r: 0.077, z: -0.004 },
+      { y: -0.4, r: 0.058 },
+    ],
+    { capTop: 0.045 },
+  )
+}
+
+/** A boot: rounded-off toe, heel, a darker sole. */
 function bootGeometry() {
-  return merge([place(box(0.13, 0.1, 0.25), 0, -0.015, 0.045), place(box(0.14, 0.03, 0.27, [0.45, 0.45, 0.45]), 0, -0.07, 0.045)])
+  const upper = box(0.13, 0.11, 0.26)
+  const p = upper.attributes.position
+  for (let i = 0; i < p.count; i += 1) {
+    const z = p.getZ(i)
+    const y = p.getY(i)
+    // The toe narrows and dips; the top of the toe slopes down to it.
+    if (z > 0) {
+      p.setX(i, p.getX(i) * 0.78)
+      if (y > 0) p.setY(i, y - 0.04)
+    }
+  }
+  upper.computeVertexNormals()
+  return merge([place(upper, 0, -0.015, 0.045), place(box(0.14, 0.03, 0.275, [0.42, 0.42, 0.42]), 0, -0.075, 0.045)])
+}
+
+/** A hand: a flat palm, narrower at the fingertips and curled forward (as on a grip). */
+function handGeometry() {
+  const palm = box(0.075, 0.095, 0.05)
+  const p = palm.attributes.position
+  for (let i = 0; i < p.count; i += 1) {
+    if (p.getY(i) < 0) {
+      p.setZ(i, p.getZ(i) + 0.014)
+      p.setX(i, p.getX(i) * 0.85)
+    }
+  }
+  palm.computeVertexNormals()
+  return place(palm, 0, -0.03, 0)
 }
 
 export function buildSoldierGeometries() {
   return {
-    pelvis: box(0.34, 0.22, 0.24),
+    pelvis: pelvisGeometry(),
     torso: torsoGeometry(),
     vest: vestGeometry(),
     head: headGeometry(),
     helmet: helmetGeometry(),
-    upperArm: limbGeometry(0.062, 0.27),
-    foreArm: limbGeometry(0.055, 0.27),
-    thigh: limbGeometry(0.085, 0.41),
-    shin: limbGeometry(0.073, 0.41),
+    upperArm: upperArmGeometry(),
+    foreArm: foreArmGeometry(),
+    thigh: thighGeometry(),
+    shin: shinGeometry(),
     boot: bootGeometry(),
-    hand: tint(new IcosahedronGeometry(0.055, 0), 1, 1, 1),
+    hand: handGeometry(),
   }
 }
 
