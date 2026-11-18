@@ -16,7 +16,7 @@ import {
 } from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
-import { BUILD_TYPES } from '../sim/structures'
+import { BUILD_TYPES } from '../sim/pieces'
 
 /**
  * Geometry for build mode's own pieces (the ones the battlefield's cover renderer
@@ -173,13 +173,86 @@ function pieceParts(key, seed, out) {
       out.push(place(tint(new DodecahedronGeometry(0.9, 0), '#8d8a84', v), 0, 0.5, 0, seed, seed * 3, 0, 1.05, 0.75, 0.95))
       out.push(place(tint(new DodecahedronGeometry(0.45, 0), '#7c7973', v), 0.75, 0.25, 0.4, seed * 2))
       break
+    case 'carwreck':
+      out.push(place(box(4.0, 0.7, 1.8, '#7a4a32', v), 0, 0.65, 0))
+      out.push(place(box(2.2, 0.6, 1.6, '#6b3f2b', v), -0.3, 1.25, 0))
+      out.push(place(box(2.0, 0.45, 1.5, '#1e2328'), -0.3, 1.27, 0))
+      for (const x of [-1.3, 1.3]) for (const z of [-0.95, 0.95]) out.push(place(cyl(0.36, 0.36, 0.25, 8, '#1b1b1b'), x, 0.36, z, Math.PI / 2))
+      break
+    case 'rubble':
+      for (let k = 0; k < 6; k += 1) {
+        const a = k * 1.7 + seed * 5
+        out.push(place(box(0.9 + (k % 3) * 0.3, 0.4 + (k % 2) * 0.3, 0.8, k % 2 ? '#9a958c' : '#7f7a72', v), Math.cos(a) * 0.8, 0.3, Math.sin(a) * 0.7, a, a * 2, a * 0.5))
+      }
+      out.push(place(box(0.08, 0.08, 1.8, '#5a3a24'), 0.3, 0.75, -0.2, 0.4, 0.8, 0))
+      break
+    case 'palm': {
+      for (let k = 0; k < 5; k += 1) out.push(place(cyl(0.18, 0.22, 1.25, 6, k % 2 ? '#8a6a44' : '#7a5c3a'), Math.sin(k * 0.35) * 0.3, 0.62 + k * 1.2, 0, 0, 0, -0.06 * k))
+      for (let k = 0; k < 7; k += 1) {
+        const a = (k / 7) * Math.PI * 2 + seed
+        out.push(place(box(0.5, 0.06, 2.4, '#4f8a3a', v), Math.sin(a) * 1.1 + 0.6, 6.0, Math.cos(a) * 1.1, 0.35, a, 0))
+      }
+      break
+    }
+    case 'deadtree':
+      out.push(place(cyl(0.16, 0.3, 4.5, 6, '#5a4a3a', v), 0, 2.25, 0))
+      for (let k = 0; k < 4; k += 1) {
+        const a = k * 1.6 + seed * 4
+        out.push(place(cyl(0.05, 0.1, 1.8, 5, '#5a4a3a', v), Math.sin(a) * 0.6, 3.2 + k * 0.35, Math.cos(a) * 0.6, Math.cos(a) * 0.9, 0, -Math.sin(a) * 0.9))
+      }
+      break
+    case 'cactus':
+      out.push(place(cyl(0.3, 0.34, 2.8, 8, '#4f7d3a', v), 0, 1.4, 0))
+      out.push(place(cyl(0.18, 0.18, 1.0, 6, '#4f7d3a', v), 0.55, 1.6, 0, 0, 0, 0.0))
+      out.push(place(cyl(0.18, 0.18, 0.5, 6, '#4f7d3a', v), 0.32, 1.2, 0, 0, 0, Math.PI / 2))
+      out.push(place(cyl(0.16, 0.16, 0.8, 6, '#4f7d3a', v), -0.5, 2.0, 0))
+      out.push(place(cyl(0.16, 0.16, 0.4, 6, '#4f7d3a', v), -0.3, 1.65, 0, 0, 0, Math.PI / 2))
+      break
+    case 'dune':
+      out.push(place(tint(new IcosahedronGeometry(1, 2), '#d6b77c', v), 0, -0.2, 0, 0, 0, 0, 3.6, 1.1, 1.4))
+      break
+    case 'snowpine':
+      out.push(place(cyl(0.22, 0.32, 2.4, 6, '#5a3f28'), 0, 1.2, 0))
+      for (let k = 0; k < 3; k += 1) {
+        out.push(place(tint(new ConeGeometry(1.7 - k * 0.42, 1.9, 7), '#2d5a36', v), 0, 2.4 + k * 1.15, 0))
+        out.push(place(tint(new ConeGeometry(1.1 - k * 0.3, 0.8, 7), '#eef3f6'), 0, 2.95 + k * 1.15, 0))
+      }
+      break
     default:
       break
   }
 }
 
 /** Kinds drawn here (the rest go through the cover renderer). */
-export const OWN_PIECES = new Set(['trench', 'sandwall', 'pipes', 'tanktrap', 'teeth', 'wire', 'bunker', 'tower', 'helipad', 'camonet', 'floodlight', 'radiomast', 'ammocrate', 'drum', 'fuel', 'hay', 'fence', 'tree', 'bush', 'rock'])
+export const OWN_PIECES = new Set([
+  'trench',
+  'sandwall',
+  'pipes',
+  'tanktrap',
+  'teeth',
+  'wire',
+  'bunker',
+  'tower',
+  'helipad',
+  'camonet',
+  'floodlight',
+  'radiomast',
+  'ammocrate',
+  'drum',
+  'fuel',
+  'hay',
+  'fence',
+  'tree',
+  'bush',
+  'rock',
+  'carwreck',
+  'rubble',
+  'palm',
+  'deadtree',
+  'cactus',
+  'dune',
+  'snowpine',
+])
 
 /** Extra trim on pieces whose boxes the cover renderer draws (e.g. tower legs, net poles). */
 const ALSO_OWN = new Set(['tower', 'camonet', 'floodlight', 'radiomast'])

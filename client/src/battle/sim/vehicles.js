@@ -176,6 +176,17 @@ export function spawnVehicles(w, typeKey, team, x, z, count, order) {
   return { spawned, limited: n < count ? `Vehicle limit reached` : null }
 }
 
+/** One vehicle exactly at (x, z) facing `yaw`, no drop-in (loading a save). */
+export function spawnVehicleAt(w, typeKey, team, x, z, yaw, order) {
+  const v = w.veh.list.find((c) => !c.used)
+  if (!v) return null
+  resetVehicle(v, typeKey, team, x, z, yaw, order)
+  v.dropY = 0
+  if (v.spec.air) v.y = v.spec.alt
+  w.version += 1
+  return v
+}
+
 function resetVehicle(v, typeKey, team, x, z, yaw, order) {
   const spec = UNIT_TYPES[typeKey].vehicle
   v.id = nextVehicleId++

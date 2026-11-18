@@ -63,7 +63,7 @@ export default function Panels({ onExit }) {
   if (panel === 'exit')
     return (
       <Modal title="Leave this battle?" onClose={close} small>
-        <p className="ff-modal__text">You'll go back to the Sea Fort. This battle isn't saved yet (saves come in a later update).</p>
+        <p className="ff-modal__text">You'll go back to the Sea Fort. Anything not saved in the Saves tab is lost.</p>
         <div className="ff-modal__buttons">
           <button type="button" className="ff-btn" onClick={close}>
             Stay

@@ -4,6 +4,7 @@ import { MAPS } from '../battle/maps'
 import { UNIT_ORDER, UNIT_TYPES } from '../battle/sim/units'
 import { useApp } from '../store/app'
 import { useProgress, ZOMBIE_BADGES } from '../store/progress'
+import { useSaves } from '../store/saves'
 import { HelpBody, SettingsBody } from '../ui/SettingsHelp'
 import { STATIONS } from './seaFort'
 import { useLobby } from './lobbyState'
@@ -30,10 +31,42 @@ function Modal({ title, kicker, onClose, wide, children }) {
   )
 }
 
+function SavedBattles() {
+  const saves = useSaves((s) => s.saves)
+  const startBattle = useApp((s) => s.startBattle)
+  if (!saves.length) return null
+  return (
+    <section className="ff-saved">
+      <h3>Saved battlefields</h3>
+      {saves.map((s) => (
+        <div key={s.id} className="ff-save">
+          <div className="ff-save__info">
+            <span className="ff-save__name">{s.name}</span>
+            <span className="ff-save__meta">
+              {s.counts.soldiers} soldiers · {s.counts.vehicles} vehicles · {s.counts.pieces} built
+            </span>
+          </div>
+          <button
+            type="button"
+            className="ff-btn ff-btn--small ff-btn--accent"
+            onClick={() => {
+              sfx.click()
+              startBattle(s.mapId, 'sandbox', s.id)
+            }}
+          >
+            Play
+          </button>
+        </div>
+      ))}
+    </section>
+  )
+}
+
 function SandboxPanel() {
   const startBattle = useApp((s) => s.startBattle)
   return (
     <div className="ff-maps">
+      <SavedBattles />
       {MAPS.map((m) => (
         <section key={m.id} className="ff-mapcard">
           <MapPreview entry={m} />
@@ -56,14 +89,7 @@ function SandboxPanel() {
           </div>
         </section>
       ))}
-      <section className="ff-mapcard ff-mapcard--soon">
-        <div className="ff-mapcard__body">
-          <div className="ff-mapcard__title">
-            <h3>More battlefields</h3>
-          </div>
-          <p>Desert, snow, beach and city maps are on the way.</p>
-        </div>
-      </section>
+
     </div>
   )
 }

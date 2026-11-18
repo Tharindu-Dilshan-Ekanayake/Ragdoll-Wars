@@ -2,7 +2,9 @@ import { useProgress } from '@react-three/drei'
 import { useCallback, useEffect, useState } from 'react'
 
 import { startAmbience, stopAmbience } from '../audio/sfx'
+import { useApp } from '../store/app'
 import { useQuality } from '../store/quality'
+import { getSave } from '../store/saves'
 import BattleScene from './BattleScene'
 import Hud from './hud/Hud'
 import { useHud } from './hud/hudStore'
@@ -10,6 +12,7 @@ import { startHudTicker } from './hud/hudTicker'
 import { mapById } from './maps'
 import { disposeTextures } from './render/textures'
 import { createWorld, initZombieMode, setCaps } from './sim/world'
+import { applySave } from './sim/saveGame'
 import { battle } from './state'
 
 /**
@@ -95,6 +98,10 @@ export default function Battle({ mapId, mode = 'sandbox', onExit }) {
         if (cancelled) return
         const world = createWorld(m.default, capsFrom(useQuality.getState().settings), mode)
         if (mode === 'zombies') initZombieMode(world)
+        // Opening a saved battlefield (from the lobby or another map's Saves tab).
+        const saveId = useApp.getState().takePendingSave()
+        const save = saveId ? getSave(saveId) : null
+        if (save && save.mapId === m.default.id && mode === 'sandbox') applySave(world, save.data)
         useHud.setState({ mode, team: 0, zombie: null, placing: null, dockTab: 'units' })
         teardown = installWorld(world)
         setMap(m.default)

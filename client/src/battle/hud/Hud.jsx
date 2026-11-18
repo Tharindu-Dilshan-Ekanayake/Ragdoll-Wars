@@ -7,6 +7,10 @@ import { TEAMS } from '../sim/constants'
 import { BUILD_GROUPS, BUILD_TYPES } from '../sim/structures'
 import { DOCK_GROUPS, UNIT_ORDER, UNIT_TYPES } from '../sim/units'
 import { useProgress } from '../../store/progress'
+import { MAX_SAVES, useSaves } from '../../store/saves'
+import { MAPS } from '../maps'
+import { applySave, saveCounts, serialize } from '../sim/saveGame'
+import { battle } from '../state'
 import { deleteSelection, deselect, focusSelection, giveOrder, quickBattle, restartRun, selectAll, startWaveNow } from '../commands'
 import { PRICES } from '../sim/zombies'
 import { BodyDiagram, Glyph, WeaponIcon } from './icons'
@@ -286,6 +290,84 @@ function Rail() {
   )
 }
 
+const mapName = (id) => MAPS.find((m) => m.id === id)?.name || id
+
+/** The Saves tab: keep this battlefield, or bring back one saved earlier. */
+function SavesPanel() {
+  const saves = useSaves((s) => s.saves)
+  const add = useSaves((s) => s.add)
+  const remove = useSaves((s) => s.remove)
+  const showToast = useHud((s) => s.showToast)
+  const save = () => {
+    const w = battle.world
+    if (!w) return
+    const data = serialize(w)
+    const counts = saveCounts(data)
+    if (!counts.soldiers && !counts.vehicles && !counts.pieces && !counts.mines) {
+      showToast('Nothing to save yet - put something on the battlefield first', 'info')
+      return
+    }
+    const when = new Date().toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    if (!add({ name: `${mapName(data.mapId)} · ${when}`, mapId: data.mapId, savedAt: Date.now(), counts, data })) {
+      showToast(`All ${MAX_SAVES} slots are full - delete one first`)
+      sfx.error()
+      return
+    }
+    showToast('Battlefield saved', 'info')
+    sfx.select()
+  }
+  const load = (s) => {
+    const w = battle.world
+    if (!w) return
+    if (s.mapId === w.map.id) {
+      applySave(w, s.data)
+      showToast(`Loaded ${s.name}`, 'info')
+      sfx.place()
+    } else {
+      useApp.getState().startBattle(s.mapId, 'sandbox', s.id)
+    }
+  }
+  return (
+    <div className="ff-saves">
+      <div className="ff-saves__head">
+        <button type="button" className="ff-btn ff-btn--accent" onClick={save}>
+          Save this battlefield
+        </button>
+        <span className="ff-saves__count">
+          {saves.length}/{MAX_SAVES} slots · saved in this browser
+        </span>
+      </div>
+      {saves.length === 0 && <div className="ff-saves__empty">No saved battlefields yet. Set up a fight, then save it here to play it again later.</div>}
+      <div className="ff-saves__list">
+        {saves.map((s) => (
+          <div key={s.id} className="ff-save">
+            <div className="ff-save__info">
+              <span className="ff-save__name">{s.name}</span>
+              <span className="ff-save__meta">
+                {s.counts.soldiers} soldiers · {s.counts.vehicles} vehicles · {s.counts.pieces} built · {s.counts.mines} mines
+              </span>
+            </div>
+            <button type="button" className="ff-btn ff-btn--small" onClick={() => load(s)}>
+              Load
+            </button>
+            <button
+              type="button"
+              className="ff-iconbtn ff-iconbtn--small"
+              title="Delete"
+              onClick={() => {
+                remove(s.id)
+                sfx.remove()
+              }}
+            >
+              <Glyph name="trash" className="ff-ico" />
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function Tray() {
   const placing = useHud((s) => s.placing)
   const team = useHud((s) => s.team)
@@ -299,6 +381,7 @@ function Tray() {
   const building = tab === 'build'
   const priced = useHud((s) => s.mode === 'zombies')
   const price = (key) => (priced && PRICES[key] ? <span className="ff-card__price">${PRICES[key]}</span> : null)
+
   return (
     <div className={`ff-tray ${hidden ? 'is-hidden' : ''}`}>
       <Hint />
@@ -306,6 +389,7 @@ function Tray() {
         {[
           ['units', 'Units'],
           ['build', 'Build'],
+          ...(priced ? [] : [['saves', 'Saves']]),
         ].map(([key, label]) => (
           <button
             key={key}
@@ -333,7 +417,9 @@ function Tray() {
           </button>
         )}
       </div>
-      {building ? (
+      {tab === 'saves' ? (
+        <SavesPanel />
+      ) : building ? (
         <div className="ff-tray__cards">
           <button type="button" className="ff-tray__fold" onClick={toggleDock} title={hidden ? 'Show' : 'Hide'}>
             <Glyph name="chevron" className={`ff-ico ${hidden ? 'is-flipped' : ''}`} />

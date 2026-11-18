@@ -596,6 +596,70 @@ button {
 .ff-zpanel .ff-badges {
   justify-content: flex-start;
 }
+/* --- Saves ------------------------------------------------------------------------- */
+.ff-saves {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--u) * 8);
+  width: min(720px, calc(100vw - 32px));
+  max-height: calc(var(--u) * 210);
+  padding: calc(var(--u) * 10);
+  background: var(--ff-bg);
+  border: 1px solid var(--ff-line);
+  border-radius: var(--ff-radius);
+  overflow-y: auto;
+}
+.ff-saves__head {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u) * 12);
+  flex-wrap: wrap;
+}
+.ff-saves__count,
+.ff-saves__empty {
+  color: var(--ff-dim);
+  font-size: calc(var(--u) * 13);
+}
+.ff-saves__list,
+.ff-saved {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--u) * 6);
+}
+.ff-saved {
+  grid-column: 1 / -1;
+  padding: calc(var(--u) * 10);
+  border-radius: var(--ff-radius);
+  background: rgba(255, 138, 31, 0.08);
+  border: 1px solid rgba(255, 138, 31, 0.25);
+}
+.ff-saved h3 {
+  margin: 0 0 calc(var(--u) * 4);
+}
+.ff-save {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u) * 10);
+  padding: calc(var(--u) * 6) calc(var(--u) * 10);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+}
+.ff-save__info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.ff-save__name {
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ff-save__meta {
+  color: var(--ff-dim);
+  font-size: calc(var(--u) * 12);
+}
 .ff-tray__tabs {
   display: flex;
   gap: calc(var(--u) * 6);

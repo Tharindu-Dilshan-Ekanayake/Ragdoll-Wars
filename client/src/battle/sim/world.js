@@ -31,7 +31,7 @@ import { BODIES_PER_RAGDOLL, startRagdoll, stepRagdoll } from './ragdoll.js'
 import { animate, J_PELVIS, wrapAngle } from './rig.js'
 import { makeSoldier, resetSoldier } from './soldier.js'
 import { createSpatial, rebuildSpatial } from './spatial.js'
-import { BUILD_TYPES, clearStructures, createBuild, inWire, placeStructures, settleStructures, wireZones } from './structures.js'
+import { BUILD_TYPES, clearStructures, createBuild, inWire, mapObstacles, placeStructures, settleStructures, wireZones } from './structures.js'
 import { initZombieMode, onZombieKilled, updateZombieMode, zombieStep } from './zombies.js'
 import { HEAVY_SHARE, UNIT_TYPES } from './units.js'
 import {
@@ -82,12 +82,15 @@ function coverSpotsFor(obs) {
 
 export function createWorld(map, caps, mode = 'sandbox') {
   // The map's own obstacles plus whatever gets built (structures.js) live here.
-  const obsMap = { ...map, obstacles: map.obstacles.slice() }
+  const baseObstacles = mapObstacles(map)
+  const obsMap = { ...map, obstacles: baseObstacles.slice() }
   const obs = buildObstacles(obsMap)
   const grid = createNavGrid(obsMap, obs)
   const slots = Array.from({ length: MAX_SLOTS }, (_, i) => makeSoldier(i))
   return {
     map,
+    /** The map's obstacles plus its scenery pieces (built pieces are added on top). */
+    baseObstacles,
     obsMap,
     obs,
     grid,
@@ -135,7 +138,7 @@ export function setCaps(w, caps) {
  * lets go of their cover spot (they'll find a new one at their next think).
  */
 export function rebuildStatic(w) {
-  const obstacles = w.map.obstacles.slice()
+  const obstacles = w.baseObstacles.slice()
   for (const st of w.build.list) for (const o of st.boxes) obstacles.push(o)
   w.obsMap.obstacles = obstacles
   w.obs = buildObstacles(w.obsMap)

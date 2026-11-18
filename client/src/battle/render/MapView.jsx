@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import {
   BackSide,
+  BoxGeometry,
   BufferGeometry,
   CanvasTexture,
   Color,
@@ -24,7 +25,9 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 
 import { useQuality } from '../../store/quality'
 import { addFrameHook, PHASE } from '../state'
+import { mapPieces } from '../sim/pieces'
 import { BoxBatch, buildCover, col, hash } from './coverGeometry'
+import { buildPiecesGeometry, coverBoxesOf } from './structureModels'
 import { getTextures } from './textures'
 
 /**
@@ -52,6 +55,28 @@ function noise(x, z) {
 }
 const fbm = (x, z) => noise(x, z) * 0.6 + noise(x * 2.3, z * 2.3) * 0.3 + noise(x * 5.1, z * 5.1) * 0.1
 
+/**
+ * How a battlefield looks: ground colours, mud and road paint, hills, trees and fence.
+ * A map overrides any of these with `map.theme` (Training Grounds uses the defaults).
+ * `tree`: 'pine' | 'snowpine' | 'palm' | 'dead' | 'cactus'.
+ */
+const DEFAULT_THEME = {
+  grassA: '#6c8c43',
+  grassB: '#8aa04f',
+  dry: '#a19c5e',
+  outside: '#5c7a3a',
+  mud: [92, 72, 50],
+  road: [140, 111, 74],
+  rut: [95, 72, 46],
+  ice: [214, 232, 240],
+  hillNear: '#56703a',
+  hillFar: '#7f9a88',
+  tree: 'pine',
+  trunk: '#5a3f28',
+  fence: '#7a5a3a',
+}
+const themeOf = (map) => ({ ...DEFAULT_THEME, ...(map.theme || {}) })
+
 
 
 const GROUND_W = 340
@@ -71,10 +96,14 @@ function paintGround(map) {
   small.height = N
   const sctx = small.getContext('2d')
   const img = sctx.createImageData(N, N)
-  const grassA = col('#6c8c43')
-  const grassB = col('#8aa04f')
-  const dry = col('#a19c5e')
-  const outside = col('#5c7a3a')
+  const theme = themeOf(map)
+  const grassA = col(theme.grassA)
+  const grassB = col(theme.grassB)
+  const dry = col(theme.dry)
+  const outside = col(theme.outside)
+  const [mr0, mg0, mb0] = theme.mud
+  const [rr0, rg0, rb0] = theme.road
+  const [ur0, ug0, ub0] = theme.rut
   const tmp = new Color()
   const hx = map.width / 2
   const hz = map.depth / 2
@@ -109,27 +138,41 @@ function paintGround(map) {
   // Mud first, roads over it.
   for (const [mx, mz, mr] of map.mud) {
     const g = ctx.createRadialGradient(toX(mx), toY(mz), 0, toX(mx), toY(mz), mr * kx)
-    g.addColorStop(0, 'rgba(92,72,50,0.6)')
-    g.addColorStop(0.65, 'rgba(98,78,54,0.35)')
-    g.addColorStop(1, 'rgba(98,78,54,0)')
+    g.addColorStop(0, `rgba(${mr0},${mg0},${mb0},0.6)`)
+    g.addColorStop(0.65, `rgba(${mr0 + 6},${mg0 + 6},${mb0 + 4},0.35)`)
+    g.addColorStop(1, `rgba(${mr0 + 6},${mg0 + 6},${mb0 + 4},0)`)
     ctx.fillStyle = g
     ctx.fillRect(toX(mx - mr), toY(mz - mr), mr * 2 * kx, mr * 2 * kz)
   }
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
+  // Frozen creeks: pale, glassy bands under the roads.
+  const [ir, ig, ib] = theme.ice
+  for (const r of map.ice || []) {
+    for (const [w, a] of [
+      [r.width * 2 + 2.5, 0.4],
+      [r.width * 2, 0.9],
+    ]) {
+      ctx.strokeStyle = `rgba(${ir},${ig},${ib},${a})`
+      ctx.lineWidth = w * kx
+      ctx.beginPath()
+      r.points.forEach(([x, z], i) => (i ? ctx.lineTo(toX(x), toY(z)) : ctx.moveTo(toX(x), toY(z))))
+      ctx.stroke()
+    }
+  }
   for (const r of map.roads) {
     for (const [w, a] of [
       [r.width * 2 + 3, 0.35],
       [r.width * 2, 0.85],
     ]) {
-      ctx.strokeStyle = `rgba(140,111,74,${a})`
+      ctx.strokeStyle = `rgba(${rr0},${rg0},${rb0},${a})`
       ctx.lineWidth = w * kx
       ctx.beginPath()
       r.points.forEach(([x, z], i) => (i ? ctx.lineTo(toX(x), toY(z)) : ctx.moveTo(toX(x), toY(z))))
       ctx.stroke()
     }
     // Wheel ruts.
-    ctx.strokeStyle = 'rgba(95,72,46,0.35)'
+    ctx.strokeStyle = `rgba(${ur0},${ug0},${ub0},0.35)`
     ctx.lineWidth = 0.5 * kx
     for (const off of [-0.9, 0.9]) {
       ctx.beginPath()
@@ -161,6 +204,8 @@ function buildGround(map) {
     // Rolling ground outside the fence; the battlefield itself is flat.
     const out = Math.max(Math.abs(x) - map.width / 2 - 7, Math.abs(z) - map.depth / 2 - 7, 0)
     if (out > 0) p.setY(i, Math.min(1, out / 25) * (fbm(x * 0.03, z * 0.03) * 7 - 1.5))
+    // A beach: past the shoreline the ground slopes away under the water.
+    if (map.sea && z < map.sea.z) p.setY(i, Math.max(-2.5, (z - map.sea.z) * 0.25))
   }
   g.computeVertexNormals()
   return g
@@ -190,7 +235,7 @@ function buildFence(map) {
   const b = new BoxBatch()
   const hx = map.width / 2
   const hz = map.depth / 2
-  const c = col('#7a5a3a')
+  const c = col(themeOf(map).fence)
   const post = (x, z) => b.box(x, 0.55, z, 0.14, 1.1, 0.14, c, 0)
   for (let x = -hx; x <= hx + 0.01; x += 5) {
     post(x, -hz)
@@ -209,14 +254,14 @@ function buildFence(map) {
   return b.build()
 }
 
-function buildHills(radius0, radius1, scale = 1) {
+function buildHills(radius0, radius1, scale = 1, theme = DEFAULT_THEME, seaZ = null) {
   const seg = 72
   const rings = 4
   const pos = []
   const colors = []
   const idx = []
-  const near = col('#56703a')
-  const far = col('#7f9a88')
+  const near = col(theme.hillNear)
+  const far = col(theme.hillFar)
   for (let r = 0; r <= rings; r += 1) {
     const t = r / rings
     const rad = radius0 + (radius1 - radius0) * t
@@ -224,7 +269,9 @@ function buildHills(radius0, radius1, scale = 1) {
       const a = (s / seg) * Math.PI * 2
       const x = Math.cos(a) * rad
       const z = Math.sin(a) * rad * 0.8
-      const h = r === 0 ? 0 : (fbm(Math.cos(a) * 3 + 5, Math.sin(a) * 3 + r) * 26 + 6) * Math.sin(t * Math.PI * 0.85) * scale
+      let h = r === 0 ? 0 : (fbm(Math.cos(a) * 3 + 5, Math.sin(a) * 3 + r) * 26 + 6) * Math.sin(t * Math.PI * 0.85) * scale
+      // No hills out at sea.
+      if (seaZ !== null && z < seaZ) h = -6
       pos.push(x, h - 2, z)
       const c = near.clone().lerp(far, t)
       colors.push(c.r, c.g, c.b)
@@ -243,6 +290,62 @@ function buildHills(radius0, radius1, scale = 1) {
   g.setIndex(idx)
   g.computeVertexNormals()
   return g
+}
+
+/** Crown (and trunk) for the map's tree style. */
+function treeGeometries(kind, trunkHex) {
+  const tint = (g, c) => {
+    const n = g.attributes.position.count
+    const arr = new Float32Array(n * 3)
+    for (let i = 0; i < n; i += 1) {
+      arr[i * 3] = c.r
+      arr[i * 3 + 1] = c.g
+      arr[i * 3 + 2] = c.b
+    }
+    g.setAttribute('color', new Float32BufferAttribute(arr, 3))
+    return g
+  }
+  const mergeAll = (parts) => {
+    const g = mergeGeometries(parts.map((p) => (p.index ? p.toNonIndexed() : p)))
+    for (const p of parts) p.dispose()
+    return g
+  }
+  if (kind === 'snowpine') {
+    const parts = []
+    for (let k = 0; k < 3; k += 1) {
+      parts.push(tint(new ConeGeometry(1.8 - k * 0.42, 2.6 - k * 0.3, 7).translate(0, 2.8 + k * 1.15, 0), col('#2d5a36')))
+      parts.push(tint(new ConeGeometry(1.15 - k * 0.3, 0.9, 7).translate(0, 3.5 + k * 1.15, 0), col('#eef3f6')))
+    }
+    return { crown: mergeAll(parts), trunk: new CylinderGeometry(0.2, 0.3, 2.4, 6).translate(0, 1.2, 0), trunkHex }
+  }
+  if (kind === 'palm') {
+    const parts = []
+    for (let k = 0; k < 7; k += 1) {
+      const a = (k / 7) * Math.PI * 2
+      const leaf = new BoxGeometry(0.5, 0.06, 2.6).translate(0, 0, 1.2).rotateX(0.35).rotateY(a).translate(0.5, 5.8, 0)
+      parts.push(tint(leaf, col(k % 2 ? '#4f8a3a' : '#5d9a42')))
+    }
+    return { crown: mergeAll(parts), trunk: new CylinderGeometry(0.16, 0.24, 6, 6).translate(0, 3, 0).rotateZ(-0.08), trunkHex: '#8a6a44' }
+  }
+  if (kind === 'dead') {
+    const parts = []
+    for (let k = 0; k < 4; k += 1) {
+      const a = k * 1.7
+      parts.push(tint(new CylinderGeometry(0.05, 0.1, 1.8, 5).translate(0, 0.9, 0).rotateZ(0.9).rotateY(a).translate(0, 3 + k * 0.35, 0), col('#5a4a3a')))
+    }
+    return { crown: mergeAll(parts), trunk: new CylinderGeometry(0.16, 0.3, 4.6, 6).translate(0, 2.3, 0), trunkHex: '#5a4a3a' }
+  }
+  if (kind === 'cactus') {
+    const g = col('#4f7d3a')
+    const parts = [
+      tint(new CylinderGeometry(0.18, 0.18, 1.0, 6).translate(0.55, 1.6, 0), g),
+      tint(new CylinderGeometry(0.18, 0.18, 0.5, 6).rotateZ(Math.PI / 2).translate(0.32, 1.2, 0), g),
+      tint(new CylinderGeometry(0.16, 0.16, 0.8, 6).translate(-0.5, 2.0, 0), g),
+      tint(new CylinderGeometry(0.16, 0.16, 0.4, 6).rotateZ(Math.PI / 2).translate(-0.3, 1.65, 0), g),
+    ]
+    return { crown: mergeAll(parts), trunk: new CylinderGeometry(0.3, 0.34, 2.8, 8).translate(0, 1.4, 0), trunkHex: '#4f7d3a' }
+  }
+  return { crown: pineGeometry(), trunk: new CylinderGeometry(0.2, 0.3, 2.4, 6).translate(0, 1.2, 0), trunkHex }
 }
 
 function pineGeometry() {
@@ -406,9 +509,15 @@ export default function MapView({ map, focus }) {
     tex.grass.repeat.set(1, 1)
     const ground = terrain ? buildGround(map) : null
     const groundMap = terrain ? paintGround(map) : null
-    const cover = buildCover(map)
+    // The map's cover plus its scenery pieces (the classic kinds through the cover
+    // renderer, the rest as one merged mesh).
+    const pieces = mapPieces(map)
+    const cover = buildCover({ obstacles: [...map.obstacles, ...coverBoxesOf(pieces)] })
+    const piecesGeo = pieces.length ? buildPiecesGeometry(pieces) : null
     const fence = terrain ? buildFence(map) : null
-    const hills = terrain ? buildHills(...(map.hills || [165, 260]), map.hillScale ?? 1) : null
+    const hills = terrain ? buildHills(...(map.hills || [165, 260]), map.hillScale ?? 1, themeOf(map), map.sea ? map.sea.z : null) : null
+    const sea = terrain && map.sea ? new PlaneGeometry(1200, 600).rotateX(-Math.PI / 2).translate(0, -0.35, map.sea.z - 300) : null
+    const surf = terrain && map.sea ? new PlaneGeometry(1200, 3).rotateX(-Math.PI / 2).translate(0, -0.3, map.sea.z - 1) : null
     const mats = {
       ground: groundMap ? groundMaterial(groundMap, tex.grass) : null,
       concrete: new MeshLambertMaterial({ vertexColors: true, map: tex.concrete }),
@@ -418,8 +527,10 @@ export default function MapView({ map, focus }) {
       wood: new MeshLambertMaterial({ vertexColors: true, map: tex.planks }),
       roof: new MeshLambertMaterial({ vertexColors: true, map: tex.corrugated }),
       plain: new MeshLambertMaterial({ vertexColors: true }),
+      sea: new MeshLambertMaterial({ color: '#2d6fc4' }),
+      surf: new MeshLambertMaterial({ color: '#e8f4fa', transparent: true, opacity: 0.75 }),
     }
-    return { ground, groundMap, cover, fence, hills, mats }
+    return { ground, groundMap, cover, piecesGeo, fence, hills, sea, surf, mats }
   }, [map, terrain])
 
   // Trees: scenery outside the fence (thinned by the preset) plus the few inside.
@@ -427,9 +538,11 @@ export default function MapView({ map, focus }) {
     const outside = terrain ? map.trees.filter((_, i) => (i * 0.618) % 1 < decor) : []
     const inside = map.obstacles.filter((o) => o.kind === 'tree').map((o) => ({ x: o.x, z: o.z, s: 0.9, r: 0 }))
     const all = [...outside, ...inside]
-    const trunkGeo = new CylinderGeometry(0.2, 0.3, 2.4, 6).translate(0, 1.2, 0)
-    const crownGeo = pineGeometry()
-    const trunkMat = new MeshLambertMaterial({ color: '#5a3f28' })
+    const theme = themeOf(map)
+    const treeGeo = treeGeometries(theme.tree, theme.trunk)
+    const trunkGeo = treeGeo.trunk
+    const crownGeo = treeGeo.crown
+    const trunkMat = new MeshLambertMaterial({ color: treeGeo.trunkHex })
     const crownMat = new MeshLambertMaterial({ vertexColors: true })
     const trunks = new InstancedMesh(trunkGeo, trunkMat, all.length)
     const crowns = new InstancedMesh(crownGeo, crownMat, all.length)
@@ -458,6 +571,9 @@ export default function MapView({ map, focus }) {
       for (const g of Object.values(world.cover)) g?.dispose()
       world.fence?.dispose()
       world.hills?.dispose()
+      world.piecesGeo?.dispose()
+      world.sea?.dispose()
+      world.surf?.dispose()
       for (const m of Object.values(world.mats)) m?.dispose()
     },
     [world],
@@ -479,6 +595,9 @@ export default function MapView({ map, focus }) {
       <Lights focus={focus} />
       {world.ground && <mesh geometry={world.ground} material={mats.ground} receiveShadow={shadows} />}
       {world.hills && <mesh geometry={world.hills} material={mats.plain} />}
+      {world.sea && <mesh geometry={world.sea} material={mats.sea} />}
+      {world.surf && <mesh geometry={world.surf} material={mats.surf} />}
+      {world.piecesGeo && <mesh geometry={world.piecesGeo} material={mats.plain} castShadow={shadows} receiveShadow={shadows} />}
       <mesh geometry={cover.concrete} material={mats.concrete} castShadow={shadows} receiveShadow={shadows} />
       <mesh geometry={cover.bags} material={mats.bags} castShadow={shadows} receiveShadow={shadows} />
       <mesh geometry={cover.crates} material={mats.crates} castShadow={shadows} receiveShadow={shadows} />
