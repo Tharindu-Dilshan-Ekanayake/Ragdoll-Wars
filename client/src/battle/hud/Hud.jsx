@@ -18,6 +18,7 @@ import { PRICES } from '../sim/zombies'
 import TouchStick from '../../lobby/TouchStick'
 import { toggleWalk } from '../walk/walkMode'
 import { BodyDiagram, Glyph, WeaponIcon } from './icons'
+import { renderThumbnails } from './thumbnails'
 import { useHud } from './hudStore'
 import Panels from './Panels'
 
@@ -400,6 +401,39 @@ function SavesPanel() {
   )
 }
 
+/** Every card's key, units and build pieces. */
+const CARD_KEYS = [...DOCK_GROUPS.flatMap((g) => g.keys), ...BUILD_GROUPS.flatMap((g) => g.keys).filter((k) => k !== 'remove')]
+
+/**
+ * The cards' pictures (thumbnails.js renders them from the 3D models once a page; the
+ * SVG silhouettes show until they're ready).
+ */
+function useCardArt() {
+  const [thumbs, setThumbs] = useState({})
+  useEffect(() => {
+    let alive = true
+    const got = {}
+    let flushT = 0
+    const flush = () => {
+      flushT = 0
+      if (alive) setThumbs({ ...got })
+    }
+    // Let the battle's first frames go first.
+    const start = setTimeout(() => {
+      renderThumbnails(CARD_KEYS, (k, url) => {
+        got[k] = url
+        if (!flushT) flushT = setTimeout(flush, 120)
+      }).then(() => alive && flush())
+    }, 900)
+    return () => {
+      alive = false
+      clearTimeout(start)
+      clearTimeout(flushT)
+    }
+  }, [])
+  return thumbs
+}
+
 function Tray() {
   const placing = useHud((s) => s.placing)
   const team = useHud((s) => s.team)
@@ -412,7 +446,15 @@ function Tray() {
   const rotate = useHud((s) => s.rotateBuild)
   const building = tab === 'build'
   const priced = useHud((s) => s.mode === 'zombies')
+  const cash = useHud((s) => s.zombie?.cash ?? Infinity)
   const price = (key) => (priced && PRICES[key] ? <span className="ff-card__price">${PRICES[key]}</span> : null)
+  const poor = (key) => priced && PRICES[key] > cash
+  const thumbs = useCardArt()
+  const art = (key) => (
+    <span className="ff-card__art">
+      {thumbs[key] ? <img src={thumbs[key]} alt="" draggable={false} /> : <WeaponIcon type={key} className="ff-card__icon" />}
+    </span>
+  )
 
   return (
     <div className={`ff-tray ${hidden ? 'is-hidden' : ''}`}>
@@ -457,7 +499,7 @@ function Tray() {
             <Glyph name="chevron" className={`ff-ico ${hidden ? 'is-flipped' : ''}`} />
           </button>
           {BUILD_GROUPS.map((group) => [
-            <span key={group.label} className="ff-tray__group">
+            <span key={group.label} className="ff-tray__group ff-g-build">
               {group.label}
             </span>,
             ...group.keys.map((key) => {
@@ -466,14 +508,14 @@ function Tray() {
                 <button
                   type="button"
                   key={key}
-                  className={`ff-card ff-card--build ${placing === key ? 'is-on' : ''}`}
+                  className={`ff-card ff-card--build ff-g-build ${placing === key ? 'is-on' : ''} ${poor(key) ? 'is-poor' : ''}`}
                   onClick={() => {
                     setPlacing(key)
                     sfx.toggle()
                   }}
                 >
                   {price(key)}
-                  <WeaponIcon type={key} className="ff-card__icon" />
+                  {art(key)}
                   <span className="ff-card__name">{t.name}</span>
                   <span className="ff-card__role">{t.role}</span>
                 </button>
@@ -487,7 +529,7 @@ function Tray() {
           <Glyph name="chevron" className={`ff-ico ${hidden ? 'is-flipped' : ''}`} />
         </button>
         {DOCK_GROUPS.map((group) => [
-          <span key={group.label} className="ff-tray__group">
+          <span key={group.label} className={`ff-tray__group ff-g-${group.label.toLowerCase()}`}>
             {group.label}
           </span>,
           ...group.keys.map((key) => {
@@ -497,7 +539,7 @@ function Tray() {
               <button
                 type="button"
                 key={key}
-                className={`ff-card ff-card--team${team} ${placing === key ? 'is-on' : ''}`}
+                className={`ff-card ff-card--team${team} ff-g-${group.label.toLowerCase()} ${placing === key ? 'is-on' : ''} ${poor(key) ? 'is-poor' : ''}`}
                 onClick={() => {
                   setPlacing(key)
                   sfx.toggle()
@@ -505,7 +547,7 @@ function Tray() {
               >
                 {i >= 0 && <span className="ff-card__key">{(i + 1) % 10}</span>}
                 {price(key)}
-                <WeaponIcon type={key} className="ff-card__icon" />
+                {art(key)}
                 <span className="ff-card__name">{u.name}</span>
                 <span className="ff-card__role">{u.role}</span>
               </button>
