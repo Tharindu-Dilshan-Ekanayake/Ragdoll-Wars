@@ -209,15 +209,42 @@ export function buildCover(map) {
       const half = (along ? o.w : o.d) / 2 - 0.15
       for (const sgn of [-1, 1]) wood.box(o.x + (along ? sgn * half : 0), o.h / 2, o.z + (along ? 0 : sgn * half), 0.18, o.h, 0.18, c, 0)
       wood.box(o.x, o.h - 0.85, o.z, along ? o.w : 0.12, 1.3, along ? 0.12 : o.d, c, 2)
+    } else if (o.kind === 'warehouse') {
+      // A big steel shed: corrugated walls on a concrete plinth, roller doors along the
+      // side facing the middle of the map, a strip of high windows, a shallow roof.
+      const c = col(o.color || '#8d9297').multiplyScalar(v)
+      const alongX = o.w >= o.d
+      const len = alongX ? o.w : o.d
+      const deep = alongX ? o.d : o.w
+      steel.box(o.x, o.h / 2, o.z, o.w, o.h, o.d, c, 1.4)
+      concrete.box(o.x, 0.3, o.z, o.w + 0.3, 0.6, o.d + 0.3, col('#9a968c').multiplyScalar(v))
+      const side = alongX ? (o.z > 0 ? -1 : 1) : o.x > 0 ? -1 : 1
+      const doors = Math.max(1, Math.floor(len / 8.5))
+      const door = col(o.door || '#596066').multiplyScalar(v)
+      const frame = col('#d4a531')
+      for (let k = 0; k < doors; k += 1) {
+        const t = ((k + 0.5) / doors - 0.5) * len
+        const fx = alongX ? o.x + t : o.x + side * (deep / 2 + 0.05)
+        const fz = alongX ? o.z + side * (deep / 2 + 0.05) : o.z + t
+        steel.box(fx, 2.3, fz, alongX ? 4.2 : 0.1, 4.6, alongX ? 0.1 : 4.2, door, 0.9)
+        concrete.box(fx, 4.7, fz, alongX ? 4.6 : 0.14, 0.22, alongX ? 0.14 : 4.6, frame, 0)
+      }
+      const glass = col('#2b3a44')
+      for (const sgn of [-1, 1]) {
+        const wx = alongX ? o.x : o.x + sgn * (o.w / 2 + 0.04)
+        const wz = alongX ? o.z + sgn * (o.d / 2 + 0.04) : o.z
+        concrete.box(wx, o.h - 0.9, wz, alongX ? len * 0.86 : 0.08, 0.7, alongX ? 0.08 : len * 0.86, glass, 0)
+      }
+      roofs.push(roofGeometry(o.x, o.h, o.z, o.w, o.d, Math.min(2.2, deep * 0.14), col(o.roof || '#6b7176').multiplyScalar(v)))
     } else if (o.kind === 'shed') {
-      const c = col('#8f6c48').multiplyScalar(v)
+      const c = col(o.color || '#8f6c48').multiplyScalar(v)
       wood.box(o.x, o.h / 2, o.z, o.w, o.h, o.d, c, 2.4)
       // Door and window on the side facing the middle of the map.
       const sideZ = o.z > 0 ? -1 : 1
       const dark = col('#2a221b')
       wood.box(o.x - o.w * 0.2, 1.05, o.z + sideZ * (o.d / 2 + 0.03), 1.1, 2.1, 0.08, dark, 0)
       wood.box(o.x + o.w * 0.22, 1.9, o.z + sideZ * (o.d / 2 + 0.03), 1.2, 0.8, 0.08, dark, 0)
-      roofs.push(roofGeometry(o.x, o.h, o.z, o.w, o.d, 1.3, col('#5d6266')))
+      roofs.push(roofGeometry(o.x, o.h, o.z, o.w, o.d, o.roof ? 1.8 : 1.3, col(o.roof || '#5d6266')))
     }
   }
   const out = {

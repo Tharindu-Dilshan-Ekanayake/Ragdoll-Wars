@@ -8,6 +8,7 @@ import {
   Color,
   ConeGeometry,
   CylinderGeometry,
+  IcosahedronGeometry,
   DynamicDrawUsage,
   Float32BufferAttribute,
   InstancedBufferAttribute,
@@ -66,7 +67,7 @@ const fbm = (x, z) => noise(x, z) * 0.6 + noise(x * 2.3, z * 2.3) * 0.3 + noise(
 /**
  * How a battlefield looks: ground colours, mud and road paint, hills, trees and fence.
  * A map overrides any of these with `map.theme` (Training Grounds uses the defaults).
- * `tree`: 'pine' | 'snowpine' | 'palm' | 'dead' | 'cactus'.
+ * `tree`: 'pine' | 'snowpine' | 'palm' | 'dead' | 'cactus' | 'broadleaf'.
  */
 const DEFAULT_THEME = {
   grassA: '#6c8c43',
@@ -415,6 +416,26 @@ function treeGeometries(kind, trunkHex) {
       parts.push(tint(new CylinderGeometry(0.05, 0.1, 1.8, 5).translate(0, 0.9, 0).rotateZ(0.9).rotateY(a).translate(0, 3 + k * 0.35, 0), col('#5a4a3a')))
     }
     return { crown: mergeAll(parts), trunk: new CylinderGeometry(0.16, 0.3, 4.6, 6).translate(0, 2.3, 0), trunkHex: '#5a4a3a' }
+  }
+  if (kind === 'broadleaf') {
+    // A jungle tree: a tall bare trunk and a spreading canopy of leafy clumps.
+    const greens = ['#2f6b2a', '#3b7a30', '#2a5e26', '#46873a']
+    const parts = []
+    const clumps = [
+      [0, 6.6, 0, 2.4],
+      [1.7, 6.0, 0.7, 1.8],
+      [-1.4, 6.2, -0.9, 1.9],
+    ]
+    clumps.forEach(([x, y, z, r], k) => {
+      const g = new IcosahedronGeometry(r, 0).toNonIndexed()
+      g.deleteAttribute('uv')
+      g.scale(1, 0.62, 1).translate(x, y, z)
+      parts.push(tint(g, col(greens[k % greens.length])))
+    })
+    const roots = new CylinderGeometry(0.0, 0.7, 1.2, 6).translate(0, 0.6, 0).toNonIndexed()
+    roots.deleteAttribute('uv')
+    parts.push(tint(roots, col('#4a3b2b')))
+    return { crown: mergeAll(parts), trunk: new CylinderGeometry(0.22, 0.38, 6.2, 7).translate(0, 3.1, 0), trunkHex: '#6a5640' }
   }
   if (kind === 'cactus') {
     const g = col('#4f7d3a')

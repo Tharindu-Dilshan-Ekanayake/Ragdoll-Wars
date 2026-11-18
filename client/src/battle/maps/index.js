@@ -38,6 +38,27 @@ export const MAPS = [
     size: '170 × 110 m',
     load: () => import('./rubbleRow.js'),
   },
+  {
+    id: 'depot',
+    name: 'Ironhold Depot',
+    blurb: 'An army supply depot: steel warehouses and loading bays, container yards stacked two high, hesco walls, towers and a checkpoint in the middle.',
+    size: '170 × 110 m',
+    load: () => import('./ironholdDepot.js'),
+  },
+  {
+    id: 'jungle',
+    name: 'Monsoon Outpost',
+    blurb: 'Jungle camps either side of a misty river: stilt huts, watchtowers and helipads in clearings, thick jungle cover and overgrown ruins between.',
+    size: '170 × 110 m',
+    load: () => import('./monsoonOutpost.js'),
+  },
+  {
+    id: 'rustyard',
+    name: 'Rustline Yard',
+    blurb: 'A rusting scrapyard turned battlefield: rusted sheds, container stacks, rows of wrecks and scrap heaps under a dusty sky, an army camp at each end.',
+    size: '170 × 110 m',
+    load: () => import('./rustlineYard.js'),
+  },
 ]
 
 /** Zombie Horde's own battlefield (not in the sandbox map list). */

@@ -66,6 +66,24 @@ const STYLES = {
     flowers: ['#ffffff', '#f9e27c'],
     bladeShare: 0.75,
   },
+  jungle: {
+    blades: { colors: ['#2f6a2a', '#3a7a30', '#2a5c25', '#4a8a38', '#5a9a40'], height: [0.45, 1.05] },
+    props: [
+      { colors: ['#2f6428', '#3a7430', '#285a24'], scale: [0.6, 1.25], flat: 0.7, share: 0.7, lift: 0.25 },
+      { colors: ['#6b6a5e', '#5a5e52'], scale: [0.25, 0.6], flat: 0.5, share: 0.3 },
+    ],
+    flowers: ['#ff5a3c', '#ffb02e', '#ff7ab8', '#ffffff'],
+    bladeShare: 0.8,
+  },
+  scrap: {
+    blades: { colors: ['#8a7a4e', '#7c6f46', '#9a8a58', '#6d6a44'], height: [0.22, 0.48] },
+    props: [
+      { colors: ['#8a4f2c', '#a0603a', '#6e3e24', '#7b5236'], scale: [0.15, 0.45], flat: 0.45, share: 0.55 },
+      { colors: ['#6d6f70', '#58595a', '#7e7c76'], scale: [0.2, 0.5], flat: 0.55, share: 0.45 },
+    ],
+    flowers: null,
+    bladeShare: 0.6,
+  },
   marsh: {
     blades: { colors: ['#5a6440', '#4d5636', '#6b6a46', '#5f5a3e', '#45502f'], height: [0.35, 0.9] },
     props: [

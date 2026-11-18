@@ -3,7 +3,8 @@
  * has an edge: write the west (blue) half, then mirror it.
  *
  * - `box(kind, x, z, w, d, h?)`: a cover box drawn by the cover renderer (sandbag,
- *   barrier, lowwall, wall, crate, container, shed, tent, post, board, tree).
+ *   barrier, lowwall, wall, crate, container, shed, warehouse, tent, post, board,
+ *   tree). Sheds and warehouses take `{ color, roof }` in `extra`.
  * - pieces `[key, x, z, rot]`: scenery made of build-mode pieces (rock, bunker, ruin,
  *   palm, dune, car wreck, ...), fixed in place.
  */
@@ -16,6 +17,7 @@ const KIND_HEIGHT = {
   wall: 2.7,
   container: 2.6,
   shed: 3.4,
+  warehouse: 7,
   tent: 0.9,
   tree: 6,
 }
