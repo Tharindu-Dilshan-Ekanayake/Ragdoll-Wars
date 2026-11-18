@@ -17,6 +17,10 @@ export const useHud = create((set, get) => ({
   selectMode: false,
   /** Whether the dock is collapsed. */
   dockHidden: false,
+  /** Which dock page is showing: 'units' or 'build'. */
+  dockTab: 'units',
+  /** Build mode: pieces go down turned a quarter turn (1) or not (0). */
+  buildRot: 0,
 
   stats: { alive: [0, 0], lost: [0, 0], downed: [0, 0] },
   /** Selection summary: null, or { count, team, types: {key: n}, unit: {...} | null } */
@@ -35,6 +39,8 @@ export const useHud = create((set, get) => ({
   togglePause: () => set({ paused: !get().paused }),
   toggleSelectMode: () => set({ selectMode: !get().selectMode, placing: null }),
   toggleDock: () => set({ dockHidden: !get().dockHidden }),
+  setDockTab: (dockTab) => set({ dockTab, placing: null }),
+  rotateBuild: () => set({ buildRot: 1 - get().buildRot }),
   setPanel: (panel) => set({ panel }),
   showToast: (text, kind = 'warn') => set({ toast: { text, kind, id: (get().toast?.id || 0) + 1 } }),
   clearToast: (id) => {

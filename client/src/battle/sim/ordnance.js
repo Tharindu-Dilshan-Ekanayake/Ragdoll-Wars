@@ -3,6 +3,7 @@ import { collideCircle, segmentHit3D } from './obstacles.js'
 import { startRagdoll } from './ragdoll.js'
 import { J_PELVIS, wrapAngle } from './rig.js'
 import { UNIT_TYPES } from './units.js'
+import { blastStructures } from './structures.js'
 import { blastVehicles } from './vehicles.js'
 import { blastHit } from './world.js'
 
@@ -278,6 +279,7 @@ export function explode(w, x, y, z, radius, damage, attacker, anti = 1) {
   }
 
   blastVehicles(w, x, y, z, radius, damage, attacker, anti)
+  blastStructures(w, x, y, z, radius, damage, anti)
 
   // Bodies already lying here get thrown about again (within the ragdoll budget).
   const bodies = w.bodies

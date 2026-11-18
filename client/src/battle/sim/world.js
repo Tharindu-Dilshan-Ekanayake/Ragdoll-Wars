@@ -31,6 +31,7 @@ import { BODIES_PER_RAGDOLL, startRagdoll, stepRagdoll } from './ragdoll.js'
 import { animate, J_PELVIS, wrapAngle } from './rig.js'
 import { makeSoldier, resetSoldier } from './soldier.js'
 import { createSpatial, rebuildSpatial } from './spatial.js'
+import { BUILD_TYPES, clearStructures, createBuild, inWire, placeStructures, settleStructures, wireZones } from './structures.js'
 import { HEAVY_SHARE, UNIT_TYPES } from './units.js'
 import {
   callStrike,
@@ -48,7 +49,8 @@ import {
 /**
  * The battle simulation: soldiers, their AI, shooting, wounds, deaths and ragdolls, and
  * (ordnance.js) rockets, mortar shells, explosions, mines, fire and medics, and
- * (vehicles.js) jeeps, APCs, tanks, helicopters and air strikes.
+ * (vehicles.js) jeeps, APCs, tanks, helicopters and air strikes, and (structures.js)
+ * whatever the player builds on the battlefield.
  *
  * Runs on its own clock (`w.time`) scaled by `w.timeScale` (pause / 0.5x / 1x / 2x), in
  * sub-steps of at most 1/60 s. Nothing here touches three.js or React: the renderer
@@ -67,23 +69,30 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v)
  * @param {object} map a map definition (maps/*.js)
  * @param {{ units: number, corpses: number, ragdolls: number }} caps per-preset limits
  */
-export function createWorld(map, caps) {
-  const obs = buildObstacles(map)
-  const grid = createNavGrid(map, obs)
-  // Cover spots that don't sit inside another box.
+/** Cover spots that don't sit inside another box. */
+function coverSpotsFor(obs) {
   const probe = { x: 0, z: 0 }
-  const coverSpots = buildCoverSpots(obs).filter((sp) => {
+  return buildCoverSpots(obs).filter((sp) => {
     probe.x = sp.x
     probe.z = sp.z
     return !collideCircle(obs, probe, SOLDIER_RADIUS * 0.9)
   })
+}
+
+export function createWorld(map, caps) {
+  // The map's own obstacles plus whatever gets built (structures.js) live here.
+  const obsMap = { ...map, obstacles: map.obstacles.slice() }
+  const obs = buildObstacles(obsMap)
+  const grid = createNavGrid(obsMap, obs)
   const slots = Array.from({ length: MAX_SLOTS }, (_, i) => makeSoldier(i))
   return {
     map,
+    obsMap,
     obs,
     grid,
     flow: new FlowFields(grid, { budget: 1 }),
-    coverSpots,
+    coverSpots: coverSpotsFor(obs),
+    build: createBuild(),
     slots,
     free: slots.map((s) => s.slot).reverse(),
     living: [],
@@ -112,6 +121,25 @@ export function createWorld(map, caps) {
 
 export function setCaps(w, caps) {
   Object.assign(w.caps, caps)
+}
+
+/**
+ * After a piece is built or destroyed: rebuilds the obstacle grid, navigation, flow
+ * fields and cover spots from the map's obstacles plus every standing piece. Everyone
+ * lets go of their cover spot (they'll find a new one at their next think).
+ */
+export function rebuildStatic(w) {
+  const obstacles = w.map.obstacles.slice()
+  for (const st of w.build.list) for (const o of st.boxes) obstacles.push(o)
+  w.obsMap.obstacles = obstacles
+  w.obs = buildObstacles(w.obsMap)
+  w.grid = createNavGrid(w.obsMap, w.obs)
+  w.flow = new FlowFields(w.grid, { budget: 1 })
+  w.coverSpots = coverSpotsFor(w.obs)
+  w.build.wire = wireZones(w)
+  for (const s of w.slots) s.cover = -1
+  w.build.version += 1
+  w.version += 1
 }
 
 // --- Stepping ------------------------------------------------------------------------
@@ -187,6 +215,7 @@ function tick(w, h) {
   updateProjectiles(w, h)
   updateMines(w, h)
   updateBodies(w, h)
+  settleStructures(w)
 }
 
 // --- Soldiers ------------------------------------------------------------------------
@@ -1132,6 +1161,8 @@ function move(w, s, type, h) {
       }
       speed = type.speed
       if (s.burnT > 0 && !s.downed) speed *= 1.15
+      // Barbed wire: picking a way through is slow going.
+      if (w.build.wire.length && inWire(w, s.x, s.z)) speed *= 0.32
       if (s.downed) speed = 0.45
       else if (crawling) speed = 0.7
       else {
@@ -1233,7 +1264,8 @@ const teamCount = (w, team) => w.slots.reduce((n, s) => n + (s.used && s.alive &
  * Drops `count` soldiers of `typeKey` for `team` in a tight block around (x, z).
  * Returns { spawned, limited } - limited is a reason string if the caps cut it short.
  */
-export function spawnUnits(w, typeKey, team, x, z, count, order) {
+export function spawnUnits(w, typeKey, team, x, z, count, order, rot = 0) {
+  if (BUILD_TYPES[typeKey]) return placeStructures(w, typeKey, x, z, count, rot)
   const type = UNIT_TYPES[typeKey]
   if (!type) return { spawned: 0, limited: null }
   if (type.trap) return placeMines(w, team, x, z, count)
@@ -1389,6 +1421,7 @@ export function clearAll(w) {
   w.bullets.length = 0
   clearOrdnance(w)
   clearVehicles(w)
+  clearStructures(w)
   for (const sp of w.coverSpots) sp.taken = -1
   w.stats.lost[0] = w.stats.lost[1] = 0
   w.stats.kills[0] = w.stats.kills[1] = 0

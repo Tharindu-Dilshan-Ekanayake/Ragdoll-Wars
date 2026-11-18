@@ -260,6 +260,11 @@ export function worldSound(kind, x, y, z, meta, listener) {
     noise(dest, t, { type: 'lowpass', freq: 1400, q: 0.5, gain: 1.1, attack: 0.004, decay: 1.1, sweepTo: 160 })
     if (dist < 45) noise(dest, t, { type: 'highpass', freq: 2200, q: 0.5, gain: 0.5, decay: 0.08 })
     noise(dest, t + 0.18, { type: 'lowpass', freq: 380, q: 0.4, gain: 0.45, attack: 0.08, decay: 1.4 })
+  } else if (kind === 'build') {
+    const dest = spatial(dist, pan, 0.5)
+    if (!dest) return
+    thump(dest, t, { from: 160, to: 70, gain: 0.5, decay: 0.08 })
+    noise(dest, t + 0.03, { type: 'lowpass', freq: 900, q: 0.5, decay: 0.15, gain: 0.5 })
   } else if (kind === 'jet') {
     // A jet screaming over: a rising roar that sweeps past.
     const dest = spatial(Math.max(20, dist * 0.6), pan, 1.1)

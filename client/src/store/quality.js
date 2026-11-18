@@ -31,6 +31,8 @@ export const PRESETS = {
     corpses: 30,
     ragdolls: 3,
     vehicles: 4,
+    /** Pieces built in build mode. */
+    structures: 80,
     /** Soldiers further than this re-pose every 2nd frame (every 3rd past double). */
     lodNear: 40,
     /** Share of the scenery trees to plant (0-1). */
@@ -51,6 +53,8 @@ export const PRESETS = {
     corpses: 60,
     ragdolls: 5,
     vehicles: 6,
+    /** Pieces built in build mode. */
+    structures: 140,
     lodNear: 55,
     decorDensity: 0.75,
   },
@@ -69,6 +73,8 @@ export const PRESETS = {
     corpses: 80,
     ragdolls: 6,
     vehicles: 8,
+    /** Pieces built in build mode. */
+    structures: 220,
     lodNear: 70,
     decorDensity: 1,
   },

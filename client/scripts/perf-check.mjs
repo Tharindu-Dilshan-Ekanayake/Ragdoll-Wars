@@ -119,6 +119,8 @@ async function fill() {
     }
     W.spawnUnits(w, 'mine', 0, -25, 0, 15, 'attack')
     W.spawnUnits(w, 'mine', 1, 25, 0, 15, 'attack')
+    // A built-up middle: trenches, walls, wire, teeth, a bunker, crates and trees.
+    for (const [k, x, z, n, r] of [['trench', -12, -14, 2, 1], ['trench', 12, 14, 2, 1], ['sandbags', -8, 0, 5, 1], ['sandbags', 8, 0, 5, 1], ['wire', 0, -26, 4, 0], ['teeth', 0, 26, 3, 0], ['bunker', -18, 20, 1, 0], ['tower', 18, -20, 1, 0], ['crate', -4, 12, 6, 0], ['fuel', 4, -12, 4, 0], ['tree', -30, -30, 6, 0], ['rock', 30, 30, 4, 0], ['blastwall', 0, 8, 3, 0], ['sandwall', 0, -8, 3, 0]]) W.spawnUnits(w, k, 0, x, z, n, 'attack', r)
     // Vehicles up to the preset's cap, and a strike each.
     for (let team = 0; team < 2; team++) {
       const x = team === 0 ? -50 : 50

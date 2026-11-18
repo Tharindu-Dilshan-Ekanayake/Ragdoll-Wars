@@ -457,6 +457,35 @@ button {
   max-width: 100%;
   scrollbar-width: thin;
 }
+.ff-tray__tabs {
+  display: flex;
+  gap: calc(var(--u) * 6);
+  align-self: flex-start;
+  margin-left: calc(var(--u) * 6);
+  margin-bottom: calc(var(--u) * -2);
+}
+.ff-tab {
+  padding: 0.4em 1.1em;
+  border-radius: 10px 10px 0 0;
+  background: var(--ff-bg);
+  border: 1px solid var(--ff-line);
+  border-bottom: none;
+  color: var(--ff-dim);
+  font-family: var(--ff-display);
+  font-size: calc(var(--u) * 14);
+  letter-spacing: 0.04em;
+}
+.ff-tab.is-on {
+  color: #1e1206;
+  background: var(--ff-accent);
+}
+.ff-tab--rotate {
+  margin-left: auto;
+  color: var(--ff-text, #e9eef2);
+}
+.ff-card--build .ff-card__icon {
+  color: #e7c48e;
+}
 .ff-tray__group {
   flex: none;
   writing-mode: vertical-rl;

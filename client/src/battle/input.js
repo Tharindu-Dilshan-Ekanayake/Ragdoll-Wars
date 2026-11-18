@@ -345,6 +345,7 @@ export function attachInput(canvas, boxEl) {
     if (k >= '0' && k <= '9') {
       const type = UNIT_ORDER[(Number(k) + 9) % 10]
       if (type) {
+        if (hud.dockTab !== 'units') hud.setDockTab('units')
         hud.setPlacing(type)
         sfx.toggle()
       }
@@ -356,6 +357,9 @@ export function attachInput(canvas, boxEl) {
     } else if (k === ' ') {
       e.preventDefault()
       hud.togglePause()
+      sfx.toggle()
+    } else if (k === 'r' && hud.dockTab === 'build') {
+      hud.rotateBuild()
       sfx.toggle()
     } else if (k === 'tab') {
       e.preventDefault()

@@ -2,6 +2,7 @@ import { GRAVITY } from './constants.js'
 import { emitImpact, emitSound } from './fx.js'
 import { collideCircle, segmentClear2D, segmentHit3D } from './obstacles.js'
 import { explode, fireProjectile } from './ordnance.js'
+import { crushStructures } from './structures.js'
 import { wrapAngle } from './rig.js'
 import { UNIT_TYPES } from './units.js'
 import { blastHit, castBullet } from './world.js'
@@ -606,6 +607,8 @@ function crowd(w, v) {
   const r = v.spec.radius
   const living = w.living
   const fast = Math.abs(v.speed) > 2.5
+  // Touching is enough: flimsy pieces go down under the tracks.
+  if (Math.abs(v.speed) > 1 && w.build.list.length) crushStructures(w, v.x, v.z, r + 0.45)
   for (let i = 0; i < living.length; i += 1) {
     const s = living[i]
     if (!s.alive || s.dropY > 0) continue

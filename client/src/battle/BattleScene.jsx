@@ -8,6 +8,7 @@ import GameCanvas from './render/GameCanvas'
 import MapView from './render/MapView'
 import Markers from './render/Markers'
 import Soldiers from './render/Soldiers'
+import Structures from './render/Structures'
 import Vehicles from './render/Vehicles'
 import { drain } from './sim/fx'
 import { stepWorld } from './sim/world'
@@ -56,6 +57,7 @@ export default function BattleScene({ map, onReady }) {
       <MapView map={map} focus={battleFocus} />
       <Soldiers getWorld={getBattleWorld} />
       <Effects />
+      <Structures />
       <Ordnance />
       <Vehicles />
       <Markers map={map} />

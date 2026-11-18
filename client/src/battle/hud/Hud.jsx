@@ -4,6 +4,7 @@ import { sfx } from '../../audio/sfx'
 import { useApp } from '../../store/app'
 import { useQuality } from '../../store/quality'
 import { TEAMS } from '../sim/constants'
+import { BUILD_GROUPS, BUILD_TYPES } from '../sim/structures'
 import { DOCK_GROUPS, UNIT_ORDER, UNIT_TYPES } from '../sim/units'
 import { deleteSelection, deselect, focusSelection, giveOrder, quickBattle, selectAll } from '../commands'
 import { BodyDiagram, Glyph, WeaponIcon } from './icons'
@@ -165,9 +166,75 @@ function Tray() {
   const setPlacing = useHud((s) => s.setPlacing)
   const hidden = useHud((s) => s.dockHidden)
   const toggleDock = useHud((s) => s.toggleDock)
+  const tab = useHud((s) => s.dockTab)
+  const setTab = useHud((s) => s.setDockTab)
+  const rot = useHud((s) => s.buildRot)
+  const rotate = useHud((s) => s.rotateBuild)
+  const building = tab === 'build'
   return (
     <div className={`ff-tray ${hidden ? 'is-hidden' : ''}`}>
       <Hint />
+      <div className="ff-tray__tabs">
+        {[
+          ['units', 'Units'],
+          ['build', 'Build'],
+        ].map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            className={`ff-tab ${tab === key ? 'is-on' : ''}`}
+            onClick={() => {
+              setTab(key)
+              sfx.toggle()
+            }}
+          >
+            {label}
+          </button>
+        ))}
+        {building && (
+          <button
+            type="button"
+            className="ff-tab ff-tab--rotate"
+            title="Rotate (R)"
+            onClick={() => {
+              rotate()
+              sfx.toggle()
+            }}
+          >
+            Rotate {rot ? '90°' : '0°'}
+          </button>
+        )}
+      </div>
+      {building ? (
+        <div className="ff-tray__cards">
+          <button type="button" className="ff-tray__fold" onClick={toggleDock} title={hidden ? 'Show' : 'Hide'}>
+            <Glyph name="chevron" className={`ff-ico ${hidden ? 'is-flipped' : ''}`} />
+          </button>
+          {BUILD_GROUPS.map((group) => [
+            <span key={group.label} className="ff-tray__group">
+              {group.label}
+            </span>,
+            ...group.keys.map((key) => {
+              const t = BUILD_TYPES[key]
+              return (
+                <button
+                  type="button"
+                  key={key}
+                  className={`ff-card ff-card--build ${placing === key ? 'is-on' : ''}`}
+                  onClick={() => {
+                    setPlacing(key)
+                    sfx.toggle()
+                  }}
+                >
+                  <WeaponIcon type={key} className="ff-card__icon" />
+                  <span className="ff-card__name">{t.name}</span>
+                  <span className="ff-card__role">{t.role}</span>
+                </button>
+              )
+            }),
+          ])}
+        </div>
+      ) : (
       <div className="ff-tray__cards">
         <button type="button" className="ff-tray__fold" onClick={toggleDock} title={hidden ? 'Show units' : 'Hide units'}>
           <Glyph name="chevron" className={`ff-ico ${hidden ? 'is-flipped' : ''}`} />
@@ -198,6 +265,7 @@ function Tray() {
           }),
         ])}
       </div>
+      )}
     </div>
   )
 }
@@ -210,14 +278,19 @@ function Hint() {
   const alive = useHud((s) => s.stats.alive)
   let text
   if (placing) {
-    const u = UNIT_TYPES[placing]
+    const piece = BUILD_TYPES[placing]
+    const u = piece || UNIT_TYPES[placing]
     const name = u.name
-    const what = u.strike
+    const what = piece
+      ? piece.tool
+        ? 'take down a structure'
+        : `build ${count > 1 ? `${piece.scatter ? '' : 'a row of '}${count} × ` : ''}${name}${isTouch ? '' : ' · R to rotate'}`
+      : u.strike
       ? `call in the ${name.toLowerCase()} on that spot`
       : u.trap
         ? `lay ${count} ${name.toLowerCase()}${count > 1 ? 's' : ''}`
         : `drop ${count} ${name}${count > 1 ? 's' : ''}`
-    text = `${isTouch ? 'Tap' : 'Click'} the ground to ${what} for ${TEAMS[team].name}  ·  ${isTouch ? 'tap the card again' : 'right-click / Esc'} to stop`
+    text = `${isTouch ? 'Tap' : 'Click'} the ground to ${what}${piece ? '' : ` for ${TEAMS[team].name}`}  ·  ${isTouch ? 'tap the card again' : 'right-click / Esc'} to stop`
   } else if (selection) {
     text = `${selection.count} selected  ·  ${isTouch ? 'tap' : 'click'} the ground to move them  ·  Attack / Hold / Flank to give orders`
   } else if (alive[0] + alive[1] === 0) {

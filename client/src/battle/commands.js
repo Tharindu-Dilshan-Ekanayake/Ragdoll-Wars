@@ -13,7 +13,7 @@ export function placeUnits(x, z) {
   const w = battle.world
   const hud = getHud()
   if (!w || !hud.placing) return
-  const { spawned, limited, info } = spawnUnits(w, hud.placing, hud.team, x, z, hud.count, hud.order)
+  const { spawned, limited, info } = spawnUnits(w, hud.placing, hud.team, x, z, hud.count, hud.order, hud.buildRot)
   if (spawned) sfx.place()
   if (info) hud.showToast(info, 'info')
   if (limited) {
