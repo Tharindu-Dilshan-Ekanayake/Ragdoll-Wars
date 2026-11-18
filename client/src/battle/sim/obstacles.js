@@ -22,9 +22,12 @@ export function buildObstacles(map) {
   const data = new Float32Array(n * 5)
   /** Rampart boxes (rampart.js): no cover against anyone standing up on top of them. */
   const deck = new Uint8Array(n)
+  /** Water basins (setpieces.js): flat, but nobody walks on them. */
+  const water = new Uint8Array(n)
   for (let i = 0; i < n; i += 1) {
     const o = list[i]
     if (o.deck) deck[i] = 1
+    if (o.water) water[i] = 1
     data[i * 5] = o.x - o.w / 2
     data[i * 5 + 1] = o.z - o.d / 2
     data[i * 5 + 2] = o.x + o.w / 2
@@ -50,6 +53,7 @@ export function buildObstacles(map) {
     count: n,
     data,
     deck,
+    water,
     buckets,
     cols,
     rows,
@@ -300,7 +304,7 @@ export function collideWalker(obs, p, r, stepTop) {
     const d = obs.data
     for (let k = 0; k < list.length; k += 1) {
       const o = list[k] * 5
-      if (d[o + 4] <= stepTop) continue
+      if (d[o + 4] <= stepTop && !obs.water[list[k]]) continue
       const cx = Math.max(d[o], Math.min(p.x, d[o + 2]))
       const cz = Math.max(d[o + 1], Math.min(p.z, d[o + 3]))
       const ox = p.x - cx

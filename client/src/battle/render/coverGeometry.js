@@ -151,7 +151,7 @@ export function buildCover(map) {
       concrete.box(o.x, 0.44 + (o.h - 0.44) / 2, o.z, narrowX ? o.w * 0.55 : o.w, o.h - 0.44, narrowX ? o.d : o.d * 0.55, c)
       concrete.box(o.x, o.h - 0.12, o.z, narrowX ? o.w * 0.57 : o.w + 0.02, 0.1, narrowX ? o.d + 0.02 : o.d * 0.57, col('#d9a63a'))
     } else if (o.kind === 'lowwall' || o.kind === 'wall') {
-      const c = col(o.kind === 'wall' ? '#a9a59b' : '#b8b3a8').multiplyScalar(v)
+      const c = col(o.color || (o.kind === 'wall' ? '#a9a59b' : '#b8b3a8')).multiplyScalar(v)
       concrete.box(o.x, o.h / 2, o.z, o.w, o.h, o.d, c)
       if (o.kind === 'wall') {
         // Broken top: a few chunks.

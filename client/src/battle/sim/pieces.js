@@ -1,3 +1,5 @@
+import { setObstacles } from './setpieces.js'
+
 /**
  * The build-mode catalogue and map scenery pieces, as plain data with no imports, so the
  * lobby (map previews) can use it without pulling the battle simulation into the
@@ -95,10 +97,11 @@ export function mapPieces(map) {
   return out
 }
 
-/** The map's own obstacles plus its scenery pieces' boxes. */
+/** The map's own obstacles plus its scenery pieces', set pieces' and basins' boxes. */
 export function mapObstacles(map) {
   const out = map.obstacles.slice()
   for (const p of mapPieces(map)) for (const o of p.boxes) out.push(o)
+  for (const o of setObstacles(map)) out.push(o)
   return out
 }
 

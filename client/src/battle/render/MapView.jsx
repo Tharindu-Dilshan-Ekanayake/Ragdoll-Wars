@@ -33,6 +33,7 @@ import { buildPiecesGeometry, coverBoxesOf } from './structureModels'
 import Mist from './Mist'
 import Rampart from './Rampart'
 import Scatter from './Scatter'
+import { buildSetGeometries } from './setPieceModels'
 import { getTextures } from './textures'
 
 /**
@@ -160,7 +161,35 @@ function paintGround(map, S = 512) {
   const kz = S / GROUND_D
   const toX = (x) => (x + GROUND_W / 2) * kx
   const toY = (z) => (z + GROUND_D / 2) * kz
-  // Mud first, roads over it.
+  // Paved ground first (concrete lots, asphalt aprons, runways...), with slab joints.
+  for (const pd of map.pads || []) {
+    const x0 = toX(pd.x - pd.w / 2)
+    const y0 = toY(pd.z - pd.d / 2)
+    const pw = pd.w * kx
+    const ph = pd.d * kz
+    ctx.fillStyle = pd.color
+    ctx.fillRect(x0, y0, pw, ph)
+    if (pd.joints) {
+      ctx.strokeStyle = 'rgba(0,0,0,0.13)'
+      ctx.lineWidth = Math.max(1, 0.12 * kx)
+      ctx.beginPath()
+      for (let x = pd.joints; x < pd.w; x += pd.joints) {
+        ctx.moveTo(x0 + x * kx, y0)
+        ctx.lineTo(x0 + x * kx, y0 + ph)
+      }
+      for (let z = pd.joints; z < pd.d; z += pd.joints) {
+        ctx.moveTo(x0, y0 + z * kz)
+        ctx.lineTo(x0 + pw, y0 + z * kz)
+      }
+      ctx.stroke()
+    }
+    if (pd.edge) {
+      ctx.strokeStyle = pd.edge
+      ctx.lineWidth = Math.max(1, 0.35 * kx)
+      ctx.strokeRect(x0, y0, pw, ph)
+    }
+  }
+  // Mud, then roads over it.
   for (const [mx, mz, mr] of map.mud) {
     const g = ctx.createRadialGradient(toX(mx), toY(mz), 0, toX(mx), toY(mz), mr * kx)
     g.addColorStop(0, `rgba(${mr0},${mg0},${mb0},0.6)`)
@@ -214,10 +243,38 @@ function paintGround(map, S = 512) {
       ctx.stroke()
     }
   }
+  // Painted lines (runway and parking markings, rail sleepers...) and lettering.
+  ctx.lineCap = 'butt'
+  for (const ln of map.lines || []) {
+    ctx.strokeStyle = ln.color
+    ctx.lineWidth = Math.max(1, ln.width * kx)
+    ctx.setLineDash(ln.dash ? ln.dash.map((n) => n * kx) : [])
+    ctx.beginPath()
+    ln.points.forEach(([x, z], i) => (i ? ctx.lineTo(toX(x), toY(z)) : ctx.moveTo(toX(x), toY(z))))
+    ctx.stroke()
+  }
+  ctx.setLineDash([])
+  for (const t of map.texts || []) {
+    ctx.save()
+    ctx.translate(toX(t.x), toY(t.z))
+    ctx.rotate(t.rot || 0)
+    ctx.fillStyle = t.color || 'rgba(240,240,235,0.9)'
+    ctx.font = `bold ${Math.round(t.size * kz)}px sans-serif`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(t.text, 0, 0)
+    ctx.restore()
+  }
+  // Under the basins: dark water (the surface is drawn over it).
+  for (const r of map.water || []) {
+    ctx.fillStyle = '#1b3b4a'
+    ctx.fillRect(toX(r.x - r.w / 2), toY(r.z - r.d / 2), r.w * kx, r.d * kz)
+  }
   // Contact shadows: a soft darkening round the foot of every wall, crate and rock (the
   // only shadows on the presets without realtime ones, and it grounds them all).
   const [ar, ag, ab] = theme.ao
   for (const o of mapObstacles(map)) {
+    if (o.water || o.h < 0.3) continue
     const lift = Math.min(1, o.h / 2.6) * 0.6 + 0.4
     if (o.kind === 'tree') {
       const g = ctx.createRadialGradient(toX(o.x), toY(o.z), 0, toX(o.x), toY(o.z), 2.4 * kx)
@@ -517,6 +574,72 @@ void main() {`)
   return m
 }
 
+// --- Basins -----------------------------------------------------------------------------
+
+/**
+ * Water inside the map (harbour basins, an oasis pool): each a flat rectangle with its
+ * own size attribute so the shader knows how far every pixel is from the quay - teal
+ * and foamy along the edge, deep blue-green out in the middle, the sun glinting on it.
+ */
+function basinGeometry(water) {
+  const parts = water.map((r) => {
+    const g = new PlaneGeometry(r.w, r.d).rotateX(-Math.PI / 2).translate(r.x, 0.07, r.z)
+    const n = g.attributes.position.count
+    g.setAttribute('aSize', new Float32BufferAttribute(new Array(n).fill([r.w, r.d]).flat(), 2))
+    return g
+  })
+  const g = mergeGeometries(parts)
+  for (const p of parts) p.dispose()
+  return g
+}
+
+function basinMaterial() {
+  const m = new MeshLambertMaterial({ color: '#1f5f72' })
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = seaClock
+    shader.vertexShader = shader.vertexShader
+      .replace('void main() {', `attribute vec2 aSize;\nvarying vec2 vB;\nvarying vec2 vBSize;\nvarying vec3 vBPos;\nvoid main() {`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>\n  vB = uv;\n  vBSize = aSize;\n  vBPos = (modelMatrix * vec4(transformed, 1.0)).xyz;`)
+    shader.fragmentShader = shader.fragmentShader
+      .replace('void main() {', `uniform float uTime;\nvarying vec2 vB;\nvarying vec2 vBSize;\nvarying vec3 vBPos;\nvoid main() {`)
+      .replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+  float edge = min(min(vB.x, 1.0 - vB.x) * vBSize.x, min(vB.y, 1.0 - vB.y) * vBSize.y);
+  vec3 water = mix(vec3(0.11, 0.34, 0.38), vec3(0.04, 0.17, 0.24), smoothstep(0.4, 6.0, edge));
+  float lap = smoothstep(0.88, 1.0, sin(edge * 2.2 - uTime * 1.3 + sin(vBPos.x * 0.1) * 1.5)) * (1.0 - smoothstep(0.6, 4.0, edge));
+  float foam = max(1.0 - smoothstep(0.08, 0.6, edge), lap * 0.6);
+  diffuseColor.rgb = mix(water, vec3(0.9, 0.95, 0.97), foam);`,
+      )
+      .replace(
+        '#include <emissivemap_fragment>',
+        `#include <emissivemap_fragment>
+  float gl = sin(vBPos.x * 0.9 + uTime * 1.1) * sin(vBPos.z * 1.2 - uTime * 0.8) * sin((vBPos.x - vBPos.z) * 0.41 + uTime * 0.5);
+  totalEmissiveRadiance += vec3(1.0, 0.97, 0.9) * pow(max(0.0, gl), 16.0) * 0.5 * (1.0 - foam);`,
+      )
+  }
+  m.customProgramCacheKey = () => 'ff-basin'
+  return m
+}
+
+/** Concrete quay edges round every basin (sides in `r.open` left off). */
+function quayCurbs(water) {
+  const b = new BoxBatch()
+  const c = col('#a7a397')
+  for (const r of water) {
+    const open = r.open || ''
+    const x0 = r.x - r.w / 2
+    const x1 = r.x + r.w / 2
+    const z0 = r.z - r.d / 2
+    const z1 = r.z + r.d / 2
+    if (!open.includes('n')) b.box(r.x, 0.22, z1 + 0.3, r.w + 1.2, 0.44, 0.6, c)
+    if (!open.includes('s')) b.box(r.x, 0.22, z0 - 0.3, r.w + 1.2, 0.44, 0.6, c)
+    if (!open.includes('w')) b.box(x0 - 0.3, 0.22, r.z, 0.6, 0.44, r.d, c)
+    if (!open.includes('e')) b.box(x1 + 0.3, 0.22, r.z, 0.6, 0.44, r.d, c)
+  }
+  return b.build()
+}
+
 // --- Sky ------------------------------------------------------------------------------
 
 const SKY_VERT = /* glsl */ `
@@ -699,6 +822,10 @@ export default function MapView({ map, focus }) {
     const fence = terrain ? buildFence(map) : null
     const hills = terrain ? buildHills(...(map.hills || [165, 260]), map.hillScale ?? 1, themeOf(map), map.sea ? map.sea.z : null, map.fog, viewDistance) : null
     const sea = terrain && map.sea ? new PlaneGeometry(1200, 600).rotateX(-Math.PI / 2).translate(0, -0.35, map.sea.z - 300) : null
+    // Set pieces (cranes, ships, hangars, houses...) and the basins' water and quays.
+    const sets = terrain ? buildSetGeometries(map) : null
+    const basins = terrain && map.water?.length ? basinGeometry(map.water) : null
+    const quays = basins ? quayCurbs(map.water) : null
     const mats = {
       ground: groundMap ? groundMaterial(groundMap, tex.grass) : null,
       concrete: new MeshLambertMaterial({ vertexColors: true, map: tex.concrete }),
@@ -711,13 +838,14 @@ export default function MapView({ map, focus }) {
       // Both sides: from inside the ring the far slopes face away and would leave gaps.
       hills: new MeshLambertMaterial({ vertexColors: true, side: DoubleSide }),
       sea: map.sea ? seaMaterial(map.sea.z) : null,
+      basin: basins ? basinMaterial() : null,
     }
-    return { ground, groundMap, cover, piecesGeo, fence, hills, sea, mats }
+    return { ground, groundMap, cover, piecesGeo, fence, hills, sea, sets, basins, quays, mats }
   }, [map, terrain, maxTexture, viewDistance])
 
-  // The sea rolls (MEDIUM and HIGH; on LOW it holds still).
+  // The sea and basins roll (MEDIUM and HIGH; on LOW they hold still).
   useEffect(() => {
-    if (!map.sea || !wind) return undefined
+    if ((!map.sea && !map.water) || !wind) return undefined
     return addFrameHook(PHASE.DRAW, (state) => {
       seaClock.value = state.clock.elapsedTime
     })
@@ -763,6 +891,9 @@ export default function MapView({ map, focus }) {
       world.hills?.dispose()
       world.piecesGeo?.dispose()
       world.sea?.dispose()
+      for (const g of Object.values(world.sets || {})) g?.dispose()
+      world.basins?.dispose()
+      world.quays?.dispose()
       for (const m of Object.values(world.mats)) m?.dispose()
     },
     [world],
@@ -785,6 +916,11 @@ export default function MapView({ map, focus }) {
       {world.ground && <mesh geometry={world.ground} material={mats.ground} receiveShadow={shadows} />}
       {world.hills && <mesh geometry={world.hills} material={mats.hills} />}
       {world.sea && <mesh geometry={world.sea} material={mats.sea} />}
+      {world.basins && <mesh geometry={world.basins} material={mats.basin} />}
+      {world.quays && <mesh geometry={world.quays} material={mats.concrete} receiveShadow={shadows} />}
+      {world.sets?.plain && <mesh geometry={world.sets.plain} material={mats.plain} castShadow={shadows} receiveShadow={shadows} />}
+      {world.sets?.concrete && world.sets.concrete.index?.count > 0 && <mesh geometry={world.sets.concrete} material={mats.concrete} castShadow={shadows} receiveShadow={shadows} />}
+      {world.sets?.steel && world.sets.steel.index?.count > 0 && <mesh geometry={world.sets.steel} material={mats.steel} castShadow={shadows} receiveShadow={shadows} />}
 
       {world.piecesGeo && <mesh geometry={world.piecesGeo} material={mats.plain} castShadow={shadows} receiveShadow={shadows} />}
       <mesh geometry={cover.concrete} material={mats.concrete} castShadow={shadows} receiveShadow={shadows} />
