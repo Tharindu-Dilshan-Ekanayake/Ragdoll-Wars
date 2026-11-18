@@ -8,6 +8,7 @@ import { BUILD_GROUPS, BUILD_TYPES } from '../sim/structures'
 import { DOCK_GROUPS, UNIT_ORDER, UNIT_TYPES } from '../sim/units'
 import { useProgress } from '../../store/progress'
 import { MAX_SAVES, useSaves } from '../../store/saves'
+import { useCloud } from '../../net/cloud'
 import { MAPS } from '../maps'
 import { applySave, saveCounts, serialize } from '../sim/saveGame'
 import { battle } from '../state'
@@ -91,7 +92,7 @@ function ZombieResult({ onExit }) {
   useEffect(() => {
     if (!result || recorded.current === result) return
     recorded.current = result
-    const earned = useProgress.getState().recordZombieRun(z.wave, result === 'won')
+    const earned = useProgress.getState().recordZombieRun(z.wave, result === 'won', z.kills)
     setFresh(earned)
     sfx[result === 'won' ? 'select' : 'error']()
   }, [result, z])
@@ -325,6 +326,7 @@ function SavesPanel() {
   const add = useSaves((s) => s.add)
   const remove = useSaves((s) => s.remove)
   const showToast = useHud((s) => s.showToast)
+  const inCloud = useCloud((s) => s.status === 'synced' || s.status === 'saving')
   const save = () => {
     const w = battle.world
     if (!w) return
@@ -367,7 +369,7 @@ function SavesPanel() {
           Save this battlefield
         </button>
         <span className="ff-saves__count">
-          {saves.length}/{MAX_SAVES} slots · saved in this browser
+          {saves.length}/{MAX_SAVES} slots · {inCloud ? 'backed up to the cloud' : 'saved in this browser'}
         </span>
       </div>
       {saves.length === 0 && <div className="ff-saves__empty">No saved battlefields yet. Set up a fight, then save it here to play it again later.</div>}

@@ -9,10 +9,13 @@ import BloxityProvider from './bloxity/BloxityProvider.jsx'
 import FpsMeter from './bloxity/FpsMeter.jsx'
 import { GAME_SLUG } from './bloxity/identity'
 import { installDebugHooks } from './debug'
+import { startCloud } from './net/cloud'
 import './index.css'
 
 performance.mark('ff:main')
 installDebugHooks()
+// Cloud saves for signed-in players, and the totals the leaderboards rank.
+startCloud()
 // Audio starts on the first tap or key press (browsers block it before that).
 installAudioUnlock()
 // Every chunky button clicks.

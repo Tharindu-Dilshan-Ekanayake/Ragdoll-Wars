@@ -76,7 +76,7 @@ function sdkGame(method, ...args) {
 const wait = (ms) => new Promise((r) => setTimeout(r, ms))
 
 /** The endpoint to connect to, or throws with a message for the player. */
-async function endpointFor(target) {
+async function endpointFor(target, onWait = (message) => useNet.setState({ message })) {
   if (target.kind === 'direct') {
     if (!(await healthOf(target.url))) throw new Error('The battle server is not answering')
     return target.url
@@ -95,7 +95,7 @@ async function endpointFor(target) {
       return endpoint
     } catch (err) {
       if (performance.now() - started > MATCHMAKER_GIVE_UP_MS) throw new Error('Could not reach a battle server', { cause: err })
-      useNet.setState({ message: attempt === 0 ? 'Starting a battle server…' : 'Still connecting…' })
+      onWait(attempt === 0 ? 'Starting a battle server…' : 'Still connecting…')
       await wait(Math.min(8000, 1000 * 2 ** attempt))
     }
   }
@@ -107,6 +107,16 @@ function withPlayHost(endpoint) {
   const play = environment()?.playUrl
   if (!match || !play) return endpoint
   return `${play.replace(/^http/i, 'ws')}/v1/ws/${match[1]}`
+}
+
+/**
+ * The game server's endpoint for anything else that talks to it (cloud saves), or null
+ * when this build has none. Throws if it can't be reached.
+ */
+export async function serverEndpoint() {
+  const target = serverTarget()
+  if (!target) return null
+  return withPlayHost(await endpointFor(target, () => {}))
 }
 
 /**

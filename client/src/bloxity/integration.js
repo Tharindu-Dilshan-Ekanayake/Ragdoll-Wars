@@ -6,12 +6,14 @@ import { loadEmotes, playLocalEmote, stopLocalEmote } from './emotes'
 import { safeCall, toUnsubscribe } from './sdk'
 import { hideScreen, setScreen } from './services'
 import { getBloxityState, useBloxityStore } from './store'
+import { LEADERBOARDS } from '../shared/profile'
 
 /**
  * What Floppy Front wires into the Boxity SDK besides auth (that stays in
  * BloxityProvider): ad breaks, the portal's settings menu, the gameplay lifecycle and
  * screen ads, and the portal's player events (respawn, emotes for your lobby avatar).
- * Leaderboards and chat come back with the multiplayer phase.
+ * The leaderboards are declared here; net/cloud.js submits the scores (and the server
+ * reports them too).
  *
  * `setupOnce` runs once per page right after `init()`; `installIntegration` runs per
  * provider mount and returns its teardown (StrictMode mounts twice in dev).
@@ -24,6 +26,7 @@ export const AD_SCREENS = { panel: {}, gameplay: {} }
 export function setupOnce(sdk) {
   // Boxity draws its emote picker once a game says it can play emotes (the Sea Fort can).
   safeCall(sdk.game?.registerFeature?.bind(sdk.game), 'emotes')
+  safeCall(sdk.leaderboard?.define?.bind(sdk.leaderboard), LEADERBOARDS)
   safeCall(sdk.ads?.declareScreens?.bind(sdk.ads), AD_SCREENS)
 }
 

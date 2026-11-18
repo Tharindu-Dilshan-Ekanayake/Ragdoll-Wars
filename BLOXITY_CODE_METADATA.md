@@ -5,23 +5,24 @@ hasScore: false
 
 # Floppy Front: Boxity integration
 
-A ragdoll army sandbox. The player is a commander, not a soldier: there is no player
-character, no death and no score yet. From the menu you deploy onto a battlefield, drop
-soldiers for the Blue and Red teams, give orders (Attack / Hold / Flank, or click to move)
-and watch the battle play out with ragdoll physics, wounds and bleeding.
+A ragdoll army sandbox. The player is a commander: from the Sea Fort lobby you deploy
+onto one of ten battlefields, drop soldiers, vehicles and fortifications for the Blue and
+Red teams, give orders and watch the battle play out with ragdoll physics - or walk the
+field as your own Boxity avatar. Zombie Horde is a 15-wave survival mode; multiplayer
+battles (sandbox and co-op Zombie Horde, up to four players) run on the game server.
 
-## Phase 1 scope (this build)
+## What runs where
 
-- One battlefield (Training Grounds), six infantry types, both teams AI-controlled.
-- Runs entirely in the browser. **No game server is used yet**: `server/` and `shared/`
-  are still the Phone Plunge template and get rebuilt for saves and multiplayer in a
-  later phase. The client never connects to them.
+- Single-player battles run entirely in the browser.
+- The game server (`server/`, Colyseus on Bloxity Legion) runs multiplayer battles with
+  the game's own simulation, and keeps cloud saves and leaderboards (below).
 - Settings (graphics level, blood on/off, volume) are kept in localStorage.
 
 ## Identity
 
-`VITE_GAME_SLUG` (default `floppy-front`) is passed to `Legion.SDK.init()`. Sign-in shows
-the player's name on the menu; nothing is saved per account yet.
+`VITE_GAME_SLUG` (default `floppy-front`) is passed to `Legion.SDK.init()`. A signed-in
+player's token goes with every server join and is verified there; their Boxity name is
+shown to other players and on the leaderboards.
 
 ## Screen ads and lifecycle
 
@@ -41,7 +42,25 @@ freezes the battle, and mutes audio until `ads.onBreakEnd`.
 auto-detected LOW device on the initial default), `show_fps`, `camera_sensitivity`,
 `background_transparency`, `fullscreen`.
 
+## Cloud saves
+
+Signed-in players' progress (Zombie Horde best wave and star badges, the leaderboard
+totals) and their sandbox saves are kept by the game server, not the SDK: the client
+opens a short-lived Colyseus `profile` room (`server/src/rooms/ProfileRoom.js`) with
+its Boxity token, which the server checks with `/v1/auth/game-token/verify`. Profiles
+live in the managed MongoDB (`MONGODB_URI`), or a SQLite file off hosting. Merging
+never loses progress (`client/src/shared/profile.js`). Guests keep everything in
+localStorage, as before.
+
+## Leaderboards
+
+Four boards, declared with `leaderboard.define()` at init: `zombie_wave` (Best Zombie
+Wave), `zombie_kills` (Zombies Dropped), `battles` (Battles Fought), `playtime`
+(Minutes Played), all `best` mode. Scores come from the cloud profile: the server
+reports them (`/v1/leaderboards/hosted/{gameId}/report`, `BLOXITY_REPORT_TOKEN`) and
+the client also submits them through the SDK for signed-in players. The lobby's
+trophy button shows the game's own top-10 from the server's database.
+
 ## Not used yet
 
-Leaderboards, chat bubbles, emotes, rewarded ads, Gems purchases and Open Rooms. They
-come back with the features that need them (saves and multiplayer).
+Chat bubbles, rewarded ads and Gems purchases.

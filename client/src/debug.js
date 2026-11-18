@@ -1,5 +1,7 @@
 import { lobby, useLobby } from './lobby/lobbyState'
+import { useCloud } from './net/cloud'
 import { useApp } from './store/app'
+import { useProgress } from './store/progress'
 import { useQuality } from './store/quality'
 
 /**
@@ -14,6 +16,8 @@ export function installDebugHooks() {
     quality: useQuality,
     lobby,
     lobbyStore: useLobby,
+    cloud: useCloud,
+    progress: useProgress,
     async battle() {
       return (await import('./battle/state.js')).battle
     },

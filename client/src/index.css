@@ -1908,3 +1908,105 @@ button {
   border-color: rgba(255, 110, 90, 0.4);
   color: #ffb3a8;
 }
+
+/* --- Leaderboards and cloud saves ----------------------------------------------------- */
+
+.ff-ranks {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: min(440px, 80vw);
+}
+.ff-ranks__tabs {
+  flex-wrap: wrap;
+}
+.ff-ranks__tabs .ff-chip {
+  font-size: calc(var(--u) * 13);
+}
+.ff-ranks__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 120px;
+}
+.ff-ranks__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 15px;
+  color: var(--ff-text);
+}
+.ff-ranks__pos {
+  flex: none;
+  width: 2.4em;
+  font-family: var(--ff-display);
+  color: var(--ff-dim);
+}
+.ff-ranks__name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ff-ranks__val {
+  font-family: var(--ff-display);
+  color: var(--ff-accent);
+}
+.ff-ranks__row.is-top1 .ff-ranks__pos {
+  color: #ffd34d;
+}
+.ff-ranks__row.is-top2 .ff-ranks__pos {
+  color: #d9dee5;
+}
+.ff-ranks__row.is-top3 .ff-ranks__pos {
+  color: #e0975a;
+}
+.ff-ranks__me {
+  border: 1px solid rgba(255, 138, 31, 0.5);
+  background: rgba(255, 138, 31, 0.1);
+}
+.ff-ranks__empty {
+  padding: 18px 12px;
+  text-align: center;
+  color: var(--ff-dim);
+  font-size: 14px;
+}
+.ff-ranks__foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ff-dim);
+}
+.ff-ranks__foot .ff-ico {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+.ff-ranks__foot .ff-btn {
+  margin-left: auto;
+}
+.ff-cloud {
+  display: inline-flex;
+  color: var(--ff-dim);
+}
+.ff-cloud .ff-ico {
+  width: 16px;
+  height: 16px;
+}
+.ff-cloud--synced {
+  color: var(--ff-ok);
+}
+.ff-cloud--saving,
+.ff-cloud--connecting {
+  color: var(--ff-warn);
+}
+.ff-cloud--error {
+  color: var(--ff-bad);
+}

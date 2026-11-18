@@ -6,6 +6,7 @@ import { Glyph } from '../battle/hud/icons'
 import { STATIONS } from './seaFort'
 import { lobby, useLobby } from './lobbyState'
 import StationPanels from './StationPanels'
+import { cloudText, useCloud } from '../net/cloud'
 import TouchStick from './TouchStick'
 
 const isTouch = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches
@@ -23,6 +24,7 @@ export default function LobbyHud() {
   const { identity, isLoggedIn, login, isReady } = useBloxity()
   const station = STATIONS.find((s) => s.id === zone)
   const name = identity?.displayName || identity?.username || 'Commander'
+  const cloud = useCloud((s) => s.status)
 
   // E opens the station you're standing on; Esc closes a panel.
   useEffect(() => {
@@ -80,6 +82,9 @@ export default function LobbyHud() {
         <button type="button" className="ff-iconbtn" title="How to play" onClick={() => open('help')}>
           <Glyph name="help" className="ff-ico" />
         </button>
+        <button type="button" className="ff-iconbtn" title="Leaderboards" onClick={() => open('ranks')}>
+          <Glyph name="trophy" className="ff-ico" />
+        </button>
       </div>
       <div className="ff-campname">
         <span className="ff-campname__title">Sea Fort</span>
@@ -88,6 +93,11 @@ export default function LobbyHud() {
       <div className="ff-player ff-player--hud">
         <span className="ff-player__dot" />
         {name}
+        {isLoggedIn && cloud !== 'off' && (
+          <span className={`ff-cloud ff-cloud--${cloud}`} title={cloudText(cloud, isLoggedIn)}>
+            <Glyph name="cloud" className="ff-ico" />
+          </span>
+        )}
         {isReady && !isLoggedIn && (
           <button type="button" className="ff-btn ff-btn--small" onClick={login}>
             Sign in

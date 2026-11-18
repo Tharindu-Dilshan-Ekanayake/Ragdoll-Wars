@@ -4,10 +4,12 @@ import { MAPS, ZOMBIE_MAP } from '../battle/maps'
 import { UNIT_ORDER, UNIT_TYPES } from '../battle/sim/units'
 import { useApp } from '../store/app'
 import { useProgress, ZOMBIE_BADGES } from '../store/progress'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { useBloxity } from '../bloxity/BloxityContext'
 import { joinBattle } from '../net/battleNet'
+import { cloudText, fetchBoards, useCloud } from '../net/cloud'
+import { LEADERBOARDS } from '../shared/profile'
 import { useNet } from '../store/net'
 import { useSaves } from '../store/saves'
 import { HelpBody, SettingsBody } from '../ui/SettingsHelp'
@@ -297,6 +299,65 @@ function LobbyControls() {
   )
 }
 
+/** A board's number as people read it (minutes as hours and minutes). */
+function boardValue(id, v) {
+  if (id === 'playtime') return v >= 60 ? `${Math.floor(v / 60)}h ${v % 60}m` : `${v}m`
+  if (id === 'zombie_wave') return `Wave ${v}`
+  return v >= 10000 ? `${(v / 1000).toFixed(1)}k` : String(v)
+}
+
+function LeaderboardPanel() {
+  const boards = useCloud((s) => s.boards)
+  const loading = useCloud((s) => s.boardsLoading)
+  const error = useCloud((s) => s.boardsError)
+  const status = useCloud((s) => s.status)
+  const { isLoggedIn, login, isReady } = useBloxity()
+  const [tab, setTab] = useState(LEADERBOARDS[0].id)
+  useEffect(() => {
+    fetchBoards()
+  }, [])
+  const board = boards?.boards?.find((b) => b.id === tab)
+  return (
+    <div className="ff-ranks">
+      <div className="ff-seg ff-ranks__tabs">
+        {LEADERBOARDS.map((b) => (
+          <button key={b.id} type="button" className={`ff-chip ${tab === b.id ? 'is-on' : ''}`} onClick={() => setTab(b.id)}>
+            {b.label}
+          </button>
+        ))}
+      </div>
+      <ol className="ff-ranks__list">
+        {board?.top?.length
+          ? board.top.map((r, i) => (
+              <li key={`${r.name}-${i}`} className={`ff-ranks__row ${i < 3 ? `is-top is-top${i + 1}` : ''}`}>
+                <span className="ff-ranks__pos">{i + 1}</span>
+                <span className="ff-ranks__name">{r.name}</span>
+                <span className="ff-ranks__val">{boardValue(tab, r.value)}</span>
+              </li>
+            ))
+          : !loading && <li className="ff-ranks__empty">{error || (board ? 'Nobody on this board yet - be the first!' : 'No leaderboards yet')}</li>}
+        {loading && !board && <li className="ff-ranks__empty">Loading…</li>}
+      </ol>
+      {board?.me && (
+        <div className="ff-ranks__row ff-ranks__me">
+          <span className="ff-ranks__pos">{board.me.rank ? `#${board.me.rank}` : '-'}</span>
+          <span className="ff-ranks__name">You</span>
+          <span className="ff-ranks__val">{boardValue(tab, board.me.value)}</span>
+        </div>
+      )}
+      <div className="ff-ranks__foot">
+        <Glyph name="cloud" className="ff-ico" />
+        <span>{cloudText(status, isLoggedIn)}</span>
+        {isReady && !isLoggedIn && (
+          <button type="button" className="ff-btn ff-btn--small ff-btn--accent" onClick={login}>
+            Sign in
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function StationPanels() {
   const panel = useLobby((s) => s.panel)
   const setPanel = useLobby((s) => s.setPanel)
@@ -306,6 +367,12 @@ export default function StationPanels() {
     return (
       <Modal title="Settings" onClose={close}>
         <SettingsBody />
+      </Modal>
+    )
+  if (panel === 'ranks')
+    return (
+      <Modal title="Leaderboards" kicker="Top commanders" onClose={close}>
+        <LeaderboardPanel />
       </Modal>
     )
   if (panel === 'help' || panel === 'notes')
