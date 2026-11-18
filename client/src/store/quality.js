@@ -37,6 +37,10 @@ export const PRESETS = {
     lodNear: 40,
     /** Share of the scenery trees to plant (0-1). */
     decorDensity: 0.4,
+    /** Grass tufts, stones/bushes and flowers on a standard-size map (Scatter.jsx). */
+    scatter: { blades: 1100, props: 220, flowers: 160 },
+    /** Grass and flowers sway; clouds drift; the sea moves. */
+    wind: false,
   },
   MEDIUM: {
     dpr: 1.25,
@@ -57,6 +61,8 @@ export const PRESETS = {
     structures: 140,
     lodNear: 55,
     decorDensity: 0.75,
+    scatter: { blades: 2800, props: 450, flowers: 320 },
+    wind: true,
   },
   HIGH: {
     dpr: 1.5,
@@ -77,6 +83,8 @@ export const PRESETS = {
     structures: 220,
     lodNear: 70,
     decorDensity: 1,
+    scatter: { blades: 3200, props: 540, flowers: 380 },
+    wind: true,
   },
 }
 
