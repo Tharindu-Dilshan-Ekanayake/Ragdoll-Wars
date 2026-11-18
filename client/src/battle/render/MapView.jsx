@@ -621,6 +621,62 @@ function wobblyRect(ctx, r, pad, toX, toY) {
   ctx.fill()
 }
 
+/**
+ * Weathering for the props (set pieces, cover, scenery): darker and grimier towards the
+ * ground, where rain splash and dirt collect, and a gentle large-scale patchiness so no
+ * wall is one flat colour. All in the shader: no extra geometry.
+ */
+function withGrime(m, key) {
+  m.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace('void main() {', 'varying vec3 vGPos;\nvoid main() {')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n  vGPos = (modelMatrix * vec4(transformed, 1.0)).xyz;')
+    shader.fragmentShader = shader.fragmentShader.replace('void main() {', 'varying vec3 vGPos;\nvoid main() {').replace(
+      '#include <color_fragment>',
+      `#include <color_fragment>
+  float gGround = mix(0.74, 1.0, smoothstep(0.0, 1.2, vGPos.y));
+  float gPatch = sin(vGPos.x * 0.37 + vGPos.z * 0.23) * sin(vGPos.z * 0.41 - vGPos.y * 0.6 + vGPos.x * 0.11);
+  diffuseColor.rgb *= gGround * (1.0 + gPatch * 0.07);`,
+    )
+  }
+  m.customProgramCacheKey = () => key
+  return m
+}
+
+/**
+ * Window glass: dark panes take on the sky, more so at a glancing angle (a cheap
+ * Fresnel), and bright ones - a lit cabin window - glow a little.
+ */
+function glassMaterial(sky) {
+  const m = new MeshLambertMaterial({ vertexColors: true })
+  const skyColor = new Color(sky)
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.uSky = { value: skyColor }
+    shader.vertexShader = shader.vertexShader
+      .replace('void main() {', 'varying vec3 vGN;\nvarying vec3 vGV;\nvoid main() {')
+      .replace('#include <defaultnormal_vertex>', '#include <defaultnormal_vertex>\n  vGN = normalize(transformedNormal);')
+      .replace('#include <project_vertex>', '#include <project_vertex>\n  vGV = -mvPosition.xyz;')
+    shader.fragmentShader = shader.fragmentShader
+      .replace('void main() {', 'uniform vec3 uSky;\nvarying vec3 vGN;\nvarying vec3 vGV;\nvoid main() {')
+      .replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+  float gLum = max(diffuseColor.r, max(diffuseColor.g, diffuseColor.b));
+  float gDark = 1.0 - smoothstep(0.3, 0.7, gLum);
+  float gFres = pow(1.0 - clamp(abs(dot(normalize(vGN), normalize(vGV))), 0.0, 1.0), 2.0);
+  vec3 gRefl = mix(uSky * 0.3, uSky * 0.8, gFres);
+  diffuseColor.rgb = mix(diffuseColor.rgb, gRefl, gDark * (0.12 + 0.4 * gFres));`,
+      )
+      .replace(
+        '#include <emissivemap_fragment>',
+        `#include <emissivemap_fragment>
+  totalEmissiveRadiance += diffuseColor.rgb * (gDark * (0.05 + 0.25 * gFres) + (1.0 - gDark) * 0.6);`,
+      )
+  }
+  m.customProgramCacheKey = () => 'ff-glass'
+  return m
+}
+
 function basinGeometry(water) {
   const parts = water.map((r) => {
     const g = new PlaneGeometry(r.w, r.d).rotateX(-Math.PI / 2).translate(r.x, 0.07, r.z)
@@ -863,6 +919,8 @@ export default function MapView({ map, focus }) {
   const shadows = useQuality((s) => s.settings.shadows === 'realtime')
   const maxTexture = useQuality((s) => s.settings.maxTexture)
   const wind = useQuality((s) => s.settings.wind)
+  // Small trim on the buildings and vehicles (frames, sills, lights): not on LOW.
+  const trim = useQuality((s) => s.level !== 'LOW')
   const theme = themeOf(map)
 
   const world = useMemo(() => {
@@ -886,13 +944,16 @@ export default function MapView({ map, focus }) {
     const quays = basins ? quayCurbs(map.water) : null
     const mats = {
       ground: groundMap ? groundMaterial(groundMap, tex.grass) : null,
-      concrete: new MeshLambertMaterial({ vertexColors: true, map: tex.concrete }),
+      concrete: withGrime(new MeshLambertMaterial({ vertexColors: true, map: tex.concrete }), 'ff-grime-concrete'),
       bags: new MeshLambertMaterial({ vertexColors: true, map: tex.sandbags }),
       crates: new MeshLambertMaterial({ vertexColors: true, map: tex.crate }),
-      steel: new MeshLambertMaterial({ vertexColors: true, map: tex.corrugated }),
+      steel: withGrime(new MeshLambertMaterial({ vertexColors: true, map: tex.corrugated }), 'ff-grime-steel'),
       wood: new MeshLambertMaterial({ vertexColors: true, map: tex.planks }),
       roof: new MeshLambertMaterial({ vertexColors: true, map: tex.corrugated }),
-      plain: new MeshLambertMaterial({ vertexColors: true }),
+      plain: withGrime(new MeshLambertMaterial({ vertexColors: true }), 'ff-grime-plain'),
+      // Trim on the set pieces: no weathering needed (and no shadow, see below).
+      trim: new MeshLambertMaterial({ vertexColors: true }),
+      glass: sets?.glass ? glassMaterial(map.sky?.horizon || '#cfe3ee') : null,
       // Both sides: from inside the ring the far slopes face away and would leave gaps.
       hills: new MeshLambertMaterial({ vertexColors: true, side: DoubleSide }),
       sea: map.sea ? seaMaterial(map.sea.z) : null,
@@ -979,6 +1040,9 @@ export default function MapView({ map, focus }) {
       {world.sets?.plain && <mesh geometry={world.sets.plain} material={mats.plain} castShadow={shadows} receiveShadow={shadows} />}
       {world.sets?.concrete && world.sets.concrete.index?.count > 0 && <mesh geometry={world.sets.concrete} material={mats.concrete} castShadow={shadows} receiveShadow={shadows} />}
       {world.sets?.steel && world.sets.steel.index?.count > 0 && <mesh geometry={world.sets.steel} material={mats.steel} castShadow={shadows} receiveShadow={shadows} />}
+      {/* Trim and glass cast no shadow: too small to see in one, and it halves their cost. */}
+      {world.sets?.detail && trim && <mesh geometry={world.sets.detail} material={mats.trim} receiveShadow={shadows} />}
+      {world.sets?.glass && <mesh geometry={world.sets.glass} material={mats.glass} />}
 
       {world.piecesGeo && <mesh geometry={world.piecesGeo} material={mats.plain} castShadow={shadows} receiveShadow={shadows} />}
       <mesh geometry={cover.concrete} material={mats.concrete} castShadow={shadows} receiveShadow={shadows} />

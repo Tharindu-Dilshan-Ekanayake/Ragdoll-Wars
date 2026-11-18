@@ -34,12 +34,34 @@ const tmpS = new Vector3()
 const tmpC = new Color()
 
 const CONTAINERS = ['#a8462f', '#3f6b4a', '#2f5f8f', '#c08a2e', '#7d7f84', '#8a3f5e']
+const BATCH = { concrete: 'concrete', steel: 'steel', detail: 'detail', glass: 'glass', plain: 'plainBoxes' }
+
+/** Face bits in a set's frame -> world bits after `rot` quarter turns (y faces stay). */
+function worldSkip(skip, rot) {
+  let out = skip & 12
+  const sides = [
+    [1, 1, 0],
+    [2, -1, 0],
+    [16, 0, 1],
+    [32, 0, -1],
+  ]
+  for (const [bit, nx, nz] of sides) {
+    if (!(skip & bit)) continue
+    const [wx, wz] = rotLocal(nx, nz, rot)
+    out |= wx > 0.5 ? 1 : wx < -0.5 ? 2 : wz > 0.5 ? 16 : 32
+  }
+  return out
+}
 
 class SetBuilder {
   constructor() {
     this.concrete = new BoxBatch()
     this.steel = new BoxBatch()
     this.plainBoxes = new BoxBatch()
+    /** Small trim (frames, sills, lights, mirrors): no shadow, not drawn on LOW. */
+    this.detail = new BoxBatch()
+    /** Window glass: its own material, which catches the sky. */
+    this.glass = new BoxBatch()
     this.extra = []
     this.ox = 0
     this.oz = 0
@@ -54,12 +76,38 @@ class SetBuilder {
     this.seed = seed
   }
 
-  /** A box in the set's frame (centre lx, ly, lz; size w, h, d). */
-  box(lx, ly, lz, w, h, d, color, mat = 'plain', uv = 2) {
+  /**
+   * A box in the set's frame (centre lx, ly, lz; size w, h, d). `mat`: 'plain',
+   * 'concrete', 'steel', 'detail' or 'glass'. `skip`: faces to leave out, in the set's
+   * own frame (BoxBatch bits: 1 +x, 2 -x, 4 +y, 8 -y, 16 +z, 32 -z).
+   */
+  box(lx, ly, lz, w, h, d, color, mat = 'plain', uv = 2, skip = 0) {
     const [rx, rz] = rotLocal(lx, lz, this.rot)
     const odd = this.rot & 1
-    const batch = mat === 'concrete' ? this.concrete : mat === 'steel' ? this.steel : this.plainBoxes
-    batch.box(this.ox + rx, ly, this.oz + rz, odd ? d : w, h, odd ? w : d, typeof color === 'string' ? tmpC.set(color).clone() : color, uv)
+    const batch = BATCH[mat] ? this[BATCH[mat]] : this.plainBoxes
+    batch.box(this.ox + rx, ly, this.oz + rz, odd ? d : w, h, odd ? w : d, typeof color === 'string' ? tmpC.set(color).clone() : color, uv, skip && worldSkip(skip, this.rot))
+  }
+
+  /**
+   * A window on a wall face: glass in a frame with a sill. `side` is the way the wall
+   * faces in the set's frame ('+z', '-z', '+x', '-x'); (lx, ly, lz) is the window's
+   * centre on the wall's surface. `glass` tints the pane (dark by default; warm for a lit
+   * window), `frame` colours the frame and sill.
+   */
+  win(lx, ly, lz, w, h, side, { glass = '#26343e', frame = '#e6e1d6', sill = true } = {}) {
+    const alongX = side[1] === 'z'
+    const s = side[0] === '+' ? 1 : -1
+    const out = (t) => (alongX ? [lx, lz + s * t] : [lx + s * t, lz])
+    const back = alongX ? (s > 0 ? 32 : 16) : s > 0 ? 2 : 1
+    const plate = (t, ww, hh, dd, y, color, mat) => {
+      const [x, z] = out(t)
+      this.box(x, y, z, alongX ? ww : dd, hh, alongX ? dd : ww, color, mat, 2, back)
+    }
+    plate(0.035, w + 0.16, h + 0.16, 0.07, ly, frame, 'detail')
+    plate(0.075, w, h, 0.02, ly, glass, 'glass')
+    // A mullion down the middle of wide windows.
+    if (w > 1.3) plate(0.09, 0.06, h, 0.02, ly, frame, 'detail')
+    if (sill) plate(0.08, w + 0.3, 0.07, 0.16, ly - h / 2 - 0.1, frame, 'detail')
   }
 
   /** Any geometry (owned) placed in the set's frame: position, Euler rotation, scale. */
@@ -117,7 +165,13 @@ class SetBuilder {
     const parts = [plainBox, ...this.extra].filter((g) => g.attributes.position.count > 0)
     const plain = parts.length ? mergeGeometries(parts) : null
     for (const g of parts) g.dispose()
-    return { plain, concrete: this.concrete.build(), steel: this.steel.build() }
+    const nonEmpty = (batch) => {
+      const g = batch.build()
+      if (g.index?.count) return g
+      g.dispose()
+      return null
+    }
+    return { plain, concrete: this.concrete.build(), steel: this.steel.build(), detail: nonEmpty(this.detail), glass: nonEmpty(this.glass) }
   }
 }
 
@@ -199,7 +253,17 @@ function ship(b, o) {
   // The bridge at the stern, its funnel and a mast up front.
   const sx = -half + 6
   b.box(sx, hullTop + 4.5, 0, 8, 9, 10, '#e8e6df')
-  b.box(sx + 4.05, hullTop + 7.2, 0, 0.1, 1.2, 9.2, '#2b3a44')
+  b.box(sx + 4.03, hullTop + 7.2, 0, 0.04, 1.2, 9.2, '#22303a', 'glass', 2, 2)
+  for (let y = hullTop + 1.6; y < hullTop + 6; y += 1.8) {
+    for (const sz of [-1, 1]) for (let x = sx - 3; x <= sx + 3; x += 1.5) b.box(x, y, sz * 5.02, 0.6, 0.6, 0.03, '#22303a', 'glass')
+    b.box(sx + 4.03, y, 0, 0.03, 0.5, 6, '#22303a', 'glass', 2, 2)
+  }
+  // Lifeboats in their davits, deck rails, the name on the bow.
+  for (const sz of [-1, 1]) {
+    b.box(sx - 1, hullTop + 3.2, sz * 5.6, 3.4, 1, 1.2, '#f07a20', 'detail')
+    b.box(cx, hullTop + 0.6, sz * 5.45, body, 0.06, 0.06, '#d8d6cf', 'detail')
+    b.box(half - 6, 5.5, sz * 3.2, 4, 0.6, 0.03, '#e8e6df', 'detail', 2, sz > 0 ? 32 : 16)
+  }
   b.box(sx + 1, hullTop + 9.3, 0, 4, 0.4, 14, '#e8e6df')
   b.box(sx - 3, hullTop + 11, 0, 3, 4, 3.4, '#c44a2b')
   b.box(sx - 3, hullTop + 13.2, 0, 3.05, 0.6, 3.45, '#1e1f21')
@@ -215,9 +279,14 @@ function tug(b) {
   bow.computeVertexNormals()
   b.geo(bow, '#b5432f', 5.5, 1.2, 0)
   b.box(-1.5, 3.8, 0, 4.5, 2.4, 3.4, '#e8e6df')
-  b.box(0.8, 4.2, 0, 0.1, 0.8, 3, '#2b3a44')
+  b.box(0.77, 4.25, 0, 0.04, 0.8, 3, '#22303a', 'glass', 2, 2)
+  for (const sz of [-1, 1]) for (const x of [-2.6, -1]) b.box(x, 4.25, sz * 1.72, 0.9, 0.6, 0.03, '#22303a', 'glass')
+  b.box(-1.5, 5.05, 0, 4.8, 0.1, 3.7, '#c44a2b')
   b.box(-3.4, 5.6, 0, 1.2, 1.6, 1.2, '#1f2326')
+  b.box(-1.2, 5.6, 0, 0.08, 1, 0.08, '#5a5e62', 'detail')
   for (const z of [-2.4, 2.4]) b.box(-1, 1.6, z, 9, 0.5, 0.25, '#1a1a1a')
+  for (const sz of [-1, 1]) b.cyl(-1, 2.6, sz * 2.35, 0.32, 0.32, 0.18, '#e8e6df', 10, Math.PI / 2)
+  b.box(-1, 2.65, 0, 11, 0.06, 4.7, '#d8d6cf', 'detail', 2, 8)
 }
 
 function tank(b, o) {
@@ -243,12 +312,20 @@ function lighthouse(b) {
     const r0 = 1.6 - k * 0.1
     b.cyl(0, 1.2 + k * 2.8 + 1.4, 0, r0 - 0.1, r0, 2.8, bands[k % 2], 16)
   }
+  for (const y of [4.5, 8.5, 12]) b.box(0, y, 1.48, 0.4, 0.6, 0.06, '#22303a', 'glass', 2, 32)
+  b.box(0, 1.9, 1.6, 0.8, 1.4, 0.08, '#3a2e24')
   b.cyl(0, 15.4, 0, 2, 2, 0.3, '#3a3d40', 16)
+  b.cyl(0, 16, 0, 2, 2, 0.9, '#3a3d40', 16, 0, 0, true)
   b.cyl(0, 16.6, 0, 1.1, 1.1, 2.1, '#ffe9a8', 12)
+  for (let k = 0; k < 6; k += 1) {
+    const a = (k / 6) * Math.PI * 2
+    b.box(Math.cos(a) * 1.12, 16.6, Math.sin(a) * 1.12, 0.08, 2.1, 0.08, '#2a2c2e', 'detail')
+  }
   b.geo(new ConeGeometry(1.4, 1.4, 12), '#c43a30', 0, 18.4, 0)
+  b.box(0, 19.4, 0, 0.06, 0.8, 0.06, '#2a2c2e', 'detail')
 }
 
-/** A concrete office block, windows in rows, the door on the front (+z). */
+/** A concrete office block: framed glass windows in rows, a glazed entrance on the front (+z). */
 function office(b, o) {
   const w = o.w || 14
   const d = o.d || 9
@@ -257,50 +334,116 @@ function office(b, o) {
   const h = fh * floors
   const c = o.color || '#c9c4b8'
   b.box(0, h / 2, 0, w, h, d, c, 'concrete', 2.4)
+  b.box(0, 0.25, 0, w + 0.3, 0.5, d + 0.3, shade(c, 0.78), 'concrete')
   for (let f = 0; f < floors; f += 1) {
-    const y = fh * f + fh * 0.58
+    const y = fh * f + fh * 0.55
     for (let x = -w / 2 + 1.6; x <= w / 2 - 1.4; x += 2.6) {
-      for (const sz of [-1, 1]) b.box(x, y, sz * (d / 2 + 0.04), 1.6, fh * 0.42, 0.08, '#2e3e4a')
+      if (f === 0 && Math.abs(x) < 1.6) continue
+      b.win(x, y, d / 2, 1.6, fh * 0.46, '+z')
+      b.win(x, y, -d / 2, 1.6, fh * 0.46, '-z')
     }
-    for (let z = -d / 2 + 1.6; z <= d / 2 - 1.4; z += 2.6) for (const sx of [-1, 1]) b.box(sx * (w / 2 + 0.04), y, z, 0.08, fh * 0.42, 1.6, '#2e3e4a')
+    for (let z = -d / 2 + 1.6; z <= d / 2 - 1.4; z += 2.6) {
+      b.win(w / 2, y, z, 1.6, fh * 0.46, '+x')
+      b.win(-w / 2, y, z, 1.6, fh * 0.46, '-x')
+    }
     b.box(0, fh * (f + 1) - 0.1, 0, w + 0.2, 0.2, d + 0.2, shade(c, 0.85))
   }
-  b.box(0, 1.2, d / 2 + 0.06, 2.2, 2.4, 0.1, '#3a2e24')
-  b.box(0, 2.7, d / 2 + 0.7, 3.2, 0.15, 1.4, shade(c, 0.8))
-  // Parapet and rooftop plant.
+  // The entrance: glass doors under a canopy, steps.
+  b.box(0, 1.25, d / 2 + 0.05, 2.6, 2.5, 0.1, '#5a5e62', 'detail', 2, 32)
+  b.box(0, 1.2, d / 2 + 0.11, 2.3, 2.3, 0.02, '#2a3a46', 'glass', 2, 32)
+  b.box(0, 1.2, d / 2 + 0.13, 0.06, 2.3, 0.02, '#5a5e62', 'detail', 2, 32)
+  b.box(0, 2.75, d / 2 + 0.8, 3.6, 0.15, 1.6, shade(c, 0.8))
+  b.box(0, 0.1, d / 2 + 1, 3.4, 0.2, 1.4, '#9a968c', 'concrete')
+  // Parapet, rooftop plant and a mast.
   b.box(0, h + 0.3, -d / 2 + 0.1, w, 0.6, 0.2, c, 'concrete')
   b.box(0, h + 0.3, d / 2 - 0.1, w, 0.6, 0.2, c, 'concrete')
   b.box(-w / 2 + 0.1, h + 0.3, 0, 0.2, 0.6, d, c, 'concrete')
   b.box(w / 2 - 0.1, h + 0.3, 0, 0.2, 0.6, d, c, 'concrete')
   b.box(-w * 0.22, h + 0.6, 0, 2.2, 1.2, 1.6, '#9aa0a5')
+  b.box(-w * 0.22, h + 1.25, 0, 2, 0.1, 1.4, '#6d7176', 'detail', 2, 8)
   b.box(w * 0.25, h + 0.5, -d * 0.2, 1.4, 1, 1.4, '#9aa0a5')
+  b.cyl(w * 0.25, h + 1.05, -d * 0.2, 0.5, 0.5, 0.1, '#3a3d40', 10)
+  b.box(w * 0.4, h + 2, d * 0.3, 0.08, 4, 0.08, '#5a5e62', 'detail')
+  // Downpipes at the corners.
+  for (const sx of [-1, 1]) b.box(sx * (w / 2 + 0.06), h / 2, d / 2 - 0.3, 0.12, h, 0.12, '#7d8186', 'detail', 2, 8)
 }
 
 function wheelsAt(b, xs, track, r = 0.5) {
-  for (const x of xs) for (const z of [-track, track]) b.cyl(x, r, z, r, r, 0.35, '#1d1f21', 10, Math.PI / 2)
+  for (const x of xs) {
+    for (const z of [-track, track]) {
+      b.cyl(x, r, z, r, r, 0.35, '#1d1f21', 10, Math.PI / 2)
+      b.box(x, r, z + Math.sign(z) * 0.18, r * 0.62, r * 0.62, 0.02, '#5d6266', 'detail', 2, z > 0 ? 32 : 16)
+    }
+  }
 }
 
 /** A lorry with a container on its trailer, cab towards +x. */
 function truck(b, o) {
   const cab = o.color || ['#c9452f', '#e8e6df', '#3f6b9a', '#d8a22c'][(o.seed * 4) | 0]
-  b.box(3.6, 1.8, 0, 2.4, 2.4, 2.5, cab)
-  b.box(4.85, 2.2, 0, 0.1, 1, 2.2, '#2b3a44')
-  b.box(-1.2, 1.1, 0, 7.4, 0.3, 2.3, '#2a2c2e')
-  b.box(-1.2, 2.5, 0, 6.1, 2.5, 2.45, CONTAINERS[((o.seed || 0.3) * 6) | 0], 'steel', 1.4)
+  const box = CONTAINERS[((o.seed || 0.3) * 6) | 0]
+  // Chassis and the trailer's bed.
+  b.box(0, 0.85, 0, 10, 0.25, 1.1, '#1d1f21')
+  b.box(-1.3, 1.12, 0, 7.6, 0.28, 2.4, '#2a2c2e')
+  // The cab: body, roof, wind deflector, glass, grille, lights, bumper, mirrors, steps.
+  b.box(3.75, 1.95, 0, 2.2, 2.1, 2.45, cab)
+  b.box(3.55, 3.06, 0, 1.8, 0.14, 2.3, shade(cab, 0.85))
+  // Roof fairing: a thin panel raked up towards the trailer.
+  b.geo(new BoxGeometry(1.3, 0.06, 2.2), shade(cab, 0.9), 3.35, 3.42, 0, 0, 0, -0.5)
+  for (const sz of [-1, 1]) b.geo(new BoxGeometry(1.2, 0.5, 0.05), shade(cab, 0.8), 3.3, 3.32, sz * 1.08, 0, 0, -0.25)
+  b.box(4.86, 2.45, 0, 0.04, 0.85, 2.15, '#22303a', 'glass', 2, 2)
+  for (const sz of [-1, 1]) b.box(4.15, 2.45, sz * 1.235, 1.05, 0.72, 0.03, '#22303a', 'glass', 2, sz > 0 ? 32 : 16)
+  b.box(4.88, 1.5, 0, 0.05, 0.75, 1.5, '#2a2c2e', 'detail', 2, 2)
+  for (let y = 1.2; y < 1.85; y += 0.16) b.box(4.91, y, 0, 0.02, 0.05, 1.45, '#5a5e62', 'detail', 2, 2)
+  for (const sz of [-1, 1]) {
+    b.box(4.89, 1.12, sz * 0.92, 0.04, 0.22, 0.36, '#f4f0dc', 'detail', 2, 2)
+    b.box(4.89, 1.12, sz * 0.62, 0.04, 0.16, 0.16, '#e8a23a', 'detail', 2, 2)
+    b.box(4.35, 2.55, sz * 1.5, 0.08, 0.42, 0.12, '#1d1f21', 'detail')
+    b.box(4.5, 2.7, sz * 1.36, 0.3, 0.04, 0.04, '#1d1f21', 'detail')
+    b.box(3.2, 0.62, sz * 1.25, 0.5, 0.06, 0.25, '#5a5e62', 'detail')
+    // Mudguard over the front wheel, the fuel tank behind it.
+    b.box(3.6, 1.18, sz * 1.15, 1.35, 0.12, 0.42, '#1d1f21', 'detail')
+  }
+  b.box(4.97, 0.82, 0, 0.22, 0.32, 2.5, '#3a3d40')
+  b.cyl(2.35, 0.95, -1.05, 0.32, 0.32, 1.1, '#aab0b5', 10, 0, Math.PI / 2)
+  b.box(2.5, 2.7, 1.02, 0.12, 2, 0.12, '#7d8186', 'detail')
+  // The container, doors and locking bars at the back.
+  b.box(-1.3, 2.5, 0, 6.1, 2.5, 2.45, box, 'steel', 1.4)
+  b.box(-4.37, 2.5, 0, 0.04, 2.35, 2.3, shade(box, 0.82), 'detail', 2, 1)
+  for (const sz of [-0.55, 0.55]) b.box(-4.41, 2.5, sz, 0.04, 2.3, 0.06, '#5a5e62', 'detail', 2, 1)
+  b.box(-1.3, 3.76, 0, 6.1, 0.04, 2.45, shade(box, 0.9), 'detail', 2, 8)
+  // Wheels (with hubs), and mudflaps behind the rear axles.
   wheelsAt(b, [3.6, -2.4, -3.6], 1.1)
+  for (const sz of [-1, 1]) b.box(-4.25, 0.55, sz * 1.1, 0.04, 0.6, 0.45, '#1d1f21', 'detail')
 }
 
 function railcar(b, o) {
   if (o.type === 'tanker') {
-    b.cyl(0, 2.4, 0, 1.4, 1.4, 12, o.color || '#2a2c2e', 16, 0, Math.PI / 2)
+    const c = o.color || '#2a2c2e'
+    b.cyl(0, 2.4, 0, 1.4, 1.4, 12, c, 16, 0, Math.PI / 2)
+    for (const x of [-6.05, 6.05]) b.geo(new SphereGeometry(1.4, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), c, x, 2.4, 0, 0, 0, x > 0 ? -Math.PI / 2 : Math.PI / 2, 1, 0.25, 1)
     b.cyl(0, 3.95, 0, 0.5, 0.5, 0.4, '#3a3d40', 10)
+    for (const x of [-4, 4]) b.cyl(x, 2.4, 0, 1.43, 1.43, 0.12, '#1d1f21', 16, 0, Math.PI / 2)
+    // Walkway and ladder up to the dome.
+    b.box(0, 3.85, 0, 2.6, 0.06, 1.2, '#5a5e62', 'detail')
+    for (const sz of [-1, 1]) b.box(0, 3.25, sz * 1.48, 0.5, 1.6, 0.04, '#7d8186', 'detail')
+    b.box(0, 1.6, 1.46, 3, 0.4, 0.02, '#e8e2d0', 'detail', 2, 32)
   } else {
     const c = o.color || ['#7b4a33', '#5d6b4a', '#6b3f3a'][((o.seed || 0) * 3) | 0]
     b.box(0, 2.3, 0, 13, 2.8, 3, c, 'steel', 1.4)
-    b.box(0, 2.1, 1.52, 3, 2.2, 0.06, shade(c, 0.75))
     b.box(0, 3.75, 0, 13.1, 0.1, 3.1, shade(c, 0.85))
+    for (const sz of [-1, 1]) {
+      const f = sz > 0 ? 32 : 16
+      // The sliding door on its rails, side ribs, the end ladders.
+      b.box(0, 2.15, sz * 1.52, 3, 2.3, 0.05, shade(c, 0.78), 'detail', 2, f)
+      b.box(0, 3.35, sz * 1.55, 6.4, 0.08, 0.06, '#3a3d40', 'detail', 2, f)
+      b.box(0, 0.98, sz * 1.55, 6.4, 0.08, 0.06, '#3a3d40', 'detail', 2, f)
+      for (let x = -5.8; x <= 5.81; x += 1.45) if (Math.abs(x) > 1.8) b.box(x, 2.3, sz * 1.52, 0.08, 2.7, 0.04, shade(c, 0.85), 'detail', 2, f)
+      for (const x of [-6.2, 6.2]) for (let y = 1.2; y < 3.6; y += 0.4) b.box(x, y, sz * 1.56, 0.4, 0.04, 0.04, '#2a2c2e', 'detail')
+      b.box(-4.5, 1.5, sz * 1.53, 1.6, 0.35, 0.02, '#e8e2d0', 'detail', 2, f)
+    }
   }
   b.box(0, 0.75, 0, 12.4, 0.35, 2.4, '#26282a')
+  for (const x of [-6.35, 6.35]) b.box(x, 0.85, 0, 0.3, 0.25, 0.3, '#3a3d40', 'detail')
   for (const x of [-4.6, 4.6]) {
     b.box(x, 0.5, 0, 2.4, 0.5, 2.2, '#1d1f21')
     wheelsAt(b, [x - 0.7, x + 0.7], 0.75, 0.42)
@@ -343,13 +486,27 @@ function hangar(b, o) {
 
 function ctower(b) {
   b.box(0, 7, 0, 6, 14, 6, '#cfcac0', 'concrete', 2.4)
-  for (let y = 2; y < 13; y += 2.6) b.box(0, y, 3.04, 1.2, 1.4, 0.08, '#2e3e4a')
+  for (let y = 2.2; y < 13; y += 2.6) b.win(0, y, 3, 1.2, 1.3, '+z')
   b.box(0, 14.3, 0, 8.6, 0.6, 8.6, '#cfcac0', 'concrete')
-  b.box(0, 15.9, 0, 8, 2.6, 8, '#3b5566')
+  // The cab: glass all round between corner posts, a gallery rail, the roof.
+  b.box(0, 15.9, 0, 7.8, 2.6, 7.8, '#24323c', 'glass')
+  for (const x of [-3.9, 3.9]) for (const z of [-3.9, 3.9]) b.box(x, 15.9, z, 0.25, 2.6, 0.25, '#e8e6df', 'detail')
+  for (const t of [-1.3, 1.3]) {
+    b.box(t, 15.9, 3.92, 0.08, 2.6, 0.06, '#e8e6df', 'detail', 2, 32)
+    b.box(t, 15.9, -3.92, 0.08, 2.6, 0.06, '#e8e6df', 'detail', 2, 16)
+    b.box(3.92, 15.9, t, 0.06, 2.6, 0.08, '#e8e6df', 'detail', 2, 2)
+    b.box(-3.92, 15.9, t, 0.06, 2.6, 0.08, '#e8e6df', 'detail', 2, 1)
+  }
+  for (const sz of [-1, 1]) {
+    b.box(0, 15.2, sz * 4.25, 8.5, 0.05, 0.05, '#5a5e62', 'detail')
+    b.box(sz * 4.25, 15.2, 0, 0.05, 0.05, 8.5, '#5a5e62', 'detail')
+  }
   b.box(0, 17.4, 0, 8.8, 0.4, 8.8, '#e8e6df')
   b.box(2.5, 19, 1.5, 0.12, 3, 0.12, '#3a3d40')
   b.box(-2.2, 18.5, -1.8, 0.8, 1.4, 0.8, '#c43a30')
+  b.box(-2.2, 19.3, -1.8, 0.2, 0.2, 0.2, '#ff5a3a', 'detail')
   b.box(0, 1.4, 3.06, 2, 2.8, 0.1, '#3a2e24')
+  b.box(0, 2.95, 3.4, 2.8, 0.12, 0.8, '#9a968c', 'detail')
 }
 
 /** A four-engined transport parked on the apron, nose towards local +x. */
@@ -359,18 +516,32 @@ function plane(b) {
   b.cyl(0, 2.8, 0, 2.2, 2.2, 24, g, 16, 0, Math.PI / 2)
   b.geo(new SphereGeometry(2.2, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), g, 12, 2.8, 0, 0, 0, -Math.PI / 2, 1, 1.6, 1)
   b.cyl(-15, 3.6, 0, 0.7, 2.2, 6, g, 16, 0, Math.PI / 2 + 0.12)
-  b.box(13.3, 3.6, 0, 1.2, 0.6, 3.2, '#2b3a44')
+  // Cockpit glazing, the cabin windows down each side, a livery stripe.
+  b.geo(new BoxGeometry(1.3, 0.55, 2.6), '#1f2c36', 13.2, 3.75, 0, 0, 0, -0.35)
+  for (const sz of [-1, 1]) {
+    for (let x = -10; x <= 9; x += 1.6) b.box(x, 3.3, sz * 2.24, 0.42, 0.42, 0.04, '#22303a', 'glass')
+    b.box(0, 2.55, sz * 2.24, 21, 0.4, 0.03, '#2f5f8f', 'detail')
+    b.box(6, 2.2, sz * 2.24, 0.9, 1.6, 0.03, shade(g, 0.8), 'detail')
+  }
   b.box(1.5, 4.9, 0, 5, 0.35, 36, g)
   for (const z of [-11, -6, 6, 11]) {
     b.cyl(3.2, 4.1, z, 0.75, 0.75, 3.4, dk, 12, 0, Math.PI / 2)
     b.cyl(4.95, 4.1, z, 0.85, 0.85, 0.15, '#1d1f21', 12, 0, Math.PI / 2)
+    b.box(5.1, 4.1, z, 0.05, 1.9, 0.12, '#3a3d40', 'detail')
+    b.box(5.1, 4.1, z, 0.05, 0.12, 1.9, '#3a3d40', 'detail')
   }
+  for (const sz of [-1, 1]) b.box(1.5, 5.12, sz * 17.6, 1.2, 0.1, 0.5, sz > 0 ? '#3aa14a' : '#c43a30', 'detail')
   b.box(-16.5, 8, 0, 4.8, 6, 0.45, g)
   b.box(-17, 5.4, 0, 3.4, 0.3, 12, g)
   b.box(-16.6, 9.5, 0, 2.6, 2.2, 0.5, '#3f6b9a')
-  for (const z of [-2.3, 2.3]) b.box(0, 0.7, z, 1.6, 1.4, 1.2, '#2a2c2e')
+  for (const z of [-2.3, 2.3]) {
+    b.box(0, 0.7, z, 1.6, 1.4, 1.2, '#2a2c2e')
+    b.box(0, 1.6, z * 0.95, 2.2, 0.6, 0.6, dk, 'detail')
+  }
   b.box(10, 0.6, 0, 0.5, 1.2, 0.5, '#2a2c2e')
-  b.box(0, 2.6, 2.21, 18, 0.5, 0.04, '#2b3a44')
+  // Chocks, a crew ladder at the door.
+  b.box(6.4, 1, 2.6, 0.9, 0.06, 0.6, '#5a5e62', 'detail')
+  for (const sz of [-1, 1]) b.box(6.4 + sz * 0.4, 0.75, 3, 0.06, 1.5, 0.06, '#d8a22c', 'detail')
 }
 
 let jetGeo = null
@@ -411,13 +582,15 @@ function windsock(b) {
   b.geo(new CylinderGeometry(0.15, 0.4, 2.2, 10, 1, true), '#ff7a2e', 1.1, 5.7, 0, 0, 0, Math.PI / 2 - 0.15)
 }
 
-/** A flat-roofed adobe house: parapet, beam ends, a door on the front (+z), small windows. */
+/** A flat-roofed adobe house: parapet, beam ends, framed windows and shutters, a door on the front (+z). */
 function house(b, o) {
   const w = o.w || 8
   const d = o.d || 8
   const fh = o.h || 3.6
   const floors = o.floors || 1
   const c = o.color || ['#c9a77c', '#d2b48a', '#bf9a6e', '#d8c09a'][((o.seed || 0) * 4) | 0]
+  const shutter = ['#3f6f99', '#5a7a4a', '#7a4a32', '#2f5f6f'][((o.seed || 0) * 7) % 4 | 0]
+  const wood = '#6b4a2e'
   for (let f = 0; f < floors; f += 1) {
     const s = 1 - f * 0.22
     const fw = w * s
@@ -432,16 +605,44 @@ function house(b, o) {
       [x + fw / 2 - 0.12, 0, 0.24, fd],
     ])
       b.box(px, y0 + fh + 0.25, pz, pw, 0.5, pd, shade(c, 0.95))
-    for (let bx = -fw / 2 + 0.8; bx < fw / 2 - 0.4; bx += 1.3) b.box(x + bx, y0 + fh - 0.45, fd / 2 + 0.2, 0.18, 0.18, 0.4, '#5a4632')
-    for (const wx of [-fw * 0.28, fw * 0.28]) b.box(x + wx, y0 + fh * 0.6, fd / 2 + 0.03, 0.7, 0.8, 0.06, '#2a241e')
-    for (const wz of [-fd * 0.2, fd * 0.2]) for (const sx of [-1, 1]) b.box(x + sx * (fw / 2 + 0.03), y0 + fh * 0.6, wz, 0.06, 0.8, 0.7, '#2a241e')
+    for (let bx = -fw / 2 + 0.8; bx < fw / 2 - 0.4; bx += 1.3) b.box(x + bx, y0 + fh - 0.45, fd / 2 + 0.2, 0.18, 0.18, 0.4, '#5a4632', 'detail')
+    // Windows: dark glass in a wooden frame, a shutter folded back beside each.
+    const y = y0 + fh * 0.6
+    for (const wx of [-fw * 0.28, fw * 0.28]) {
+      if (f === 0 && Math.abs(x + wx - 0.6) < 0.9) continue
+      b.win(x + wx, y, fd / 2, 0.75, 0.85, '+z', { glass: '#1f2a30', frame: wood })
+      b.box(x + wx - 0.62, y, fd / 2 + 0.04, 0.42, 0.95, 0.05, shutter, 'detail', 2, 32)
+    }
+    for (const wz of [-fd * 0.2, fd * 0.2]) {
+      b.win(x + fw / 2, y, wz, 0.75, 0.85, '+x', { glass: '#1f2a30', frame: wood })
+      b.win(x - fw / 2, y, wz, 0.75, 0.85, '-x', { glass: '#1f2a30', frame: wood })
+    }
+    // A rain spout off the roof.
+    b.box(x + fw / 2 - 0.5, y0 + fh - 0.1, fd / 2 + 0.3, 0.14, 0.14, 0.6, '#8a6a46', 'detail')
   }
-  b.box(0.6, 1.05, d / 2 + 0.04, 1.1, 2.1, 0.08, '#6b4a2e')
+  // The door in its frame, a step, a lamp over it.
+  b.box(0.6, 1.1, d / 2 + 0.02, 1.3, 2.25, 0.04, shade(c, 0.85), 'detail', 2, 32)
+  b.box(0.6, 1.05, d / 2 + 0.06, 1.1, 2.1, 0.08, wood)
   b.box(0.6, 2.25, d / 2 + 0.06, 1.4, 0.18, 0.12, '#5a4632')
+  b.box(0.6, 0.08, d / 2 + 0.45, 1.6, 0.16, 0.7, shade(c, 0.85), 'detail')
+  b.box(0.6, 2.6, d / 2 + 0.14, 0.18, 0.22, 0.16, '#fff0c8', 'detail')
   if (o.awning) {
     b.box(-w * 0.25, 2.4, d / 2 + 0.9, w * 0.4, 0.08, 1.8, o.awning)
     for (const ax of [-w * 0.43, -w * 0.07]) b.box(ax, 1.2, d / 2 + 1.7, 0.08, 2.4, 0.08, '#5a4632')
   }
+  // Roof clutter: a water tank, a satellite dish, an AC unit on the wall (by seed).
+  const top = fh * floors
+  const rx = floors > 1 ? -w * 0.11 : 0
+  const pick = ((o.seed || 0) * 13) % 3 | 0
+  if (pick === 0) b.cyl(rx + w * 0.18, top + 0.55, -d * 0.15, 0.55, 0.55, 1.1, '#3a4a5a', 10)
+  if (pick !== 2) {
+    b.geo(new SphereGeometry(0.45, 8, 4, 0, Math.PI * 2, 0, Math.PI * 0.35), '#e8e6df', rx - w * 0.2, top + 0.65, d * 0.1, -0.9, 0, 0)
+    b.box(rx - w * 0.2, top + 0.3, d * 0.1, 0.06, 0.6, 0.06, '#5a5e62', 'detail')
+  }
+  b.box(w / 2 + 0.22, fh * 0.75, -d * 0.25, 0.42, 0.55, 0.8, '#d8d6cf', 'detail', 2, 2)
+  b.box(w / 2 + 0.44, fh * 0.75, -d * 0.25, 0.02, 0.4, 0.4, '#5a5e62', 'detail', 2, 2)
+  // Two-storey houses: an outside stair to the upper floor.
+  if (floors > 1) for (let k = 0; k < 6; k += 1) b.box(w / 2 + 0.55, 0.3 + k * 0.6, d / 2 - 0.6 - k * 0.5, 0.9, 0.12, 0.5, shade(c, 0.85))
 }
 
 function domehouse(b, o) {
@@ -594,11 +795,14 @@ function boat(b) {
   b.geo(new BoxGeometry(1.98, 0.9, 1.98), H, 3.3, 0.35, 0, 0, Math.PI / 4, 0)
   b.box(-0.4, 0.82, 0, 8, 0.05, 2.6, '#6b6f64')
   b.box(-0.5, 1.4, 0, 2.6, 1.2, 2, '#5a6a56')
-  b.box(0.82, 1.6, 0, 0.04, 0.45, 1.7, '#1e2a30')
+  b.box(0.82, 1.6, 0, 0.04, 0.45, 1.7, '#1e2a30', 'glass', 2, 2)
+  for (const sz of [-1, 1]) b.box(-0.5, 1.6, sz * 1.02, 2, 0.4, 0.03, '#1e2a30', 'glass')
   b.box(-3.1, 1.95, 0, 2.4, 0.08, 2.4, '#3f4f3a')
   for (const x of [-4.1, -2.1]) for (const z of [-1.1, 1.1]) b.box(x, 1.4, z, 0.08, 1.1, 0.08, '#2a2c2e')
   b.cyl(2.5, 1.05, 0, 0.25, 0.3, 0.45, '#2a2c2e', 8)
   b.bar(2.5, 1.35, 0, 3.8, 1.5, 0, 0.1, '#1d1f21')
+  for (const sz of [-1, 1]) b.box(-0.6, 0.95, sz * 1.42, 7.6, 0.12, 0.06, '#2a2c2e', 'detail')
+  b.box(-0.5, 2.35, 0, 0.06, 0.8, 0.06, '#5a5e62', 'detail')
 }
 
 // --- Scrapyard --------------------------------------------------------------------------
@@ -663,8 +867,13 @@ function crusher(b) {
   for (const z of [-0.9, 0.9]) b.cyl(1, 2.2, z, 0.25, 0.25, 2.4, '#9aa0a5', 8, 0, Math.PI / 2)
   b.box(-1.2, 1.05, 0, 3.6, 0.9, 2.2, '#7a3a30')
   b.box(3.6, 3.95, 1.1, 1.6, 1.5, 1.4, '#c9c4b8')
-  b.box(3.6, 4.1, 1.82, 1.3, 0.6, 0.04, '#1e2a30')
+  b.box(3.6, 4.1, 1.82, 1.3, 0.6, 0.04, '#22303a', 'glass', 2, 32)
+  b.box(4.42, 4.1, 1.1, 0.04, 0.6, 1, '#22303a', 'glass', 2, 2)
   b.geo(new BoxGeometry(6, 0.12, 2.6), shade(Y, 0.8), -1, 3.4, -2.4, 0.9, 0, 0)
+  // Hazard stripes, a warning light, the hydraulic hoses.
+  for (let x = -3.6; x < 1.6; x += 0.8) b.box(x, 3.05, 1.82, 0.4, 0.12, 0.02, '#1d1f21', 'detail', 2, 32)
+  b.box(4.2, 4.82, 1.1, 0.2, 0.25, 0.2, '#f0a020', 'detail')
+  b.bar(2, 1.4, 1.75, 0.5, 2.6, 1.8, 0.06, '#1d1f21')
 }
 
 /** A crawler crane with a lattice boom swinging a scrap magnet out along local +x. */
@@ -697,9 +906,13 @@ function cabin(b, o) {
   for (const x of [-2.6, 2.6]) for (const z of [-1, 1]) b.box(x, 0.15, z, 0.5, 0.3, 0.5, '#8d8a82', 'concrete')
   b.box(0, 1.6, 0, 6, 2.6, 2.5, c, 'steel', 1.4)
   b.box(0, 2.95, 0, 6.2, 0.1, 2.7, shade(c, 0.8))
-  for (const x of [-1.8, 0.2]) b.box(x, 1.9, 1.27, 1.3, 0.8, 0.05, '#2e3e4a')
+  for (const x of [-1.8, 0.2]) b.win(x, 1.9, 1.25, 1.3, 0.8, '+z', { frame: '#e8e6df', sill: false })
+  b.win(-3, 1.9, 0, 0.9, 0.7, '-x', { frame: '#e8e6df', sill: false })
   b.box(2, 1.4, 1.27, 0.9, 2, 0.05, '#4a4e52')
+  b.box(2.3, 1.4, 1.31, 0.06, 0.06, 0.06, '#c9c4b8', 'detail')
   b.box(2, 0.3, 1.75, 1.1, 0.6, 0.9, '#8d8a82', 'concrete')
+  b.box(2.6, 0.9, 1.9, 0.05, 0.9, 0.05, '#5a5e62', 'detail')
+  b.box(-2.4, 2.4, -1.4, 0.7, 0.5, 0.3, '#d8d6cf', 'detail', 2, 16)
 }
 
 /** Four stacks of old tyres. */
@@ -715,7 +928,7 @@ function tyres(b, o) {
 
 // --- Army base --------------------------------------------------------------------------
 
-/** A long barracks block, ridge along local x, door and windows on the front (+z). */
+/** A long barracks block, ridge along local x, framed windows and a door on the front (+z). */
 function barracks(b, o) {
   const w = o.w || 16
   const d = o.d || 7
@@ -725,10 +938,22 @@ function barracks(b, o) {
   b.roof(0, 3.2, 0, d + 1.2, w + 0.8, 1.8, o.roof || '#5d6650', true)
   for (let x = -w / 2 + 1.6; x < w / 2 - 1; x += 2.4) {
     if (Math.abs(x) < 1.2) continue
-    for (const sz of [-1, 1]) b.box(x, 2.1, sz * (d / 2 + 0.03), 1.1, 0.9, 0.06, '#2e3e4a')
+    b.win(x, 2.1, d / 2, 1.1, 0.95, '+z')
+    b.win(x, 2.1, -d / 2, 1.1, 0.95, '-z')
   }
-  b.box(0, 1.45, d / 2 + 0.04, 1.2, 2.1, 0.08, '#4a3a2a')
+  for (const sx of [-1, 1]) b.win(sx * (w / 2), 2.1, 0, 1, 0.9, sx > 0 ? '+x' : '-x')
+  b.box(0, 1.5, d / 2 + 0.02, 1.4, 2.25, 0.04, '#e6e1d6', 'detail', 2, 32)
+  b.box(0, 1.45, d / 2 + 0.06, 1.2, 2.1, 0.08, '#4a3a2a')
   b.box(0, 0.25, d / 2 + 0.6, 2, 0.5, 1, '#8d8a82', 'concrete')
+  b.box(0, 2.85, d / 2 + 0.75, 2.2, 0.08, 1.2, '#5d6650', 'detail')
+  b.box(0, 2.6, d / 2 + 0.2, 0.2, 0.2, 0.15, '#fff0c8', 'detail')
+  // Gutters along the eaves, downpipes, vent pipes through the roof, a sign by the door.
+  for (const sz of [-1, 1]) {
+    b.box(0, 3.15, sz * (d / 2 + 0.62), w + 0.8, 0.12, 0.14, '#6d7176', 'detail')
+    for (const sx of [-1, 1]) b.box(sx * (w / 2 + 0.25), 1.6, sz * (d / 2 + 0.62), 0.1, 3.1, 0.1, '#6d7176', 'detail')
+  }
+  for (const x of [-w * 0.3, w * 0.15]) b.box(x, 4.3, -d * 0.18, 0.18, 1, 0.18, '#3a3d40', 'detail')
+  b.box(1.6, 2.2, d / 2 + 0.04, 1, 0.5, 0.04, '#2f4a2f', 'detail', 2, 32)
 }
 
 function flagpole(b, o) {
@@ -818,14 +1043,26 @@ function logcabin(b, o) {
   const d = o.d || 6
   const c = o.color || '#6e4e34'
   b.box(0, 1.5, 0, w, 3, d, c)
-  for (let y = 0.3; y < 3; y += 0.38) for (const sz of [-1, 1]) b.box(0, y, sz * (d / 2 + 0.02), w + 0.3, 0.06, 0.04, shade(c, 0.7))
+  for (let y = 0.3; y < 3; y += 0.38) {
+    for (const sz of [-1, 1]) b.box(0, y, sz * (d / 2 + 0.02), w + 0.3, 0.06, 0.04, shade(c, 0.7), 'detail', 2, sz > 0 ? 32 : 16)
+    for (const sx of [-1, 1]) b.box(sx * (w / 2 + 0.02), y, 0, 0.04, 0.06, d + 0.3, shade(c, 0.7), 'detail', 2, sx > 0 ? 2 : 1)
+  }
+  // Log ends crossing at the corners.
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) b.box(sx * (w / 2 + 0.1), 1.5, sz * (d / 2 + 0.1), 0.3, 3, 0.3, shade(c, 0.85))
   b.roof(0, 2.9, 0, w + 1.2, d + 1, 1.9, '#4a3a2c')
   b.roof(0, 3.05, 0, w + 1.1, d + 0.9, 1.85, '#f2f5f7')
+  b.box(0, 2.95, d / 2 + 0.52, w + 1.1, 0.1, 0.06, '#e8f0f6', 'detail')
   b.box(w * 0.28, 4.1, -d * 0.18, 0.9, 2.6, 0.9, '#7d7a76')
   b.box(w * 0.28, 5.45, -d * 0.18, 1, 0.12, 1, '#f2f5f7')
-  b.box(-w * 0.18, 1.1, d / 2 + 0.05, 1, 2, 0.06, '#3a2a1c')
-  for (const x of [w * 0.15, w * 0.36]) b.box(x, 1.7, d / 2 + 0.05, 0.9, 0.8, 0.05, '#ffd98a')
+  // Door, lit windows in frames, a porch with its posts, firewood stacked by the wall.
+  b.box(-w * 0.18, 1.15, d / 2 + 0.02, 1.2, 2.15, 0.04, '#4a3424', 'detail', 2, 32)
+  b.box(-w * 0.18, 1.1, d / 2 + 0.07, 1, 2, 0.08, '#3a2a1c')
+  for (const x of [w * 0.15, w * 0.36]) b.win(x, 1.7, d / 2, 0.9, 0.8, '+z', { glass: '#ffcf7a', frame: '#4a3424' })
+  for (const sx of [-1, 1]) b.win(sx * (w / 2), 1.7, 0, 0.8, 0.7, sx > 0 ? '+x' : '-x', { glass: '#ffcf7a', frame: '#4a3424' })
   b.box(0, 0.08, d / 2 + 0.9, w * 0.5, 0.16, 1.4, '#5e4630')
+  for (const sx of [-1, 1]) b.box(sx * w * 0.24, 1.25, d / 2 + 1.5, 0.15, 2.5, 0.15, '#4a3424', 'detail')
+  b.box(0, 2.5, d / 2 + 0.95, w * 0.55, 0.1, 1.3, '#f2f5f7')
+  for (let k = 0; k < 3; k += 1) b.cyl(-w / 2 - 0.4, 0.2 + k * 0.32, -d * 0.2, 0.16, 0.16, 1.6, k % 2 ? '#8a6a44' : '#7a5a3a', 6, Math.PI / 2)
 }
 
 /** A radar dome on its equipment building. */
@@ -836,7 +1073,7 @@ function radome(b) {
   b.box(0, 3.08, 0, 6.2, 0.16, 6.2, '#f2f5f7')
 }
 
-/** A snowcat: twin tracks, a red cab, a plough blade on the front (+x). */
+/** A snowcat: twin tracks, a red cab with glass all round, a plough blade on the front (+x). */
 function snowcat(b) {
   for (const z of [-1.05, 1.05]) {
     b.box(0, 0.45, z, 4.4, 0.9, 0.7, '#26282a')
@@ -844,10 +1081,13 @@ function snowcat(b) {
   }
   b.box(-0.3, 1.25, 0, 3.6, 0.7, 2, '#c43a30')
   b.box(0.3, 2.1, 0, 2.2, 1.1, 1.9, '#c43a30')
-  b.box(1.42, 2.15, 0, 0.04, 0.7, 1.6, '#1e2a30')
-  for (const sz of [-1, 1]) b.box(0.3, 2.15, sz * 0.97, 1.8, 0.6, 0.04, '#1e2a30')
+  b.box(1.42, 2.15, 0, 0.04, 0.7, 1.6, '#22303a', 'glass', 2, 2)
+  for (const sz of [-1, 1]) b.box(0.3, 2.15, sz * 0.97, 1.8, 0.6, 0.04, '#22303a', 'glass')
+  b.box(1.43, 1.4, 0, 0.04, 0.2, 1.4, '#f4f0dc', 'detail', 2, 2)
+  b.box(0.3, 2.72, 0, 1.4, 0.12, 0.6, '#f0a020', 'detail', 2, 8)
   b.box(2.6, 0.55, 0, 0.2, 1, 2.8, '#d8a22c')
   b.box(-1.9, 1.85, 0, 0.6, 0.12, 1.6, '#3a3d40')
+  b.box(-0.6, 2.75, 0, 1.2, 0.08, 1.7, '#5a5e62', 'detail')
 }
 
 // --- Coast ------------------------------------------------------------------------------
@@ -870,9 +1110,16 @@ function landingcraft(b) {
   for (const z of [-2.1, 2.1]) b.box(0, 1, z, 12, 2, 0.4, H, 'steel', 1.2)
   b.box(-5.8, 1.6, 0, 0.4, 3.2, 4.6, H, 'steel', 1.2)
   b.box(-5, 3.6, 0, 2, 1.6, 2.4, shade(H, 1.1))
-  b.box(-4, 3.8, 0, 0.04, 0.5, 2, '#1e2a30')
+  b.box(-3.98, 3.8, 0, 0.04, 0.5, 2, '#1e2a30', 'glass', 2, 2)
   b.geo(new BoxGeometry(2.4, 0.15, 4), shade(H, 0.9), 7.1, 0.55, 0, 0, 0, -0.42)
   for (const z of [-1.9, 1.9]) b.box(-5.9, 2.4, z, 0.1, 1.2, 0.1, '#2a2c2e')
+  // Hull number, cleats along the gunwales, a mast with a light.
+  for (const sz of [-1, 1]) {
+    b.box(-2, 1.3, sz * 2.31, 1.4, 0.6, 0.02, '#e8e6df', 'detail', 2, sz > 0 ? 32 : 16)
+    for (const x of [-3.5, 0, 3.5]) b.box(x, 2.06, sz * 2.1, 0.4, 0.12, 0.2, '#2a2c2e', 'detail')
+  }
+  b.box(-5, 5.1, 0, 0.08, 1.4, 0.08, '#3a3d40', 'detail')
+  b.box(-5, 5.85, 0, 0.16, 0.16, 0.16, '#ffd98a', 'detail')
 }
 
 /** Barbed wire: posts every 2.5 m with crossed coils between. */
@@ -930,29 +1177,52 @@ function ruinblock(b, o) {
   }
 }
 
-/** A shelled church: the nave under a part-fallen roof, the tower broken off at the top. */
+/** A shelled church: the nave under a part-fallen roof, stained glass, the tower broken off at the top. */
 function church(b) {
   const C = '#b8ad98'
+  const STAINED = ['#2f4f8f', '#8f2f3a', '#b8902f', '#2f6f4f']
   b.box(0, 3.5, -2, 10, 7, 16, C, 'concrete', 3)
   b.roof(0, 7, -5, 10.8, 10, 3.6, '#6e5a4a')
   b.box(0, 7, 3, 10, 0.3, 0.4, shade(C, 0.8))
-  for (let z = -8; z < 5; z += 3.2) for (const sx of [-1, 1]) b.box(sx * 5.03, 3.8, z, 0.06, 2.6, 1, '#2a2e38')
+  let k = 0
+  for (let z = -8; z < 5; z += 3.2) {
+    for (const sx of [-1, 1]) {
+      b.win(sx * 5, 3.6, z, 1, 2.4, sx > 0 ? '+x' : '-x', { glass: STAINED[k % 4], frame: shade(C, 0.8), sill: true })
+      b.box(sx * 5.06, 5, z, 0.06, 0.5, 0.7, shade(C, 0.8), 'detail', 2, sx > 0 ? 1 : 2)
+      k += 1
+    }
+  }
+  // Buttresses along the nave.
+  for (let z = -9.6; z < 6; z += 3.2) for (const sx of [-1, 1]) b.box(sx * 5.3, 2.2, z, 0.6, 4.4, 0.7, shade(C, 0.9), 'concrete')
   b.box(0, 7, 8, 4.4, 14, 4.4, C, 'concrete', 3)
   b.box(0, 14.3, 8, 4.8, 0.5, 4.8, shade(C, 0.9))
   for (const sx of [-1, 1]) b.box(sx * 2.22, 11.5, 8, 0.06, 2, 1, '#1d1f21')
   b.box(0, 11.5, 10.22, 1, 2, 0.06, '#1d1f21')
-  b.box(0, 1.6, 10.22, 1.6, 3.2, 0.08, '#4a3a2a')
+  // The rose window over the door, the door in a pointed frame.
+  b.cyl(0, 7.5, 10.22, 0.9, 0.9, 0.04, '#7a3a5a', 12, Math.PI / 2)
+  b.cyl(0, 7.5, 10.26, 0.55, 0.55, 0.04, '#b8902f', 8, Math.PI / 2)
+  b.box(0, 1.7, 10.22, 2, 3.5, 0.04, shade(C, 0.8), 'detail', 2, 32)
+  b.box(0, 1.6, 10.27, 1.6, 3.2, 0.1, '#4a3a2a')
   b.geo(new BoxGeometry(3, 1.2, 2.5), shade(C, 0.85), 2.5, 0.5, 4.6, 0.3, 0.6, 0.2)
 }
 
-/** A burnt-out bus, front towards +x. */
+/** A burnt-out bus, front towards +x: blackened shell, empty window frames, rims on the ground. */
 function bus(b, o) {
   const c = o.color || '#5a4a3e'
   b.box(0, 1.65, 0, 11, 2.3, 2.5, c)
-  b.box(0, 2.2, 0, 10.4, 0.8, 2.54, '#1d1f21')
-  b.box(5.52, 2, 0, 0.04, 1.2, 2.2, '#1d1f21')
-  b.box(0, 2.85, 0, 10.6, 0.1, 2.3, shade(c, 0.7))
-  wheelsAt(b, [3.6, -3.4], 1.1, 0.5)
+  b.box(0, 2.2, 0, 10.4, 0.8, 2.54, '#141516')
+  b.box(5.52, 2, 0, 0.04, 1.2, 2.2, '#141516')
+  b.box(0, 2.85, 0, 10.6, 0.1, 2.3, '#2a2420')
+  for (const sz of [-1, 1]) {
+    // Window pillars, scorch and rust down the sides.
+    for (let x = -4.8; x <= 4.81; x += 1.2) b.box(x, 2.2, sz * 1.275, 0.12, 0.8, 0.03, shade(c, 0.6), 'detail', 2, sz > 0 ? 32 : 16)
+    b.box(-1, 1.55, sz * 1.27, 5, 0.9, 0.02, '#3a2a20', 'detail', 2, sz > 0 ? 32 : 16)
+    b.box(3, 1, sz * 1.27, 2.2, 0.5, 0.02, '#7a4a2e', 'detail', 2, sz > 0 ? 32 : 16)
+  }
+  b.box(4.3, 1.55, 1.27, 0.9, 1.9, 0.03, '#141516', 'detail', 2, 32)
+  b.box(5.6, 0.75, 0, 0.2, 0.3, 2.4, '#2a2c2e')
+  for (const sz of [-1, 1]) b.box(5.55, 1.1, sz * 0.95, 0.04, 0.2, 0.3, '#3a3a36', 'detail', 2, 2)
+  for (const x of [3.6, -3.4]) for (const sz of [-1, 1]) b.cyl(x, 0.32, sz * 1.05, 0.32, 0.32, 0.28, '#3a3532', 10, Math.PI / 2)
 }
 
 const DRAW = {

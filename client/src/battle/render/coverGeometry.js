@@ -38,9 +38,10 @@ export class BoxBatch {
 
   /**
    * Box centred at (cx, cy, cz) with size (w, h, d). `uvScale` metres per texture
-   * repeat, or 0 to map each face once (crates).
+   * repeat, or 0 to map each face once (crates). `skip`: faces to leave out, as bits
+   * (1 +x, 2 -x, 4 +y, 8 -y, 16 +z, 32 -z) - the ones against a wall or the ground.
    */
-  box(cx, cy, cz, w, h, d, color, uvScale = 2) {
+  box(cx, cy, cz, w, h, d, color, uvScale = 2, skip = 0) {
     const hw = w / 2
     const hh = h / 2
     const hd = d / 2
@@ -53,7 +54,9 @@ export class BoxBatch {
       [[0, 0, 1], [1, 0, 0], [0, 1, 0], w, h],
       [[0, 0, -1], [-1, 0, 0], [0, 1, 0], w, h],
     ]
-    for (const [n, u, v, us, vs] of faces) {
+    for (let f = 0; f < 6; f += 1) {
+      if (skip & (1 << f)) continue
+      const [n, u, v, us, vs] = faces[f]
       const base = this.pos.length / 3
       const ox = cx + n[0] * hw
       const oy = cy + n[1] * hh

@@ -58,7 +58,7 @@ const WEST_SETS = [
   ['revetment', -72, -2, 0],
   ['fighter', -72, -1, 3],
   ['tank', -60, 44, 0, { r: 3, h: 5 }],
-  ['truck', -32, 14, 1, { color: '#d8a22c' }],
+  ['truck', -29.5, 14, 1, { color: '#d8a22c' }],
   ['windsock', -40, -44, 0],
   ['lamp', -50, 30, 2],
   ['lamp', -18, 30, 2],
