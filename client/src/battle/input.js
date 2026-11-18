@@ -3,6 +3,7 @@ import { Vector3 } from 'three'
 import { sfx } from '../audio/sfx'
 import { getBloxityState } from '../bloxity/store'
 import { UNIT_ORDER } from './sim/units'
+import { anySelected } from './sim/world'
 import {
   deleteSelection,
   deselect,
@@ -80,6 +81,28 @@ function pickSoldier(cx, cy, radius) {
   return best
 }
 
+/** Nearest living vehicle under the pointer (its size on screen counts), or null. */
+function pickVehicle(cx, cy, radius) {
+  const w = battle.world
+  if (!w || !battle.camera) return null
+  const rect = battle.canvas.getBoundingClientRect()
+  let best = null
+  let bestD = Infinity
+  for (const v of w.veh.list) {
+    if (!v.used || !v.alive) continue
+    const c = toScreen(v.x, v.y + v.aimH, v.z, rect)
+    const edge = toScreen(v.x + v.spec.radius, v.y + v.aimH, v.z, rect)
+    if (!c || !edge) continue
+    const r = Math.max(radius, Math.hypot(edge.x - c.x, edge.y - c.y))
+    const d = Math.hypot(c.x - cx, c.y - cy)
+    if (d < r && d < bestD) {
+      bestD = d
+      best = v
+    }
+  }
+  return best
+}
+
 function boxSelect(x0, y0, x1, y1, additive) {
   const w = battle.world
   if (!w) return
@@ -95,7 +118,13 @@ function boxSelect(x0, y0, x1, y1, additive) {
     const p = toScreen(s.x, 0.9, s.z, rect)
     if (p && p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY) picked.push(s.slot)
   }
-  select(picked, additive)
+  const vehicles = []
+  for (const v of w.veh.list) {
+    if (!v.used || !v.alive || v.team !== team) continue
+    const p = toScreen(v.x, v.y + v.aimH, v.z, rect)
+    if (p && p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY) vehicles.push(v.slot)
+  }
+  select(picked, additive, vehicles)
 }
 
 function click(cx, cy, additive, touch) {
@@ -111,9 +140,13 @@ function click(cx, cy, additive, touch) {
     select([hit.slot], additive)
     return
   }
+  const vhit = pickVehicle(cx, cy, touch ? 30 : 18)
+  if (vhit) {
+    select([], additive, [vhit.slot])
+    return
+  }
   const w = battle.world
-  const anySelected = w && w.slots.some((s) => s.used && s.alive && s.selected)
-  if (anySelected && hasGround) moveTo(ground.x, ground.z)
+  if (w && anySelected(w) && hasGround) moveTo(ground.x, ground.z)
   else deselect()
 }
 

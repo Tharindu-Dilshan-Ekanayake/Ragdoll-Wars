@@ -175,6 +175,9 @@ function spatial(dist, pan, baseGain) {
 
 // Gunshot recipes per weapon key.
 const SHOTS = {
+  // Vehicle guns.
+  cannon: { vol: 1.2, crack: { type: 'lowpass', freq: 900, q: 0.5, decay: 0.35 }, punch: { from: 75, to: 26, gain: 1.1, decay: 0.3 }, echo: true },
+  autocannon: { vol: 0.85, crack: { freq: 1100, q: 0.7, decay: 0.12 }, punch: { from: 100, to: 40, gain: 0.8, decay: 0.12 } },
   pistol: { vol: 0.55, crack: { freq: 2100, q: 0.9, decay: 0.08 }, punch: { from: 140, to: 55, gain: 0.45, decay: 0.07 } },
   smg: { vol: 0.5, crack: { freq: 2500, q: 1.1, decay: 0.06 }, punch: { from: 150, to: 60, gain: 0.35, decay: 0.06 } },
   rifle: { vol: 0.75, crack: { freq: 1600, q: 0.7, decay: 0.12 }, punch: { from: 110, to: 42, gain: 0.6, decay: 0.1 }, snap: true },
@@ -257,6 +260,12 @@ export function worldSound(kind, x, y, z, meta, listener) {
     noise(dest, t, { type: 'lowpass', freq: 1400, q: 0.5, gain: 1.1, attack: 0.004, decay: 1.1, sweepTo: 160 })
     if (dist < 45) noise(dest, t, { type: 'highpass', freq: 2200, q: 0.5, gain: 0.5, decay: 0.08 })
     noise(dest, t + 0.18, { type: 'lowpass', freq: 380, q: 0.4, gain: 0.45, attack: 0.08, decay: 1.4 })
+  } else if (kind === 'jet') {
+    // A jet screaming over: a rising roar that sweeps past.
+    const dest = spatial(Math.max(20, dist * 0.6), pan, 1.1)
+    if (!dest) return
+    noise(dest, t, { type: 'bandpass', freq: 500, q: 0.6, attack: 1.2, decay: 2.2, gain: 1, sweepTo: 1800 })
+    noise(dest, t + 1.0, { type: 'lowpass', freq: 600, q: 0.4, attack: 0.3, decay: 1.6, gain: 0.8 })
   } else if (kind === 'launch') {
     const dest = spatial(dist, pan, 0.8)
     if (!dest) return

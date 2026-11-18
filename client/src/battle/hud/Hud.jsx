@@ -212,7 +212,11 @@ function Hint() {
   if (placing) {
     const u = UNIT_TYPES[placing]
     const name = u.name
-    const what = u.trap ? `lay ${count} ${name.toLowerCase()}${count > 1 ? 's' : ''}` : `drop ${count} ${name}${count > 1 ? 's' : ''}`
+    const what = u.strike
+      ? `call in the ${name.toLowerCase()} on that spot`
+      : u.trap
+        ? `lay ${count} ${name.toLowerCase()}${count > 1 ? 's' : ''}`
+        : `drop ${count} ${name}${count > 1 ? 's' : ''}`
     text = `${isTouch ? 'Tap' : 'Click'} the ground to ${what} for ${TEAMS[team].name}  ·  ${isTouch ? 'tap the card again' : 'right-click / Esc'} to stop`
   } else if (selection) {
     text = `${selection.count} selected  ·  ${isTouch ? 'tap' : 'click'} the ground to move them  ·  Attack / Hold / Flank to give orders`

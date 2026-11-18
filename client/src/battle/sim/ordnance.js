@@ -3,6 +3,7 @@ import { collideCircle, segmentHit3D } from './obstacles.js'
 import { startRagdoll } from './ragdoll.js'
 import { J_PELVIS, wrapAngle } from './rig.js'
 import { UNIT_TYPES } from './units.js'
+import { blastVehicles } from './vehicles.js'
 import { blastHit } from './world.js'
 
 /**
@@ -16,7 +17,7 @@ import { blastHit } from './world.js'
  * and set off nearby mines, which go a moment later so chains ripple outwards.
  */
 
-export const MAX_PROJECTILES = 48
+export const MAX_PROJECTILES = 96
 export const MAX_MINES = 64
 const ROCKET_GRAVITY = 0.8
 const SHELL_GRAVITY = 9.8
@@ -30,7 +31,12 @@ export function createOrdnance() {
   return {
     projectiles: Array.from({ length: MAX_PROJECTILES }, () => ({
       active: false,
+      /** 'rocket' | 'shell' (mortar) | 'cannon' (vehicle guns) | 'bomb' (strikes). */
+      kind: 'rocket',
       shell: false,
+      big: false,
+      grav: 0,
+      anti: 1,
       team: 0,
       x: 0,
       y: 0,
@@ -84,7 +90,11 @@ export function launchProjectile(w, s, type, t, mx, my, mz, targetY) {
   p.damage = type.blast.damage
   p.shooter = s
   p.shooterId = s.id
+  p.big = false
   if (type.proj === 'shell') {
+    p.kind = 'shell'
+    p.grav = SHELL_GRAVITY
+    p.anti = 1.2
     p.shell = true
     const dist = Math.hypot(t.x - mx, t.z - mz)
     const err = dist * type.scatter
@@ -98,6 +108,9 @@ export function launchProjectile(w, s, type, t, mx, my, mz, targetY) {
     p.life = T + 2
     emitSound(w.fx, 'mortar', mx, my, mz, 0)
   } else {
+    p.kind = 'rocket'
+    p.grav = ROCKET_GRAVITY
+    p.anti = 3
     p.shell = false
     const dx = t.x - mx
     const dz = t.z - mz
@@ -117,6 +130,63 @@ export function launchProjectile(w, s, type, t, mx, my, mz, targetY) {
   return true
 }
 
+function freeProjectile(w) {
+  const pool = w.ord.projectiles
+  for (let i = 0; i < pool.length; i += 1) if (!pool[i].active) return pool[i]
+  return null
+}
+
+/**
+ * A projectile from a vehicle gun or a strike, at the point (tx, ty, tz). `gun`:
+ * { kind: 'cannon' | 'rocket' | 'bomb', projSpeed, blast: { radius, damage, anti },
+ *   sound, big } - bombs also { fall (gravity), speed (the jet's) }.
+ */
+export function fireProjectile(w, team, shooter, mx, my, mz, tx, ty, tz, gun) {
+  const p = freeProjectile(w)
+  if (!p) return false
+  p.active = true
+  p.team = team
+  p.x = mx
+  p.y = my
+  p.z = mz
+  p.age = 0
+  p.radius = gun.blast.radius
+  p.damage = gun.blast.damage
+  p.anti = gun.blast.anti || 1
+  p.shooter = shooter
+  p.shooterId = shooter ? shooter.id : 0
+  p.big = Boolean(gun.big)
+  p.shell = false
+  if (gun.kind === 'bomb') {
+    p.kind = 'bomb'
+    p.grav = gun.fall
+    const T = Math.sqrt((2 * Math.max(0.5, my - ty)) / gun.fall)
+    p.vx = (tx - mx) / T
+    p.vz = (tz - mz) / T
+    p.vy = 0
+    p.life = T + 3
+    return true
+  }
+  p.kind = gun.kind === 'rocket' ? 'rocket' : 'cannon'
+  p.grav = ROCKET_GRAVITY
+  const dx = tx - mx
+  const dz = tz - mz
+  const dist = Math.max(1, Math.hypot(dx, dz))
+  const speed = gun.projSpeed
+  const T = dist / speed
+  const yaw = Math.atan2(dx, dz)
+  const pitch = Math.atan2(ty - my + 0.5 * ROCKET_GRAVITY * T * T, dist)
+  const cp = Math.cos(pitch)
+  p.vx = Math.sin(yaw) * cp * speed
+  p.vy = Math.sin(pitch) * speed
+  p.vz = Math.cos(yaw) * cp * speed
+  p.life = Math.max(2, (dist * 1.6) / speed)
+  emitFlash(w.fx, mx, my, mz, Math.sin(yaw) * cp, Math.sin(pitch), Math.cos(yaw) * cp, w.time, gun.big ? 2.4 : 1.4)
+  if (gun.sound === 'launch') emitSound(w.fx, 'launch', mx, my, mz, 0)
+  else emitSound(w.fx, 'shot', mx, my, mz, gun.sound)
+  return true
+}
+
 export function updateProjectiles(w, h) {
   const pool = w.ord.projectiles
   for (let i = 0; i < pool.length; i += 1) {
@@ -125,7 +195,7 @@ export function updateProjectiles(w, h) {
     const ox = p.x
     const oy = p.y
     const oz = p.z
-    p.vy -= (p.shell ? SHELL_GRAVITY : ROCKET_GRAVITY) * h
+    p.vy -= p.grav * h
     p.x += p.vx * h
     p.y += p.vy * h
     p.z += p.vz * h
@@ -136,7 +206,8 @@ export function updateProjectiles(w, h) {
       const tg = oy / (oy - p.y)
       if (tg < tHit) tHit = tg
     }
-    if (!p.shell && tHit > 1) {
+    const direct = p.kind === 'rocket' || p.kind === 'cannon'
+    if (direct && tHit > 1) {
       const enemies = w.teamLiving[1 - p.team]
       for (let k = 0; k < enemies.length; k += 1) {
         const e = enemies[k]
@@ -144,6 +215,21 @@ export function updateProjectiles(w, h) {
         const dx = e.x - p.x
         const dz = e.z - p.z
         if (dx * dx + dz * dz < 0.36 && p.y < 1.9) {
+          tHit = 1
+          break
+        }
+      }
+    }
+    // Any projectile stops at an enemy vehicle (or aircraft) it flies into.
+    if (tHit > 1) {
+      const vehicles = w.veh.living[1 - p.team]
+      for (let k = 0; k < vehicles.length; k += 1) {
+        const v = vehicles[k]
+        const dx = v.x - p.x
+        const dy = v.y + v.aimH - p.y
+        const dz = v.z - p.z
+        const r = v.hitR + 0.3
+        if (dx * dx + dy * dy + dz * dz < r * r) {
           tHit = 1
           break
         }
@@ -158,7 +244,7 @@ export function updateProjectiles(w, h) {
       const attacker = p.shooter && p.shooter.id === p.shooterId ? p.shooter : null
       p.active = false
       p.shooter = null
-      explode(w, hx, hy, hz, p.radius, p.damage, attacker)
+      explode(w, hx, hy, hz, p.radius, p.damage, attacker, p.anti)
     }
   }
 }
@@ -169,7 +255,7 @@ export function updateProjectiles(w, h) {
  * A blast at (x, y, z): damages and throws every soldier within `radius` (any team),
  * tosses bodies already down, and trips mines close by.
  */
-export function explode(w, x, y, z, radius, damage, attacker) {
+export function explode(w, x, y, z, radius, damage, attacker, anti = 1) {
   emitExplosion(w.fx, x, y, z, radius, w.time)
   emitSound(w.fx, 'boom', x, y, z, radius)
   for (let k = 0; k < 6; k += 1) emitImpact(w.fx, x + gauss() * radius * 0.25, 0.05, z + gauss() * radius * 0.25, 0, w.time)
@@ -190,6 +276,8 @@ export function explode(w, x, y, z, radius, damage, attacker) {
     const hl = Math.hypot(dx, dz) || 1
     blastHit(w, s, dmg, dx / hl, dz / hl, covered ? k * 0.4 : k, attacker)
   }
+
+  blastVehicles(w, x, y, z, radius, damage, attacker, anti)
 
   // Bodies already lying here get thrown about again (within the ragdoll budget).
   const bodies = w.bodies
@@ -285,10 +373,24 @@ export function updateMines(w, h) {
           break
         }
       }
+      if (!go) {
+        const vehicles = w.veh.living[1 - m.team]
+        for (let k = 0; k < vehicles.length; k += 1) {
+          const v = vehicles[k]
+          if (v.spec.air || v.dropY > 0) continue
+          const dx = v.x - m.x
+          const dz = v.z - m.z
+          const r = v.spec.radius + 0.2
+          if (dx * dx + dz * dz < r * r) {
+            go = true
+            break
+          }
+        }
+      }
     }
     if (go) {
       m.active = false
-      explode(w, m.x, 0.15, m.z, blast.radius, blast.damage, null)
+      explode(w, m.x, 0.15, m.z, blast.radius, blast.damage, null, 4)
     }
   }
 }

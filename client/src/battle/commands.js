@@ -13,8 +13,9 @@ export function placeUnits(x, z) {
   const w = battle.world
   const hud = getHud()
   if (!w || !hud.placing) return
-  const { spawned, limited } = spawnUnits(w, hud.placing, hud.team, x, z, hud.count, hud.order)
+  const { spawned, limited, info } = spawnUnits(w, hud.placing, hud.team, x, z, hud.count, hud.order)
   if (spawned) sfx.place()
+  if (info) hud.showToast(info, 'info')
   if (limited) {
     hud.showToast(limited)
     if (!spawned) sfx.error()
@@ -37,10 +38,10 @@ export function giveOrder(order) {
   sfx.toggle()
 }
 
-export function select(slots, additive) {
+export function select(slots, additive, vehicles = []) {
   if (!battle.world) return
-  setSelection(battle.world, slots, additive)
-  if (slots.length) sfx.select()
+  setSelection(battle.world, slots, additive, vehicles)
+  if (slots.length || vehicles.length) sfx.select()
 }
 
 export function selectAll() {

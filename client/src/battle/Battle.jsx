@@ -17,7 +17,7 @@ import { battle } from './state'
  * simulation, mounts the 3D view and the HUD, and tears it all down on exit.
  */
 
-const capsFrom = (s) => ({ units: s.units, corpses: s.corpses, ragdolls: s.ragdolls })
+const capsFrom = (s) => ({ units: s.units, corpses: s.corpses, ragdolls: s.ragdolls, vehicles: s.vehicles })
 
 function BattleLoader({ done }) {
   // useProgress covers anything three's loaders fetch; the battlefield itself is built

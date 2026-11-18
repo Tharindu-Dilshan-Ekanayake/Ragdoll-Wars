@@ -30,9 +30,18 @@ function summarise(w) {
     types[s.type] = (types[s.type] || 0) + 1
     team = team === -1 || team === s.team ? s.team : 2
   }
-  if (!count) return null
+  let vehicles = 0
+  for (const v of w.veh.list) {
+    if (!v.used || !v.alive || !v.selected) continue
+    vehicles += 1
+    types[v.type] = (types[v.type] || 0) + 1
+    team = team === -1 || team === v.team ? v.team : 2
+  }
+  if (!count && !vehicles) return null
+  const soldiers = count
+  count += vehicles
   const unit =
-    count === 1
+    count === 1 && soldiers === 1
       ? {
           id: one.id,
           team: one.team,

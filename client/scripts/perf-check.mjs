@@ -119,6 +119,12 @@ async function fill() {
     }
     W.spawnUnits(w, 'mine', 0, -25, 0, 15, 'attack')
     W.spawnUnits(w, 'mine', 1, 25, 0, 15, 'attack')
+    // Vehicles up to the preset's cap, and a strike each.
+    for (let team = 0; team < 2; team++) {
+      const x = team === 0 ? -50 : 50
+      for (const [k, z] of [['tank', -20], ['apc', 20], ['jeep', 35], ['gunship', 0], ['scout', -35], ['tank', 5], ['apc', -5], ['jeep', -45]]) W.spawnUnits(w, k, team, x, z, 1, 'attack')
+      W.spawnUnits(w, 'airstrike', team, team ? -20 : 20, 0, 1, 'attack')
+    }
     const count = (t) => w.slots.filter((s) => s.used && s.alive && s.team === t).length
     return { blue: count(0), red: count(1) }
   })()`)
@@ -173,7 +179,10 @@ async function showcase() {
       for (const [type, n] of plan) { W.spawnUnits(w, type, team, team ? 20 : -20, z, n, 'attack'); z += 6 }
     }
     W.spawnUnits(w, 'mine', 1, 8, 0, 12, 'attack')
-    Object.assign(b.view.goal, { tx: 0, tz: 0, dist: 46, pitch: 0.8, yaw: 0.35 })
+    W.spawnUnits(w, 'tank', 0, -28, 4, 1, 'attack'); W.spawnUnits(w, 'apc', 1, 28, -4, 1, 'attack')
+    W.spawnUnits(w, 'gunship', 0, -30, -10, 1, 'attack'); W.spawnUnits(w, 'jeep', 1, 26, 12, 1, 'attack')
+    W.spawnUnits(w, 'airstrike', 0, 18, 0, 1, 'attack')
+    Object.assign(b.view.goal, { tx: 0, tz: 0, dist: 52, pitch: 0.8, yaw: 0.35 })
   })()`)
   for (const t of [4, 7, 10, 14]) {
     await sleep(t === 4 ? 4000 : 3000)

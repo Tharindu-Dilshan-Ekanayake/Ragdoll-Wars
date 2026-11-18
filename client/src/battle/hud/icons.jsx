@@ -15,6 +15,13 @@ const WEAPON_PATHS = {
   medic: 'M26 4h12v12h12v12H38v12H26V28H14V16h12z',
   mortar: 'M14 26l26-20 4 5-26 20z M10 30h22v3H10z M22 29l-6-9 3-2 6 9z M38 9l6-5 3 4-6 5z',
   mine: 'M8 22c0-5 11-8 24-8s24 3 24 8v4H8z M27 10h10v5H27z M6 26h52v4H6z',
+  jeep: 'M6 16h18l6-6h10l2 6h14l4 4v6H4v-6z M14 22a5 5 0 1 0 0.01 0z M46 22a5 5 0 1 0 0.01 0z M30 6h3v6h-3z',
+  apc: 'M4 18l6-6h38l8 6v8H4z M22 6h14v6H22z M36 8h20v3H36z M10 26a4 4 0 1 0 0.01 0z M22 26a4 4 0 1 0 0.01 0z M38 26a4 4 0 1 0 0.01 0z M50 26a4 4 0 1 0 0.01 0z',
+  tank: 'M2 22h60l-6 8H8z M8 16h44l4 6H6z M20 8h18v8H20z M38 10h24v3H38z',
+  gunship: 'M10 16h30l8 4-8 4H14z M2 18h10v2H2z M2 14l4 0 3 4H4z M8 10h44v2H8z M18 24l-2 6h20l-2-6z',
+  scout: 'M14 16h22l7 4-7 4H18z M4 18h12v2H4z M4 15h3l2 3H5z M12 11h36v2H12z M20 24l-2 5h16l-2-5z',
+  airstrike: 'M2 18l20-3 8-9h4l-4 9 18-2 6-5h3l-2 7 2 7h-3l-6-5-18-2 4 9h-4l-8-9-20-3z',
+  heavybomb: 'M14 12h28a6 6 0 0 1 0 12H14z M42 13l10-5v20l-10-5z M8 16l6-2v8l-6-2z M22 12h3v12h-3z',
 }
 
 export function WeaponIcon({ type, className }) {

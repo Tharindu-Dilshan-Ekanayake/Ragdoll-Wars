@@ -30,6 +30,7 @@ export const PRESETS = {
     units: 30,
     corpses: 30,
     ragdolls: 3,
+    vehicles: 4,
     /** Soldiers further than this re-pose every 2nd frame (every 3rd past double). */
     lodNear: 40,
     /** Share of the scenery trees to plant (0-1). */
@@ -49,6 +50,7 @@ export const PRESETS = {
     units: 60,
     corpses: 60,
     ragdolls: 5,
+    vehicles: 6,
     lodNear: 55,
     decorDensity: 0.75,
   },
@@ -66,6 +68,7 @@ export const PRESETS = {
     units: 90,
     corpses: 80,
     ragdolls: 6,
+    vehicles: 8,
     lodNear: 70,
     decorDensity: 1,
   },

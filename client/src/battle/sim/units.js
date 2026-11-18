@@ -1,6 +1,8 @@
 /**
- * Unit types: six infantry, four support soldiers (Phase 2) and the landmine, which is
- * placed like a unit but isn't a soldier (`trap`). Vehicles and air come later.
+ * Unit types: six infantry, four support soldiers (Phase 2), the landmine (`trap`), and
+ * Phase 3's vehicles (`vehicle`: ground and air, simulated in vehicles.js) and strikes
+ * (`strike`: called in from off the map). Everything the dock can place lives here so
+ * the HUD can look any of it up by key.
  *
  * Ranges in metres, times in seconds, spread is the standard deviation of the aim error
  * in radians (so the miss distance grows with range, as it should). `burst` is the
@@ -266,6 +268,100 @@ export const UNIT_TYPES = {
     back: 0.3,
     foregrip: 0.2,
   },
+  ...nonSoldier('jeep', 'Jeep', 'Fast · MG', {
+    vehicle: {
+      air: false,
+      hp: 350,
+      armor: 0.5,
+      speed: 11,
+      turn: 1.9,
+      accel: 6,
+      radius: 1.5,
+      length: 4.2,
+      aimH: 1.4,
+      range: 60,
+      gunH: 2.05,
+      gun: { kind: 'mg', damage: 16, interval: 0.09, burst: [8, 14], pause: 0.8, spread: 0.05, sound: 'mg' },
+      light: true,
+    },
+    max: 4,
+  }),
+  ...nonSoldier('apc', 'APC', 'Autocannon', {
+    vehicle: {
+      air: false,
+      hp: 900,
+      armor: 0.14,
+      speed: 7.5,
+      turn: 1.3,
+      accel: 4,
+      radius: 2.0,
+      length: 6,
+      aimH: 1.5,
+      range: 75,
+      gunH: 2.45,
+      gun: { kind: 'cannon', projSpeed: 75, blast: { radius: 2, damage: 50, anti: 1.6 }, interval: 0.32, burst: [3, 5], pause: 1.5, spread: 0.014, sound: 'autocannon' },
+      light: true,
+    },
+    max: 3,
+  }),
+  ...nonSoldier('tank', 'Tank', 'Heavy armour', {
+    vehicle: {
+      air: false,
+      hp: 2000,
+      armor: 0.02,
+      speed: 5,
+      turn: 0.85,
+      accel: 2.5,
+      radius: 2.4,
+      length: 7,
+      aimH: 1.4,
+      range: 95,
+      gunH: 2.3,
+      gun: { kind: 'cannon', projSpeed: 85, blast: { radius: 4.5, damage: 190, anti: 2.5 }, interval: 4.2, burst: [1, 1], pause: 0, spread: 0.006, sound: 'cannon', big: true },
+      coax: { kind: 'mg', damage: 14, interval: 0.1, burst: [6, 12], pause: 1.0, spread: 0.05, sound: 'mg' },
+      light: false,
+    },
+    max: 3,
+  }),
+  ...nonSoldier('gunship', 'Gunship', 'Rockets', {
+    vehicle: {
+      air: true,
+      hp: 650,
+      armor: 0.35,
+      speed: 20,
+      alt: 16,
+      orbit: 36,
+      radius: 2.8,
+      aimH: 1.8,
+      range: 95,
+      gun: { kind: 'rocket', projSpeed: 55, blast: { radius: 3.8, damage: 130, anti: 2.5 }, interval: 0.22, burst: [4, 4], pause: 3.4, spread: 0.035, sound: 'launch' },
+      light: true,
+    },
+    max: 2,
+  }),
+  ...nonSoldier('scout', 'Scout Heli', 'Fast · MG', {
+    vehicle: {
+      air: true,
+      hp: 380,
+      armor: 0.45,
+      speed: 26,
+      alt: 12,
+      orbit: 24,
+      radius: 2.1,
+      aimH: 1.5,
+      range: 70,
+      scale: 0.72,
+      gun: { kind: 'mg', damage: 15, interval: 0.08, burst: [10, 18], pause: 1.0, spread: 0.045, sound: 'mg' },
+      light: true,
+    },
+    max: 2,
+  }),
+  ...nonSoldier('airstrike', 'Air Strike', 'Bomb run', {
+    strike: { bombs: 6, spacing: 5, blast: { radius: 6, damage: 220, anti: 2 }, cooldown: 20, fall: 30 },
+  }),
+  ...nonSoldier('heavybomb', 'Heavy Bomb', 'Huge blast', {
+    strike: { bombs: 1, spacing: 0, blast: { radius: 16, damage: 420, anti: 3 }, cooldown: 75, fall: 14, big: true },
+  }),
   mine: {
     key: 'mine',
     name: 'Landmine',
@@ -292,6 +388,33 @@ export const UNIT_TYPES = {
   },
 }
 
+/** A non-soldier dock entry (vehicle, strike), with the soldier fields filled in harmlessly. */
+function nonSoldier(key, name, role, extra) {
+  return {
+    [key]: {
+      key,
+      name,
+      role,
+      hp: 1,
+      speed: 0,
+      range: 0,
+      engage: 0,
+      damage: 0,
+      pellets: 1,
+      interval: 1,
+      burst: [1, 1],
+      pause: 0,
+      mag: 1,
+      reload: 1,
+      spread: 0,
+      front: 0,
+      back: 0,
+      foregrip: 0,
+      ...extra,
+    },
+  }
+}
+
 /** Soldier types in dock order; also the 1-9, 0 hotkeys. */
 export const UNIT_ORDER = ['pistol', 'smg', 'rifle', 'shotgun', 'sniper', 'mg', 'rocket', 'flame', 'medic', 'mortar']
 
@@ -300,7 +423,12 @@ export const DOCK_GROUPS = [
   { label: 'Infantry', keys: ['pistol', 'smg', 'rifle', 'shotgun', 'sniper', 'mg'] },
   { label: 'Support', keys: ['rocket', 'flame', 'medic', 'mortar'] },
   { label: 'Traps', keys: ['mine'] },
+  { label: 'Vehicles', keys: ['jeep', 'apc', 'tank'] },
+  { label: 'Air', keys: ['gunship', 'scout'] },
+  { label: 'Strikes', keys: ['airstrike', 'heavybomb'] },
 ]
+
+export const VEHICLE_KEYS = ['jeep', 'apc', 'tank', 'gunship', 'scout']
 
 /** Weapon meshes (a unit uses `model` or its own key). */
 export const WEAPON_MODELS = ['pistol', 'smg', 'rifle', 'shotgun', 'sniper', 'mg', 'rocket', 'flame', 'mortar']

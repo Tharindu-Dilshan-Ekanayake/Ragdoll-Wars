@@ -32,10 +32,23 @@ import { animate, J_PELVIS, wrapAngle } from './rig.js'
 import { makeSoldier, resetSoldier } from './soldier.js'
 import { createSpatial, rebuildSpatial } from './spatial.js'
 import { HEAVY_SHARE, UNIT_TYPES } from './units.js'
+import {
+  callStrike,
+  clearVehicles,
+  createVehicles,
+  damageVehicle,
+  deleteVehicles,
+  moveVehicles,
+  spawnVehicles,
+  traceVehicles,
+  updateVehicles,
+  vehicleOrders,
+} from './vehicles.js'
 
 /**
  * The battle simulation: soldiers, their AI, shooting, wounds, deaths and ragdolls, and
- * (ordnance.js) rockets, mortar shells, explosions, mines, fire and medics.
+ * (ordnance.js) rockets, mortar shells, explosions, mines, fire and medics, and
+ * (vehicles.js) jeeps, APCs, tanks, helicopters and air strikes.
  *
  * Runs on its own clock (`w.time`) scaled by `w.timeScale` (pause / 0.5x / 1x / 2x), in
  * sub-steps of at most 1/60 s. Nothing here touches three.js or React: the renderer
@@ -81,6 +94,7 @@ export function createWorld(map, caps) {
     bullets: [],
     bulletPool: [],
     ord: createOrdnance(),
+    veh: createVehicles(),
     fx: createFx(),
     time: 0,
     timeScale: 1,
@@ -168,6 +182,7 @@ function tick(w, h) {
   }
 
   for (let i = 0; i < living.length; i += 1) updateSoldier(w, living[i], h)
+  updateVehicles(w, h)
   updateBullets(w)
   updateProjectiles(w, h)
   updateMines(w, h)
@@ -258,8 +273,12 @@ const muzzleH = (s) => STAND_MUZZLE * standW(s) + 1.12 * s.wCrouch + 0.3 * s.wPr
 const chestH = (s) => 1.15 * standW(s) + 0.8 * s.wCrouch + 0.25 * s.wProne + 0.2 * s.wDown
 const headH = (s) => 1.62 * standW(s) + 1.15 * s.wCrouch + 0.42 * s.wProne + 0.25 * s.wDown
 
+/** Where to aim at target `t`: a soldier's chest, or the middle of a vehicle. */
+const aimY = (t) => (t.isVehicle ? t.y + t.aimH : chestH(t))
+
 function canSee(w, s, e) {
   const ey = eyeH(s)
+  if (e.isVehicle) return segmentHit3D(w.obs, s.x, ey, s.z, e.x, e.y + e.aimH, e.z, 1.2) === Infinity
   if (segmentHit3D(w.obs, s.x, ey, s.z, e.x, chestH(e), e.z, 1.2) === Infinity) return true
   return segmentHit3D(w.obs, s.x, ey, s.z, e.x, headH(e), e.z, 1.2) === Infinity
 }
@@ -301,6 +320,30 @@ function think(w, s, type) {
       }
       CAND_SCORE[k] = score
       CANDIDATES[k] = e
+    }
+  }
+  // Vehicles: rocket troops go for them first; small arms only bother light ones
+  // (jeeps, APCs, helicopters); mortars can drop shells on anything on the ground.
+  const evs = w.veh.living[1 - s.team]
+  const antiArmor = type.proj === 'rocket'
+  for (let i = 0; i < evs.length; i += 1) {
+    const v = evs[i]
+    if (v.dropY > 0 || type.flame || type.medic) continue
+    if (type.indirect ? v.spec.air : !antiArmor && !v.spec.light) continue
+    const dx = v.x - s.x
+    const dz = v.z - s.z
+    const d2 = dx * dx + dz * dz
+    if (d2 > reach2 || d2 < min2) continue
+    const score = Math.sqrt(d2) + (antiArmor ? -40 : 18)
+    if (score < CAND_SCORE[2]) {
+      let k = 2
+      while (k > 0 && score < CAND_SCORE[k - 1]) {
+        CAND_SCORE[k] = CAND_SCORE[k - 1]
+        CANDIDATES[k] = CANDIDATES[k - 1]
+        k -= 1
+      }
+      CAND_SCORE[k] = score
+      CANDIDATES[k] = v
     }
   }
   let target = null
@@ -542,7 +585,7 @@ function combat(w, s, type, h) {
   const diff = wrapAngle(want - s.aimYaw)
   s.aimYaw += clamp(diff, -turn, turn)
   // Mortars point the tube high; everything else aims at the chest.
-  const pitch = type.indirect ? 0.95 : Math.atan2(chestH(t) - muzzleH(s), Math.max(1, dist))
+  const pitch = type.indirect ? 0.95 : Math.atan2(aimY(t) - muzzleH(s), Math.max(1, dist))
   s.aimPitch += (pitch - s.aimPitch) * Math.min(1, h * 8)
   s.ready = Math.min(1, s.ready + h * 3.5)
 
@@ -560,7 +603,7 @@ function combat(w, s, type, h) {
     const sy = Math.sin(s.aimYaw)
     const cy = Math.cos(s.aimYaw)
     const up = type.indirect ? 0.45 : 0
-    if (!launchProjectile(w, s, type, t, s.x + sy * 0.7 - cy * 0.1, muzzleH(s) + up, s.z + cy * 0.7 + sy * 0.1, chestH(t))) return
+    if (!launchProjectile(w, s, type, t, s.x + sy * 0.7 - cy * 0.1, muzzleH(s) + up, s.z + cy * 0.7 + sy * 0.1, aimY(t))) return
     s.recoil = 1
     s.lastShotT = w.time
   } else if (type.flame) {
@@ -597,8 +640,8 @@ function fire(w, s, t, type, dist, moving) {
   const mx = s.x + sy * 0.62 - cy * 0.1
   const my = muzzleH(s)
   const mz = s.z + cy * 0.62 + sy * 0.1
-  const aimHead = type.headshots && rand() < type.headshots
-  const ty = (aimHead ? headH(t) : chestH(t)) + gauss() * 0.05
+  const aimHead = !t.isVehicle && type.headshots && rand() < type.headshots
+  const ty = (aimHead ? headH(t) : aimY(t)) + gauss() * (t.isVehicle ? 0.25 : 0.05)
   let spread = type.spread
   if (moving) spread *= 2.2
   spread *= 1 - 0.25 * s.wCrouch - 0.45 * s.wProne
@@ -616,52 +659,60 @@ function fire(w, s, t, type, dist, moving) {
     const yaw = baseYaw + gauss() * spread
     const pitch = basePitch + gauss() * spread * 0.7
     const cp = Math.cos(pitch)
-    const dx = Math.sin(yaw) * cp
-    const dy = Math.sin(pitch)
-    const dz = Math.cos(yaw) * cp
-    const ex = mx + dx * len
-    const ey = my + dy * len
-    const ez = mz + dz * len
-    let tEnd = segmentHit3D(w.obs, mx, my, mz, ex, ey, ez, 1.0)
-    let kind = 2 // concrete/obstacle
-    if (dy < 0) {
-      const tg = -my / (dy * len)
-      if (tg < tEnd) {
-        tEnd = tg
-        kind = 0
-      }
-    }
-    if (tEnd > 1) {
-      tEnd = 1
-      kind = -1
-    }
-    const hit = traceSoldiers(w, s.team, mx, my, mz, dx, dy, dz, len * tEnd)
-    const hitDist = hit ? HIT.dist : len * tEnd
-    const ix = mx + dx * hitDist
-    const iy = my + dy * hitDist
-    const iz = mz + dz * hitDist
-    const b = w.bulletPool.pop() || {}
-    b.arrive = w.time + hitDist / BULLET_SPEED
-    b.x = ix
-    b.y = iy
-    b.z = iz
-    b.dx = dx
-    b.dy = dy
-    b.dz = dz
-    b.kind = hit ? 1 : kind
-    b.target = hit ? HIT.soldier : null
-    b.targetId = hit ? HIT.soldier.id : 0
-    b.part = hit ? HIT.part : 0
-    b.damage = type.damage
-    b.shooter = s
-    b.shooterId = s.id
-    w.bullets.push(b)
-    if (p < 3) emitTracer(w.fx, mx, my, mz, ix, iy, iz, w.time, type.key === 'mg' || type.key === 'sniper')
+    castBullet(w, s.team, s, mx, my, mz, Math.sin(yaw) * cp, Math.sin(pitch), Math.cos(yaw) * cp, len, type.damage, p < 3, type.key === 'mg' || type.key === 'sniper')
   }
   emitFlash(w.fx, mx, my, mz, Math.sin(s.aimYaw) * Math.cos(s.aimPitch), Math.sin(s.aimPitch), Math.cos(s.aimYaw) * Math.cos(s.aimPitch), w.time, type.pellets > 1 ? 1.4 : type.key === 'pistol' ? 0.7 : 1)
   emitSound(w.fx, 'shot', mx, my, mz, type.key)
   s.recoil = 1
   s.lastShotT = w.time
+}
+
+const VHIT = { vehicle: null, dist: 0 }
+
+/**
+ * One bullet from (mx, my, mz) along unit (dx, dy, dz), up to `len` metres: stops at
+ * cover, the ground, an enemy soldier (with the hit zone) or an enemy vehicle, and lands
+ * after its flight time. Used by soldiers and vehicle machine guns alike.
+ */
+export function castBullet(w, team, shooter, mx, my, mz, dx, dy, dz, len, damage, tracer, heavy) {
+  let tEnd = segmentHit3D(w.obs, mx, my, mz, mx + dx * len, my + dy * len, mz + dz * len, 1.0)
+  let kind = 2 // concrete/obstacle
+  if (dy < 0) {
+    const tg = -my / (dy * len)
+    if (tg < tEnd) {
+      tEnd = tg
+      kind = 0
+    }
+  }
+  if (tEnd > 1) {
+    tEnd = 1
+    kind = -1
+  }
+  const hit = traceSoldiers(w, team, mx, my, mz, dx, dy, dz, len * tEnd)
+  let hitDist = hit ? HIT.dist : len * tEnd
+  const vhit = traceVehicles(w, team, mx, my, mz, dx, dy, dz, hitDist, VHIT)
+  if (vhit) hitDist = VHIT.dist
+  const ix = mx + dx * hitDist
+  const iy = my + dy * hitDist
+  const iz = mz + dz * hitDist
+  const b = w.bulletPool.pop() || {}
+  b.arrive = w.time + hitDist / BULLET_SPEED
+  b.x = ix
+  b.y = iy
+  b.z = iz
+  b.dx = dx
+  b.dy = dy
+  b.dz = dz
+  // kind: 1 soldier, 4 vehicle, else what the bullet hits (0 dirt, 2 hard, -1 nothing).
+  b.kind = vhit ? 4 : hit ? 1 : kind
+  b.target = vhit ? VHIT.vehicle : hit ? HIT.soldier : null
+  b.targetId = b.target ? b.target.id : 0
+  b.part = hit ? HIT.part : 0
+  b.damage = damage
+  b.shooter = shooter
+  b.shooterId = shooter ? shooter.id : 0
+  w.bullets.push(b)
+  if (tracer) emitTracer(w.fx, mx, my, mz, ix, iy, iz, w.time, heavy)
 }
 
 // Closest approach between the bullet segment and each enemy's body capsule.
@@ -780,6 +831,12 @@ function updateBullets(w) {
       if (t && t.alive && t.id === b.targetId) {
         hitSoldier(w, t, b.part, b.damage, b.dx, b.dy, b.dz, b.shooter && b.shooter.id === b.shooterId ? b.shooter : null, b.x, b.y, b.z)
       }
+    } else if (b.kind === 4) {
+      // Off a vehicle: sparks, and whatever gets through its armour.
+      const v = b.target
+      emitImpact(w.fx, b.x, b.y, b.z, 2, w.time)
+      emitSound(w.fx, 'impact', b.x, b.y, b.z, 2)
+      if (v && v.alive && v.id === b.targetId) damageVehicle(w, v, b.damage * v.spec.armor, b.shooter && b.shooter.id === b.shooterId ? b.shooter : null)
     } else if (b.kind >= 0) {
       emitImpact(w.fx, b.x, b.y, b.z, b.kind, w.time)
       emitSound(w.fx, 'impact', b.x, b.y, b.z, b.kind)
@@ -1180,6 +1237,8 @@ export function spawnUnits(w, typeKey, team, x, z, count, order) {
   const type = UNIT_TYPES[typeKey]
   if (!type) return { spawned: 0, limited: null }
   if (type.trap) return placeMines(w, team, x, z, count)
+  if (type.vehicle) return spawnVehicles(w, typeKey, team, x, z, count, order)
+  if (type.strike) return callStrike(w, typeKey, team, x, z)
   let room = w.caps.units - teamCount(w, team)
   let limited = null
   if (room <= 0) return { spawned: 0, limited: `Team limit reached (${w.caps.units})` }
@@ -1245,6 +1304,7 @@ function allocSlot(w) {
 
 /** Gives every selected living soldier `order`. */
 export function orderSelected(w, order) {
+  vehicleOrders(w, order)
   for (const s of w.slots) {
     if (!s.used || !s.alive || !s.selected || s.downed) continue
     s.order = order
@@ -1258,8 +1318,9 @@ export function orderSelected(w, order) {
 
 /** Sends the selected soldiers to (x, z) in a block, nearest soldier to nearest spot. */
 export function moveSelected(w, x, z) {
+  const vehicles = moveVehicles(w, x, z)
   const units = w.slots.filter((s) => s.used && s.alive && s.selected && !s.downed)
-  if (!units.length) return 0
+  if (!units.length) return vehicles
   let cx = 0
   let cz = 0
   for (const s of units) {
@@ -1304,12 +1365,12 @@ export function moveSelected(w, x, z) {
     s.progressT = 0
     s.progressD = Infinity
   }
-  return units.length
+  return units.length + vehicles
 }
 
 /** Removes the selected living soldiers at once (no ragdoll). */
 export function deleteSelected(w) {
-  let n = 0
+  let n = deleteVehicles(w)
   for (const s of w.slots) {
     if (!s.used || !s.alive || !s.selected) continue
     emitImpact(w.fx, s.x, 0.6, s.z, 3, w.time)
@@ -1327,6 +1388,7 @@ export function clearAll(w) {
   for (const b of w.bullets) w.bulletPool.push(b)
   w.bullets.length = 0
   clearOrdnance(w)
+  clearVehicles(w)
   for (const sp of w.coverSpots) sp.taken = -1
   w.stats.lost[0] = w.stats.lost[1] = 0
   w.stats.kills[0] = w.stats.kills[1] = 0
@@ -1336,24 +1398,36 @@ export function clearAll(w) {
   w.version += 1
 }
 
-export function setSelection(w, slots, additive = false) {
-  if (!additive) for (const s of w.slots) s.selected = false
+export function setSelection(w, slots, additive = false, vehicles = []) {
+  if (!additive) {
+    for (const s of w.slots) s.selected = false
+    for (const v of w.veh.list) v.selected = false
+  }
   for (const i of slots) {
     const s = w.slots[i]
     if (s && s.used && s.alive) s.selected = true
+  }
+  for (const i of vehicles) {
+    const v = w.veh.list[i]
+    if (v && v.used && v.alive) v.selected = true
   }
   w.version += 1
 }
 
 export function selectTeam(w, team) {
   for (const s of w.slots) s.selected = s.used && s.alive && s.team === team && !s.downed
+  for (const v of w.veh.list) v.selected = v.used && v.alive && v.team === team
   w.version += 1
 }
 
 export function clearSelection(w) {
   for (const s of w.slots) s.selected = false
+  for (const v of w.veh.list) v.selected = false
   w.version += 1
 }
+
+/** Whether anything (soldier or vehicle) is selected. */
+export const anySelected = (w) => w.slots.some((s) => s.used && s.alive && s.selected) || w.veh.list.some((v) => v.used && v.alive && v.selected)
 
 /** Active ragdolls as "bodies" for the performance budget. */
 export const activeBodies = (w) => w.ragdolls.length * BODIES_PER_RAGDOLL

@@ -321,9 +321,17 @@ export default function Ordnance() {
         const sp = Math.hypot(p.vx, p.vy, p.vz) || 1
         dir.set(p.vx / sp, p.vy / sp, p.vz / sp)
         q4.setFromUnitVectors(zAxis, dir)
-        if (p.shell) {
-          put(M.shells, nSh, p.x, p.y, p.z, q4, 0.07, 0.07, 0.17)
+        if (p.kind === 'shell' || p.kind === 'bomb') {
+          const b = p.kind === 'bomb' ? (p.big ? 0.45 : 0.2) : 0.07
+          put(M.shells, nSh, p.x, p.y, p.z, q4, b, b, b * 2.5)
           nSh += 1
+        } else if (p.kind === 'cannon') {
+          put(M.shells, nSh, p.x, p.y, p.z, q4, 0.06, 0.06, 0.3)
+          nSh += 1
+          const g = 0.5
+          put(M.glows, nG, p.x, p.y, p.z, camQ, g, g, g)
+          color(M.glows, nG, 1, 0.85, 0.5)
+          nG += 1
         } else {
           put(M.rockets, nRk, p.x, p.y, p.z, q4, 1, 1, 1)
           nRk += 1
