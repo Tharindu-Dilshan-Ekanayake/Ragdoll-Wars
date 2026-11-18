@@ -1,9 +1,13 @@
-# Ships Phone Plunge to Bloxity Legion: the dev branch to the dev channel, main to prod.
+# Ships Floppy Front to Bloxity Legion: the dev branch to the dev channel, main to prod.
+#
+# Before the first deploy, register `floppy-front` as a game on Boxity (the old template
+# id `1-phone-drop` belongs to Phone Plunge) and add the deploy token secrets below.
 #
 #   server   -> Docker image in this repo's GitHub Container Registry, then Legion rolls
-#               it out behind its matchmaker (players reach it only through that)
-#   frontend -> the built client, served at https://1-phone-drop.play.bloxity.io
-#               (prod) and https://1-phone-drop.dev.play.bloxity.io (dev)
+#               it out behind its matchmaker. Phase 1 (battle sandbox) doesn't use it yet:
+#               the server is rebuilt for saves and multiplayer in a later phase.
+#   frontend -> the built client, served at https://floppy-front.play.bloxity.io
+#               (prod) and https://floppy-front.dev.play.bloxity.io (dev)
 #
 # Every push deploys to the production platform, and to the staging platform too once
 # its token exists. A manual run (Actions -> Run workflow) deploys any branch to the one
@@ -13,7 +17,7 @@
 #   LEGION_DEPLOY_TOKEN        production platform (required)
 #   LEGION_DEPLOY_TOKEN_STAGE  staging platform (optional; staging is skipped without it)
 # After the first run, make the ghcr.io package public so Legion can pull it
-# (repo -> Packages -> 1-phone-drop-server -> Package settings -> Change visibility).
+# (repo -> Packages -> floppy-front-server -> Package settings -> Change visibility).
 #
 # One client build works on every platform: the Bloxity SDK and the server find their
 # own environment at runtime, so no URL or environment goes into the build.
@@ -32,7 +36,7 @@ on:
         default: staging
 
 env:
-  GAME_ID: 1-phone-drop
+  GAME_ID: floppy-front
   # Seats per pod: the Colyseus room's maxClients (GameRoom.js MAX_CLIENTS). When a pod
   # fills to it, Legion's matchmaker starts another.
   SEAT_CAP: 8

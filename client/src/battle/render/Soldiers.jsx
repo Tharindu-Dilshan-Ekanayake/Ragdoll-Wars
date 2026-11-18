@@ -1,0 +1,297 @@
+import { useEffect, useMemo } from 'react'
+import {
+  Color,
+  DynamicDrawUsage,
+  Frustum,
+  InstancedBufferAttribute,
+  InstancedMesh,
+  Matrix4,
+  MeshBasicMaterial,
+  MeshLambertMaterial,
+  PlaneGeometry,
+  RingGeometry,
+  Sphere,
+} from 'three'
+
+import { useQuality } from '../../store/quality'
+import { MAX_SLOTS } from '../sim/constants'
+import { animate, buildParts, J_PELVIS, PART_COUNT, P_WEAPON, TRS } from '../sim/rig'
+import { UNIT_ORDER } from '../sim/units'
+import { addFrameHook, PHASE } from '../state'
+import { buildSoldierGeometries, buildWeaponGeometries } from './models'
+import { getTextures } from './textures'
+
+/**
+ * Every soldier, alive or dead, drawn with one instanced mesh per body part (11) plus
+ * one per weapon (6): ~17 draw calls for the whole army however big it gets. With
+ * realtime shadows on, bodies on the ground go into a second set of meshes that casts
+ * none (their shadows are invisible anyway, and it halves the shadow pass).
+ *
+ * Each frame: frustum-cull per soldier, pose the visible ones (far ones every 2nd/3rd
+ * frame, reusing their cached parts in between), and pack them to the front of each
+ * mesh so off-screen soldiers cost no triangles at all. Settled bodies keep their
+ * parts cached until something moves them.
+ */
+
+// Which mesh each part goes into (arms, legs, boots and hands share a mesh per pair).
+const MESH_KEYS = ['pelvis', 'torso', 'vest', 'head', 'helmet', 'upperArm', 'foreArm', 'thigh', 'shin', 'boot', 'hand']
+const PART_TO_MESH = [0, 1, 2, 3, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10]
+const PER_SOLDIER = [1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2]
+/** Parts big enough to be worth a realtime shadow (small ones and weapons skip it). */
+const CASTS_SHADOW = [true, true, true, true, true, true, false, true, true, false, false]
+
+// Colour role per part: 0 shirt, 1 vest, 2 pants, 3 helmet, 4 skin, 5 boots.
+const PART_ROLE = [2, 0, 1, 4, 3, 0, 0, 0, 0, 2, 2, 2, 2, 5, 5, 4, 4]
+const TEAM_COLORS = [
+  ['#3d78dc', '#5b6443', '#34425f', '#2c5bbd', null, '#2a2520'],
+  ['#d64545', '#646043', '#5c3434', '#b33030', null, '#2a2520'],
+]
+const SKIN = ['#f1c9a5', '#e3b088', '#c98d5f', '#a36a43', '#7c4c2c']
+
+const toRGB = (hex) => {
+  const c = new Color(hex)
+  return [c.r, c.g, c.b]
+}
+const PALETTE = TEAM_COLORS.map((roles) => roles.map((h) => (h ? toRGB(h) : null)))
+const SKIN_RGB = SKIN.map(toRGB)
+const RING_RGB = [toRGB('#7fb4ff'), toRGB('#ff8a8a')]
+
+const frustum = new Frustum()
+const projView = new Matrix4()
+const sphere = new Sphere()
+
+function writeMatrix(arr, o, px, py, pz, qx, qy, qz, qw, s) {
+  const x2 = qx + qx
+  const y2 = qy + qy
+  const z2 = qz + qz
+  const xx = qx * x2
+  const xy = qx * y2
+  const xz = qx * z2
+  const yy = qy * y2
+  const yz = qy * z2
+  const zz = qz * z2
+  const wx = qw * x2
+  const wy = qw * y2
+  const wz = qw * z2
+  arr[o] = (1 - (yy + zz)) * s
+  arr[o + 1] = (xy + wz) * s
+  arr[o + 2] = (xz - wy) * s
+  arr[o + 3] = 0
+  arr[o + 4] = (xy - wz) * s
+  arr[o + 5] = (1 - (xx + zz)) * s
+  arr[o + 6] = (yz + wx) * s
+  arr[o + 7] = 0
+  arr[o + 8] = (xz + wy) * s
+  arr[o + 9] = (yz - wx) * s
+  arr[o + 10] = (1 - (xx + yy)) * s
+  arr[o + 11] = 0
+  arr[o + 12] = px
+  arr[o + 13] = py
+  arr[o + 14] = pz
+  arr[o + 15] = 1
+}
+
+function makeMesh(geometry, material, capacity, withColor) {
+  const mesh = new InstancedMesh(geometry, material, capacity)
+  mesh.instanceMatrix.setUsage(DynamicDrawUsage)
+  if (withColor) {
+    mesh.instanceColor = new InstancedBufferAttribute(new Float32Array(capacity * 3), 3)
+    mesh.instanceColor.setUsage(DynamicDrawUsage)
+  }
+  mesh.frustumCulled = false
+  mesh.count = 0
+  return mesh
+}
+
+function flush(mesh, count, withColor) {
+  mesh.count = count
+  if (!count) return
+  mesh.instanceMatrix.clearUpdateRanges()
+  mesh.instanceMatrix.addUpdateRange(0, count * 16)
+  mesh.instanceMatrix.needsUpdate = true
+  if (withColor && mesh.instanceColor) {
+    mesh.instanceColor.clearUpdateRanges()
+    mesh.instanceColor.addUpdateRange(0, count * 3)
+    mesh.instanceColor.needsUpdate = true
+  }
+}
+
+/**
+ * @param {{ getWorld: () => ({ slots: object[], time: number } | null), capacity?: number }}
+ *   props: where the soldiers come from (the battle simulation, or the lobby's armory
+ *   line-up), and how many slots to size the instance buffers for.
+ */
+export default function Soldiers({ getWorld, capacity = MAX_SLOTS }) {
+  const realtimeShadows = useQuality((s) => s.settings.shadows === 'realtime')
+
+  const rig = useMemo(() => {
+    const geos = buildSoldierGeometries()
+    const weaponGeos = buildWeaponGeometries()
+    const material = new MeshLambertMaterial({ vertexColors: true })
+    const makeSet = () => ({
+      parts: MESH_KEYS.map((k, i) => makeMesh(geos[k], material, capacity * PER_SOLDIER[i], true)),
+      weapons: UNIT_ORDER.map((k) => makeMesh(weaponGeos[k], material, capacity, true)),
+      counts: new Int32Array(MESH_KEYS.length),
+      wcounts: new Int32Array(UNIT_ORDER.length),
+    })
+    const tex = getTextures()
+    const shadowMat = new MeshBasicMaterial({ map: tex.blob, transparent: true, depthWrite: false })
+    const shadowGeo = new PlaneGeometry(1, 1).rotateX(-Math.PI / 2)
+    const shadows = makeMesh(shadowGeo, shadowMat, capacity, false)
+    shadows.renderOrder = 1
+    const ringGeo = new RingGeometry(0.52, 0.66, 28).rotateX(-Math.PI / 2)
+    const ringMat = new MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.9, depthWrite: false })
+    const rings = makeMesh(ringGeo, ringMat, capacity, true)
+    rings.renderOrder = 2
+    return {
+      sets: [makeSet(), makeSet()],
+      shadows,
+      rings,
+      material,
+      shadowMat,
+      ringMat,
+      geos: [...Object.values(geos), ...Object.values(weaponGeos), shadowGeo, ringGeo],
+      cache: Array.from({ length: capacity }, () => new Float32Array(PART_COUNT * TRS)),
+      cacheKey: new Float64Array(capacity).fill(-1),
+      frame: 0,
+    }
+  }, [capacity])
+
+  useEffect(
+    () => () => {
+      for (const g of rig.geos) g.dispose()
+      rig.material.dispose()
+      rig.shadowMat.dispose()
+      rig.ringMat.dispose()
+    },
+    [rig],
+  )
+
+  useEffect(
+    () =>
+      addFrameHook(PHASE.DRAW, (state) => {
+        const w = getWorld()
+        const cam = state.camera
+        if (!w) return
+        const q = useQuality.getState().settings
+        rig.frame += 1
+        const frame = rig.frame
+        projView.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse)
+        frustum.setFromProjectionMatrix(projView)
+        const cx = cam.position.x
+        const cz = cam.position.z
+        const lodNear2 = q.lodNear * q.lodNear
+        const lodFar2 = q.lodNear * 2 * (q.lodNear * 2)
+        for (const set of rig.sets) {
+          set.counts.fill(0)
+          set.wcounts.fill(0)
+        }
+        let nShadow = 0
+        let nRing = 0
+        const shadowArr = rig.shadows.instanceMatrix.array
+        const ringArr = rig.rings.instanceMatrix.array
+        const ringCol = rig.rings.instanceColor.array
+
+        const n = Math.min(capacity, w.slots.length)
+        for (let i = 0; i < n; i += 1) {
+          const s = w.slots[i]
+          if (!s.used) continue
+          const trs = rig.cache[i]
+          let px
+          let pz
+          if (s.alive) {
+            px = s.x
+            pz = s.z
+            sphere.center.set(px, 0.9 + s.dropY, pz)
+            sphere.radius = 1.4
+            if (!frustum.intersectsSphere(sphere)) continue
+            const d2 = (px - cx) * (px - cx) + (pz - cz) * (pz - cz)
+            const valid = rig.cacheKey[i] === s.id
+            const skip = valid && ((d2 > lodFar2 && (frame + i) % 3 !== 0) || (d2 > lodNear2 && (frame + i) % 2 !== 0))
+            if (!skip) {
+              animate(s, s.joints, w.time)
+              buildParts(s.joints, trs, s.scale)
+              rig.cacheKey[i] = s.id
+            }
+          } else {
+            px = s.joints[J_PELVIS * 3]
+            pz = s.joints[J_PELVIS * 3 + 2]
+            sphere.center.set(px, 0.4, pz)
+            sphere.radius = 1.6
+            if (!frustum.intersectsSphere(sphere)) continue
+            const key = -s.id * 100000 - s.poseVersion
+            if (rig.cacheKey[i] !== key) {
+              buildParts(s.joints, trs, 1)
+              rig.cacheKey[i] = key
+            }
+          }
+
+          const set = rig.sets[realtimeShadows && !s.alive ? 1 : 0]
+          const counts = set.counts
+          const wcounts = set.wcounts
+          // Colours: team palette, skin by seed, a little variation; bodies darker,
+          // the selected brighter.
+          const pal = PALETTE[s.team]
+          const skin = SKIN_RGB[Math.floor(s.seed) % SKIN_RGB.length]
+          const vary = 0.92 + ((s.seed * 7.31) % 1) * 0.16
+          const shade = (s.alive ? 1 : 0.72) * (s.selected ? 1.18 : 1) * vary
+          for (let p = 0; p < P_WEAPON; p += 1) {
+            const mi = PART_TO_MESH[p]
+            const mesh = set.parts[mi]
+            const idx = counts[mi]++
+            const o = p * TRS
+            writeMatrix(mesh.instanceMatrix.array, idx * 16, trs[o], trs[o + 1], trs[o + 2], trs[o + 3], trs[o + 4], trs[o + 5], trs[o + 6], trs[o + 7])
+            const role = PART_ROLE[p]
+            const col = role === 4 ? skin : pal[role]
+            const k = role === 4 ? 1 : shade
+            const ca = mesh.instanceColor.array
+            ca[idx * 3] = col[0] * k
+            ca[idx * 3 + 1] = col[1] * k
+            ca[idx * 3 + 2] = col[2] * k
+          }
+          const wi = UNIT_ORDER.indexOf(s.type)
+          if (wi >= 0) {
+            const mesh = set.weapons[wi]
+            const idx = wcounts[wi]++
+            const o = P_WEAPON * TRS
+            writeMatrix(mesh.instanceMatrix.array, idx * 16, trs[o], trs[o + 1], trs[o + 2], trs[o + 3], trs[o + 4], trs[o + 5], trs[o + 6], trs[o + 7])
+            const ca = mesh.instanceColor.array
+            ca[idx * 3] = ca[idx * 3 + 1] = ca[idx * 3 + 2] = s.alive ? 1 : 0.8
+          }
+
+          if (!realtimeShadows) {
+            const size = s.alive ? 0.95 - Math.min(0.5, s.dropY * 0.15) : 1.5
+            writeMatrix(shadowArr, nShadow * 16, px, 0.025 + (i % 7) * 0.001, pz, 0, 0, 0, 1, size)
+            nShadow += 1
+          }
+          if (s.selected && s.alive) {
+            writeMatrix(ringArr, nRing * 16, px, 0.04, pz, 0, 0, 0, 1, 1)
+            const rc = RING_RGB[s.team]
+            ringCol[nRing * 3] = rc[0]
+            ringCol[nRing * 3 + 1] = rc[1]
+            ringCol[nRing * 3 + 2] = rc[2]
+            nRing += 1
+          }
+        }
+
+        for (const set of rig.sets) {
+          for (let m = 0; m < set.parts.length; m += 1) flush(set.parts[m], set.counts[m], true)
+          for (let m = 0; m < set.weapons.length; m += 1) flush(set.weapons[m], set.wcounts[m], true)
+        }
+        flush(rig.shadows, nShadow, false)
+        flush(rig.rings, nRing, true)
+      }),
+    [rig, realtimeShadows, getWorld, capacity],
+  )
+
+  return (
+    <group>
+      {rig.sets.map((set, si) => [
+        ...set.parts.map((m, i) => <primitive key={`p${si}-${i}`} object={m} castShadow={realtimeShadows && si === 0 && CASTS_SHADOW[i]} />),
+        ...set.weapons.map((m, i) => <primitive key={`w${si}-${i}`} object={m} castShadow={false} />),
+      ])}
+      <primitive object={rig.shadows} visible={!realtimeShadows} />
+      <primitive object={rig.rings} />
+    </group>
+  )
+}

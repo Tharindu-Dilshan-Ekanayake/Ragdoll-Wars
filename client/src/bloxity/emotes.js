@@ -1,4 +1,4 @@
-import { runtime } from '../game/runtime'
+import { lobby } from '../lobby/lobbyState'
 import { apiUrl } from './env'
 
 /**
@@ -15,7 +15,7 @@ import { apiUrl } from './env'
  * player owns); an id not in the catalog is ignored.
  *
  * Your own emote is replicated through your animation state: while it plays,
- * `runtime.player.anim` is reported as 'emote:<id>' and other clients play the same id.
+ * `reportedAnim` reports it as 'emote:<id>' (for the multiplayer phase).
  */
 
 /** id -> { id, len, loop, tracks: [{ bone, keys: [[t, xDeg, yDeg, zDeg]] }] } */
@@ -88,7 +88,7 @@ let localStartedAt = 0
 /** Emote ids are only reported in this shape (the server accepts exactly this). */
 const REPLICABLE = /^[a-f0-9]{24}$/i
 
-const isMoving = () => runtime.player.speed > 0.5 || !runtime.player.grounded
+const isMoving = () => lobby.player.speed > 0.5 || !lobby.player.grounded
 
 function startLocal(id) {
   localEmoteId = id
