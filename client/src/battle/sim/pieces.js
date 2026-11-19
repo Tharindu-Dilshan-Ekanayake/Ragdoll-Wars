@@ -1,5 +1,6 @@
 import { levelObstacles } from './levels.js'
-import { setObstacles } from './setpieces.js'
+import { buildObstacles } from './obstacles.js'
+import { setBoxes, setObstacles } from './setpieces.js'
 
 /**
  * The build-mode catalogue and map scenery pieces, as plain data with no imports, so the
@@ -99,12 +100,128 @@ export function mapPieces(map) {
 }
 
 /** The map's own obstacles plus its scenery pieces', set pieces' and basins' boxes. */
-export function mapObstacles(map) {
+function baseObstacles(map) {
   const out = map.obstacles.slice()
   for (const p of mapPieces(map)) for (const o of p.boxes) out.push(o)
   for (const o of setObstacles(map)) out.push(o)
-  for (const o of levelObstacles(map)) out.push(o)
   return out
+}
+
+/**
+ * Everything solid on the map: baseObstacles plus the raised floors' boxes (levels.js).
+ * A building with a climbable roof keeps its box, flagged as a level (troops stand on
+ * top of it rather than bump into it) and a deck (no cover from it for those up there).
+ */
+export function mapObstacles(map) {
+  const levels = mapLevels(map)
+  const roofs = levels.filter((l) => l.roof)
+  const out = baseObstacles(map).map((o) => (roofs.some((r) => isRoofOf(r, o)) ? { ...o, level: true, deck: true } : o))
+  for (const o of levelObstacles(levels)) out.push(o)
+  return out
+}
+
+const isRoofOf = (r, o) => Math.abs(r.x - o.x) < 0.05 && Math.abs(r.z - o.z) < 0.05 && Math.abs(r.w - o.w) < 0.05 && Math.abs(r.d - o.d) < 0.05 && Math.abs(r.h - o.h) < 0.05
+
+// --- Roofs and ladders -------------------------------------------------------------
+
+/** Flat-roofed set pieces troops can climb onto (and which of their boxes is the roof). */
+const ROOF_SETS = {
+  office: () => true,
+  house: (o) => !o.floors || o.floors === 1,
+  casemate: () => true,
+  cabin: () => true,
+  // A fort's corner towers (not its walls).
+  fort: (o, box) => box.h >= 6.9,
+}
+/** How far a ladder stands out from the wall, and its width. */
+const LADDER_DEPTH = 2.5
+const LADDER_W = 1.3
+/** Containers with a ladder, per half of the map. */
+const CONTAINER_PERCHES = 3
+/** Roofs higher than this get no ladder (towers, hangars). */
+const MAX_ROOF = 8
+
+const levelCache = new WeakMap()
+
+/**
+ * The map's raised floors: its own (`map.levels`) plus a roof on every flat-topped
+ * building and container with room for a ladder, the ladder on the side facing its own
+ * half's base where that's clear. Cached per map.
+ */
+export function mapLevels(map) {
+  let out = levelCache.get(map)
+  if (out) return out
+  out = (map.levels || []).slice()
+  const base = baseObstacles(map)
+  const roofs = []
+  for (const [kind, x, z, rot, opts = {}] of map.sets || []) {
+    const ok = ROOF_SETS[kind]
+    if (!ok) continue
+    for (const bx of setBoxes(kind, x, z, rot, opts)) if (ok(opts, bx)) roofs.push(bx)
+  }
+  // Containers: a few perches a side (stacks first, those nearer the base first), not a
+  // ladder on every box in a container yard.
+  for (const half of [-1, 1]) {
+    const cans = map.obstacles.filter((o) => o.kind === 'container' && Math.sign(o.x || 1) === half)
+    cans.sort((p, q) => q.h - p.h || Math.abs(q.x) - Math.abs(p.x) || p.z - q.z)
+    let n = 0
+    for (const o of cans) {
+      if (n >= CONTAINER_PERCHES) break
+      roofs.push(o)
+      n += 1
+    }
+  }
+  const obs = buildObstacles({ ...map, obstacles: base })
+  for (const r of roofs) {
+    if (r.h > MAX_ROOF || r.h < 2 || r.w < 2 || r.d < 2) continue
+    const ladder = placeLadder(obs, r)
+    if (!ladder) continue
+    out.push({ roof: true, x: r.x, z: r.z, w: r.w, d: r.d, h: r.h }, ladder)
+  }
+  levelCache.set(map, out)
+  return out
+}
+
+/** Whether the rectangle is clear of every box (touching edges allowed) and inside the fence. */
+function clearRect(obs, x0, z0, x1, z1) {
+  if (x0 < -obs.limitX || x1 > obs.limitX || z0 < -obs.limitZ || z1 > obs.limitZ) return false
+  const d = obs.data
+  for (let i = 0, o = 0; i < obs.count; i += 1, o += 5) {
+    if (d[o + 4] < 0.25 && !obs.water[i]) continue
+    if (d[o + 2] <= x0 || d[o] >= x1 || d[o + 3] <= z0 || d[o + 1] >= z1) continue
+    return false
+  }
+  return true
+}
+
+/** A ladder up roof box r: on its side away from the front if clear, else another side. */
+function placeLadder(obs, r) {
+  const away = r.x <= 0 ? -1 : 1
+  const sides = [
+    ['x', away],
+    ['z', 1],
+    ['z', -1],
+    ['x', -away],
+  ]
+  const apron = 1.2
+  for (const [axis, s] of sides) {
+    const along = axis === 'x' ? r.d : r.w
+    if (along < LADDER_W + 0.4) continue
+    const edge = axis === 'x' ? r.x + (s * r.w) / 2 : r.z + (s * r.d) / 2
+    const mid = edge + (s * LADDER_DEPTH) / 2
+    const far = edge + s * (LADDER_DEPTH + apron)
+    const lo = Math.min(edge, far) + (s > 0 ? 0.02 : 0)
+    const hi = Math.max(edge, far) - (s < 0 ? 0.02 : 0)
+    const c = axis === 'x' ? r.z : r.x
+    const ok = axis === 'x' ? clearRect(obs, lo, c - LADDER_W / 2 - 0.3, hi, c + LADDER_W / 2 + 0.3) : clearRect(obs, c - LADDER_W / 2 - 0.3, lo, c + LADDER_W / 2 + 0.3, hi)
+    if (!ok) continue
+    // It rises towards the wall.
+    const ramp = `${axis}${s > 0 ? '-' : '+'}`
+    return axis === 'x'
+      ? { ramp, ladder: true, x: mid, z: c, w: LADDER_DEPTH, d: LADDER_W, h: r.h }
+      : { ramp, ladder: true, x: c, z: mid, w: LADDER_W, d: LADDER_DEPTH, h: r.h }
+  }
+  return null
 }
 
 export const BUILD_GROUPS = [

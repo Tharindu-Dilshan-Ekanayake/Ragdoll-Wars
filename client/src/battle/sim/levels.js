@@ -7,7 +7,12 @@
  *       railing round its edge except the openings (side 'n' -z, 's' +z, 'w' -x, 'e' +x;
  *       centre along that side, in world coordinates).
  *   { ramp: 'x+' | 'x-' | 'z+' | 'z-', x, z, w, d, h }      - a ramp, rising from the
- *       ground to h towards the named direction.
+ *       ground to h towards the named direction (`ladder: true`: a steep one, drawn as a
+ *       ladder leaning on a wall, climbed slowly; the nav links its cells end to end).
+ *   { roof: true, x, z, w, d, h }                            - the flat top of a building
+ *       that's already an obstacle box (pieces.js finds these and their ladders).
+ *
+ * The full list for a map, with the roofs and ladders, is `mapLevels(map)` (pieces.js).
  *
  * Soldiers walk up ramps and about on platforms (their floor height is `floorAt`), but
  * never step off an edge or up a sheer side. The obstacle boxes from `levelObstacles`
@@ -30,9 +35,11 @@ export function mirrorLevel(l) {
   return out
 }
 
-/** The map's levels prepared for lookups, or null if it has none. */
-export function buildLevels(map) {
-  const list = map.levels
+/** Lookup buckets (m): each holds the levels overlapping it. */
+const BUCKET = 8
+
+/** A level list (mapLevels) prepared for lookups, or null if it's empty. */
+export function buildLevels(list) {
   if (!list || !list.length) return null
   const items = list.map((l) => ({
     x0: l.x - l.w / 2,
@@ -41,6 +48,7 @@ export function buildLevels(map) {
     z1: l.z + l.d / 2,
     h: l.h,
     ramp: l.ramp || null,
+    ladder: Boolean(l.ladder),
   }))
   let x0 = Infinity
   let x1 = -Infinity
@@ -52,8 +60,21 @@ export function buildLevels(map) {
     z0 = Math.min(z0, it.z0)
     z1 = Math.max(z1, it.z1)
   }
-  return { items, x0, x1, z0, z1 }
+  const cols = Math.max(1, Math.ceil((x1 - x0) / BUCKET))
+  const rows = Math.max(1, Math.ceil((z1 - z0) / BUCKET))
+  const buckets = Array.from({ length: cols * rows }, () => [])
+  for (const it of items) {
+    const c0 = Math.min(cols - 1, Math.floor((it.x0 - x0) / BUCKET))
+    const c1 = Math.min(cols - 1, Math.floor((it.x1 - x0) / BUCKET))
+    const r0 = Math.min(rows - 1, Math.floor((it.z0 - z0) / BUCKET))
+    const r1 = Math.min(rows - 1, Math.floor((it.z1 - z0) / BUCKET))
+    for (let r = r0; r <= r1; r += 1) for (let c = c0; c <= c1; c += 1) buckets[r * cols + c].push(it)
+  }
+  return { items, x0, x1, z0, z1, cols, rows, buckets }
 }
+
+/** The levels that might be at (x, z) (inside the overall bounds). */
+const bucketOf = (L, x, z) => L.buckets[Math.min(L.rows - 1, Math.floor((z - L.z0) / BUCKET)) * L.cols + Math.min(L.cols - 1, Math.floor((x - L.x0) / BUCKET))]
 
 /** Floor height of one level at (x, z) (assumed inside it). */
 function heightOf(it, x, z) {
@@ -68,7 +89,7 @@ function heightOf(it, x, z) {
 export function floorAt(L, x, z) {
   if (!L || x < L.x0 || x > L.x1 || z < L.z0 || z > L.z1) return 0
   let f = 0
-  const items = L.items
+  const items = bucketOf(L, x, z)
   for (let i = 0; i < items.length; i += 1) {
     const it = items[i]
     if (x < it.x0 || x > it.x1 || z < it.z0 || z > it.z1) continue
@@ -76,6 +97,23 @@ export function floorAt(L, x, z) {
     if (h > f) f = h
   }
   return f
+}
+
+/** The ladder at (x, z) (a lookup item: x0..z1, ramp), or null. */
+export function ladderItem(L, x, z) {
+  if (!L || x < L.x0 || x > L.x1 || z < L.z0 || z > L.z1) return null
+  const items = bucketOf(L, x, z)
+  for (let i = 0; i < items.length; i += 1) {
+    const it = items[i]
+    if (it.ladder && x >= it.x0 && x <= it.x1 && z >= it.z0 && z <= it.z1) return it
+  }
+  return null
+}
+
+/** On a ladder at (x, z): 1 for one along x, 2 along z, else 0. */
+export function ladderAt(L, x, z) {
+  const it = ladderItem(L, x, z)
+  return it ? (it.ramp[0] === 'x' ? 1 : 2) : 0
 }
 
 /**
@@ -182,9 +220,11 @@ const rampSteps = (h) => Math.max(4, Math.ceil(h / 0.3))
  * top of the rail, flagged `deck` and carrying their platform's height in `base` and the
  * way onto the platform in `inX`/`inZ` (cover spots go on that side).
  */
-export function levelObstacles(map) {
+export function levelObstacles(list) {
   const out = []
-  for (const l of map.levels || []) {
+  for (const l of list) {
+    // A roof is its building's own box (pieces.js marks that as a level).
+    if (l.roof) continue
     if (l.ramp) {
       const n = rampSteps(l.h)
       const alongX = l.ramp[0] === 'x'

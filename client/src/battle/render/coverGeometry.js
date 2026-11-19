@@ -166,6 +166,57 @@ function roofGeometry(cx, cy, cz, w, d, rise, color) {
   return g
 }
 
+const LADDER_STEEL = col('#7f868c')
+
+/** A ladder (levels.js) as two rails from the foot to the top of the wall, rungs between. */
+function ladder(batch, l) {
+  const alongX = l.ramp[0] === 'x'
+  const up = l.ramp[1] === '+'
+  const len = alongX ? l.w : l.d
+  const span = alongX ? l.d : l.w
+  // Foot and top along the axis; across is the other axis.
+  const a0 = (alongX ? l.x : l.z) + (up ? -len / 2 : len / 2)
+  const a1 = (alongX ? l.x : l.z) + (up ? len / 2 : -len / 2)
+  const c = alongX ? l.z : l.x
+  const P = (a, y, s) => (alongX ? [a, y, s] : [s, y, a])
+  const t = 0.05
+  const half = span * 0.4
+  for (const sc of [c - half, c + half]) {
+    // A rail: a thin square tube from (a0, 0) to (a1, h), the axis-wise face pair and the
+    // across pair.
+    const dirA = up ? 1 : -1
+    const L = Math.hypot(len, l.h)
+    // Unit "normal" in the vertical plane through the rail.
+    const na = (-l.h / L) * dirA
+    const ny = len / L
+    const corners = (aEnd, yEnd) => [
+      P(aEnd + na * t, yEnd + ny * t, sc - t),
+      P(aEnd + na * t, yEnd + ny * t, sc + t),
+      P(aEnd - na * t, yEnd - ny * t, sc + t),
+      P(aEnd - na * t, yEnd - ny * t, sc - t),
+    ]
+    const b0 = corners(a0, 0)
+    const b1 = corners(a1, l.h)
+    const hintN = alongX ? [na, ny, 0] : [0, ny, na]
+    const hintS = alongX ? [0, 0, 1] : [1, 0, 0]
+    batch.poly([b0[0], b1[0], b1[1], b0[1]], hintN, LADDER_STEEL, 4)
+    batch.poly([b0[2], b1[2], b1[3], b0[3]], hintN.map((v) => -v), LADDER_STEEL, 4)
+    batch.poly([b0[1], b1[1], b1[2], b0[2]], hintS, LADDER_STEEL, 4)
+    batch.poly([b0[3], b1[3], b1[0], b0[0]], hintS.map((v) => -v), LADDER_STEEL, 4)
+    // The rail's top end stands up past the roof edge as a handhold.
+    const top = P(a1, l.h + 0.45, sc)
+    batch.box(top[0], top[1], top[2], 0.1, 0.9, 0.1, LADDER_STEEL, 4)
+  }
+  // Rungs every 0.3 m up.
+  const n = Math.floor(l.h / 0.3)
+  for (let k = 1; k < n; k += 1) {
+    const y = (k / n) * l.h
+    const a = a0 + (a1 - a0) * (k / n)
+    const p = P(a, y, c)
+    batch.box(p[0], p[1], p[2], alongX ? 0.06 : half * 2, 0.06, alongX ? half * 2 : 0.06, LADDER_STEEL, 4)
+  }
+}
+
 export function buildCover(map) {
   const concrete = new BoxBatch()
   const bags = new BoxBatch()
@@ -175,6 +226,12 @@ export function buildCover(map) {
   const roofs = []
   // Raised floors (levels.js): platforms with their railings, and ramps up to them.
   for (const l of map.levels || []) {
+    // A roof is drawn with its building; a ladder is rails and rungs leaning on the wall.
+    if (l.roof) continue
+    if (l.ladder) {
+      ladder(concrete, l)
+      continue
+    }
     const c = col(l.color || '#c9c8c2')
     if (!l.ramp) {
       concrete.box(l.x, l.h / 2, l.z, l.w, l.h, l.d, c, 2, 8)

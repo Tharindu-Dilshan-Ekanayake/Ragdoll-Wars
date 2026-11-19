@@ -1,4 +1,4 @@
-import { buildLevels, floorAt } from './levels.js'
+import { floorAt, ladderAt } from './levels.js'
 
 /**
  * Ground navigation: a walkability grid over the map and cached flow fields on it.
@@ -24,7 +24,7 @@ const STEP = 0.6
  * floor height, and cells whose floors differ by more than a step aren't neighbours:
  * the way onto a platform is up its ramp.
  */
-export function createNavGrid(map, obstacles) {
+export function createNavGrid(map, obstacles, L = null) {
   const halfW = map.width / 2
   const halfD = map.depth / 2
   const cols = Math.ceil((halfW * 2) / CELL)
@@ -51,15 +51,21 @@ export function createNavGrid(map, obstacles) {
       }
     }
   }
-  const L = buildLevels(map)
   let floor = null
+  let ladder = null
   if (L) {
     floor = new Float32Array(cols * rows)
+    ladder = new Uint8Array(cols * rows)
     for (let r = 0; r < rows; r += 1) {
-      for (let c = 0; c < cols; c += 1) floor[r * cols + c] = floorAt(L, -halfW + (c + 0.5) * CELL, -halfD + (r + 0.5) * CELL)
+      for (let c = 0; c < cols; c += 1) {
+        const x = -halfW + (c + 0.5) * CELL
+        const z = -halfD + (r + 0.5) * CELL
+        floor[r * cols + c] = floorAt(L, x, z)
+        ladder[r * cols + c] = ladderAt(L, x, z)
+      }
     }
   }
-  return { cols, rows, halfW, halfD, cell: CELL, blocked, floor }
+  return { cols, rows, halfW, halfD, cell: CELL, blocked, floor, ladder, levels: L }
 }
 
 /** The grid for ground vehicles: ramps and platforms blocked (null on a flat map). */
@@ -67,11 +73,17 @@ export function vehicleGrid(grid) {
   if (!grid.floor) return null
   const blocked = grid.blocked.slice()
   for (let i = 0; i < blocked.length; i += 1) if (grid.floor[i] > 0.05) blocked[i] = 1
-  return { ...grid, blocked, floor: null }
+  return { ...grid, blocked, floor: null, ladder: null, levels: null }
 }
 
 /** Whether cells a and b (neighbours) are on floors a step apart or less. */
 const joined = (floor, a, b) => !floor || Math.abs(floor[a] - floor[b]) <= STEP
+
+/**
+ * Or joined by a ladder: neighbour k (0-1 along x, 2-3 along z, 4+ diagonal) along the
+ * ladder of either cell.
+ */
+const climbs = (ladder, a, b, k) => ladder !== null && k < 4 && (ladder[a] === (k < 2 ? 1 : 2) || ladder[b] === (k < 2 ? 1 : 2))
 
 export const cellIndex = (grid, x, z) => {
   const c = Math.min(grid.cols - 1, Math.max(0, Math.floor((x + grid.halfW) / grid.cell)))
@@ -82,11 +94,13 @@ export const cellIndex = (grid, x, z) => {
 const cellX = (grid, i) => -grid.halfW + ((i % grid.cols) + 0.5) * grid.cell
 const cellZ = (grid, i) => -grid.halfD + (Math.floor(i / grid.cols) + 0.5) * grid.cell
 
-/** Nearest walkable cell to `start` (spiral search) on the same floor as it, or -1. */
-function nearestOpen(grid, start) {
-  if (!grid.blocked[start]) return start
+/**
+ * Nearest walkable cell to `start` (spiral search) on floor f (the goal's real floor: a
+ * cell's centre can be off the roof whose edge it straddles), or -1.
+ */
+function nearestOpen(grid, start, f = 0) {
   const floor = grid.floor
-  const f = floor ? floor[start] : 0
+  if (!grid.blocked[start] && (!floor || Math.abs(floor[start] - f) <= STEP)) return start
   const sc = start % grid.cols
   const sr = Math.floor(start / grid.cols)
   for (let rad = 1; rad < 12; rad += 1) {
@@ -178,7 +192,7 @@ export class FlowFields {
     const c = Math.floor((x + g.halfW) / (g.cell * 4))
     const r = Math.floor((z + g.halfD) / (g.cell * 4))
     // Up on a platform is a different goal from the ground beside it.
-    const up = g.floor ? Math.round(g.floor[cellIndex(g, x, z)] * 2) : 0
+    const up = g.levels ? Math.round(floorAt(g.levels, x, z) * 2) : 0
     return up * 1e8 + r * 10000 + c
   }
 
@@ -204,14 +218,14 @@ export class FlowFields {
     const g = this.grid
     const n = g.cols * g.rows
     const cost = new Uint32Array(n).fill(UNREACHED)
-    const goal = nearestOpen(g, cellIndex(g, x, z))
+    const goal = nearestOpen(g, cellIndex(g, x, z), g.levels ? floorAt(g.levels, x, z) : 0)
     this.builds += 1
     if (goal < 0) return { cost, goal }
     const heap = this.heap
     heap.size = 0
     cost[goal] = 0
     heap.push(0, goal)
-    const { cols, rows, blocked, floor } = g
+    const { cols, rows, blocked, floor, ladder } = g
     while (heap.size > 0) {
       const cur = heap.pop()
       const cc = cost[cur]
@@ -223,10 +237,11 @@ export class FlowFields {
         const nr = r + nb[1]
         if (nc < 0 || nr < 0 || nc >= cols || nr >= rows) continue
         const ni = nr * cols + nc
-        if (blocked[ni] || !joined(floor, cur, ni)) continue
+        if (blocked[ni] || !(joined(floor, cur, ni) || climbs(ladder, cur, ni, k))) continue
         // No cutting corners past a wall (or a drop).
         if (k >= 4 && (blocked[r * cols + nc] || blocked[nr * cols + c] || !joined(floor, cur, r * cols + nc) || !joined(floor, cur, nr * cols + c))) continue
-        const nextCost = cc + nb[2]
+        // Climbing is slow: a ladder cell costs three.
+        const nextCost = cc + (ladder !== null && (ladder[ni] || ladder[cur]) ? nb[2] * 3 : nb[2])
         if (nextCost < cost[ni]) {
           cost[ni] = nextCost
           heap.push(nextCost, ni)
@@ -239,16 +254,20 @@ export class FlowFields {
   /**
    * Direction to walk from (x, z) along `field`, written to out.x / out.z (unit length).
    * Returns false at the goal or where the field can't help (walk straight then).
+   * `fy`: the walker's own floor height, where a cell straddles a roof's edge and its
+   * centre's floor isn't the one he's standing on: then he heads for a neighbour on his
+   * own floor instead.
    */
-  direction(field, x, z, out) {
+  direction(field, x, z, out, fy = null) {
     const g = this.grid
-    const { cols, rows, blocked, floor } = g
+    const { cols, rows, blocked, floor, ladder } = g
     const i = cellIndex(g, x, z)
+    const off = floor !== null && fy !== null && !ladder[i] && Math.abs(floor[i] - fy) > STEP
     const here = field.cost[i]
-    if (here === 0) return false
+    if (here === 0 && !off) return false
     const c = i % cols
     const r = (i - c) / cols
-    let best = here === UNREACHED || blocked[i] ? UNREACHED : here
+    let best = off || here === UNREACHED || blocked[i] ? UNREACHED : here
     let bestI = -1
     for (let k = 0; k < 8; k += 1) {
       const nb = NEIGHBOURS[k]
@@ -256,7 +275,8 @@ export class FlowFields {
       const nr = r + nb[1]
       if (nc < 0 || nr < 0 || nc >= cols || nr >= rows) continue
       const ni = nr * cols + nc
-      if (blocked[ni] || !joined(floor, i, ni)) continue
+      if (blocked[ni]) continue
+      if (off ? Math.abs(floor[ni] - fy) > STEP && !ladder[ni] : !(joined(floor, i, ni) || climbs(ladder, i, ni, k))) continue
       if (k >= 4 && (blocked[r * cols + nc] || blocked[nr * cols + c] || !joined(floor, i, r * cols + nc) || !joined(floor, i, nr * cols + c))) continue
       if (field.cost[ni] < best) {
         best = field.cost[ni]

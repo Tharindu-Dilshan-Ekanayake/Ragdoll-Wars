@@ -11,7 +11,7 @@ import {
   SOLDIER_RADIUS,
 } from './constants.js'
 import { createFx, emitDecal, emitFlash, emitImpact, emitSound, emitTracer } from './fx.js'
-import { buildLevels, floorAt, stepOnLevels, touchesLevels } from './levels.js'
+import { buildLevels, floorAt, ladderItem, stepOnLevels, touchesLevels } from './levels.js'
 import { createNavGrid, FlowFields, vehicleGrid } from './nav.js'
 import {
   assignPatient,
@@ -35,6 +35,7 @@ import { BODIES_PER_RAGDOLL, startRagdoll, stepRagdoll } from './ragdoll.js'
 import { animate, J_PELVIS, wrapAngle } from './rig.js'
 import { makeSoldier, resetSoldier } from './soldier.js'
 import { createSpatial, rebuildSpatial } from './spatial.js'
+import { mapLevels } from './pieces.js'
 import { BUILD_TYPES, clearStructures, createBuild, inWire, mapObstacles, placeStructures, settleStructures, wireZones } from './structures.js'
 import { initZombieMode, onZombieKilled, updateZombieMode, zombieStep } from './zombies.js'
 import { HEAVY_SHARE, UNIT_TYPES } from './units.js'
@@ -79,9 +80,8 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v)
  * @param {{ units: number, corpses: number, ragdolls: number }} caps per-preset limits
  */
 /** Cover spots that don't sit inside another box. */
-function coverSpotsFor(obs, map) {
+function coverSpotsFor(obs, L) {
   const probe = { x: 0, z: 0 }
-  const L = buildLevels(map)
   return buildCoverSpots(obs).filter((sp) => {
     probe.x = sp.x
     probe.z = sp.z
@@ -99,7 +99,8 @@ export function createWorld(map, caps, mode = 'sandbox') {
   const baseObstacles = mapObstacles(map)
   const obsMap = { ...map, obstacles: baseObstacles.slice() }
   const obs = buildObstacles(obsMap)
-  const grid = createNavGrid(obsMap, obs)
+  const levels = buildLevels(mapLevels(map))
+  const grid = createNavGrid(obsMap, obs, levels)
   const vgrid = vehicleGrid(grid)
   const slots = Array.from({ length: MAX_SLOTS }, (_, i) => makeSoldier(i))
   return {
@@ -113,8 +114,8 @@ export function createWorld(map, caps, mode = 'sandbox') {
     /** Ground vehicles' flow fields, on maps with ramps and platforms (else null). */
     vflow: vgrid ? new FlowFields(vgrid, { budget: 1 }) : null,
     /** Platforms and ramps (levels.js), or null. */
-    levels: buildLevels(map),
-    coverSpots: coverSpotsFor(obs, map),
+    levels,
+    coverSpots: coverSpotsFor(obs, levels),
     build: createBuild(),
     /** 'sandbox' or 'zombies' (Zombie Horde: zombies.js keeps its state in `zmode`). */
     mode,
@@ -163,11 +164,11 @@ export function rebuildStatic(w) {
   for (const st of w.build.list) for (const o of st.boxes) obstacles.push(o)
   w.obsMap.obstacles = obstacles
   w.obs = buildObstacles(w.obsMap)
-  w.grid = createNavGrid(w.obsMap, w.obs)
+  w.grid = createNavGrid(w.obsMap, w.obs, w.levels)
   w.flow = new FlowFields(w.grid, { budget: 1 })
   const vgrid = vehicleGrid(w.grid)
   w.vflow = vgrid ? new FlowFields(vgrid, { budget: 1 }) : null
-  w.coverSpots = coverSpotsFor(w.obs, w.map)
+  w.coverSpots = coverSpotsFor(w.obs, w.levels)
   w.build.wire = wireZones(w)
   for (const s of w.slots) s.cover = -1
   w.build.version += 1
@@ -1449,7 +1450,7 @@ function move(w, s, type, h) {
         dirZ = gz / dist
       } else {
         const field = w.flow.get(s.goalX, s.goalZ)
-        if (field && w.flow.direction(field, s.x, s.z, DIR_OUT)) {
+        if (field && w.flow.direction(field, s.x, s.z, DIR_OUT, w.levels ? s.fy : null)) {
           dirX = DIR_OUT.x
           dirZ = DIR_OUT.z
         } else {
@@ -1494,6 +1495,8 @@ function move(w, s, type, h) {
         if (s.target && type.runAndGun) speed *= 0.8
       }
       speed *= Math.min(1, dist / 1.2)
+      // Hand over hand up (or down) a ladder.
+      if (w.levels && ladderItem(w.levels, s.x, s.z)) speed = Math.min(speed, 1.3)
     }
   }
 
@@ -1524,8 +1527,19 @@ function move(w, s, type, h) {
     }
   }
 
-  const tvx = dirX * speed + sepX * 1.6
-  const tvz = dirZ * speed + sepZ * 1.6
+  let tvx = dirX * speed + sepX * 1.6
+  let tvz = dirZ * speed + sepZ * 1.6
+  // On a ladder: straight up or down it, nobody shoved off the side.
+  const lad = w.levels ? ladderItem(w.levels, s.x, s.z) : null
+  if (lad) {
+    if (lad.ramp[0] === 'x') {
+      tvx = dirX * speed
+      tvz = ((lad.z0 + lad.z1) / 2 - s.z) * 4
+    } else {
+      tvz = dirZ * speed
+      tvx = ((lad.x0 + lad.x1) / 2 - s.x) * 4
+    }
+  }
   const k = Math.min(1, h * 8)
   s.vx += (tvx - s.vx) * k
   s.vz += (tvz - s.vz) * k
@@ -1641,7 +1655,11 @@ export function spawnUnits(w, typeKey, team, x, z, count, order, rot = 0) {
     // Dropped onto the rampart: they stand on top of it.
     const deck = onDeck >= 0 ? onDeck : -1
     if (deck >= 0) clampToDeck(w.rampart, deck, POS)
-    else collideCircle(w.obs, POS, SOLDIER_RADIUS)
+    else {
+      collideCircle(w.obs, POS, SOLDIER_RADIUS)
+      // Dropped on a roof or platform: the whole squad lands up there.
+      if (w.levels) sameFloor(w.levels, x, z, POS)
+    }
     resetSoldier(s, type, team, POS.x, POS.z, face, order)
     if (deck >= 0) {
       s.deck = deck
@@ -1824,10 +1842,13 @@ export function orderSelected(w, order) {
   }
 }
 
-/** Pulls p towards (x, z) until it's on the same floor (levels.js) as that point. */
+/** Whether (x, z) and the ground half a metre round it are all on floor f. */
+const onFloor = (L, x, z, f) => Math.abs(floorAt(L, x, z) - f) <= 0.3 && Math.abs(floorAt(L, x + 0.5, z) - f) <= 0.3 && Math.abs(floorAt(L, x - 0.5, z) - f) <= 0.3 && Math.abs(floorAt(L, x, z + 0.5) - f) <= 0.3 && Math.abs(floorAt(L, x, z - 0.5) - f) <= 0.3
+
+/** Pulls p towards (x, z) until it's well onto the same floor (levels.js) as that point. */
 function sameFloor(L, x, z, p) {
   const f = floorAt(L, x, z)
-  for (let k = 0; k < 12 && Math.abs(floorAt(L, p.x, p.z) - f) > 0.3; k += 1) {
+  for (let k = 0; k < 12 && !onFloor(L, p.x, p.z, f); k += 1) {
     p.x += (x - p.x) * 0.3
     p.z += (z - p.z) * 0.3
   }
