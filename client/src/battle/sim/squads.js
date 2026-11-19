@@ -71,6 +71,18 @@ export function createSquads() {
       /** Where the enemy is, as the squad last saw it. */
       ex: 0,
       ez: 0,
+      /** The commander's job for it (commander.js), since when, and where to. */
+      role: 'assault',
+      roleT: 0,
+      gx: 0,
+      gz: 0,
+      /** Most members it's had (to tell when it's been cut up), and its leader's order. */
+      peak: 0,
+      order: 'attack',
+      /** An ambush (or a held line) that's opened fire. */
+      sprung: false,
+      /** No new ambush before this (commander.js). */
+      ambushNext: 0,
     })),
     nextId: 1,
     t: 0,
@@ -118,6 +130,12 @@ function joinSquad(w, s) {
     best.contact = false
     best.pinned = false
     best.pinnedT = 0
+    best.role = 'assault'
+    best.roleT = w.time
+    best.peak = 0
+    best.order = s.order
+    best.sprung = false
+    best.ambushNext = 0
     best.mover = 0
     best.legId = 1
     best.legT = 0
@@ -200,7 +218,10 @@ export function updateSquads(w, h) {
     q.sx += s.x
     q.sz += s.z
     q.supp += s.suppress
-    if (s.slot === q.leader) q.leaderOk = true
+    if (s.slot === q.leader) {
+      q.leaderOk = true
+      q.order = s.order
+    }
     if (s.rank < q.bestRank) {
       q.bestRank = s.rank
       q.bestSlot = s.slot
@@ -230,6 +251,7 @@ export function updateSquads(w, h) {
     q.cx = q.sx / q.n
     q.cz = q.sz / q.n
     q.supp /= q.n
+    if (q.n > q.peak) q.peak = q.n
     // How far the wedge's middle trails its leader (WEDGE_GAP 3.6 m per row).
     let back = 0
     for (let r = 1; r < q.n; r += 1) back += Math.ceil(r / 2) * 3.6
@@ -237,10 +259,14 @@ export function updateSquads(w, h) {
     if (!q.leaderOk) {
       q.leader = q.bestSlot
       q.leaderRank = q.bestRank
+      const l = w.slots[q.leader]
+      if (l) q.order = l.order
     }
     // Heading: at the enemy as last seen, else at their main body.
     if (q.seen) q.contactT = w.time
     q.contact = w.time - q.contactT < CONTACT_HOLD
+    // Nobody in sight any more: an ambush can be laid again.
+    if (!q.contact) q.sprung = false
     const foe = w.centroid[1 - q.team]
     const tx = (q.contact ? q.ex : foe.x) - q.cx
     const tz = (q.contact ? q.ez : foe.z) - q.cz

@@ -67,6 +67,8 @@ export function makeSoldier(slot) {
     dragZ: 0,
     /** Last time a medic dragged this soldier (he lies still meanwhile). */
     dragT: -99,
+    /** Holding fire: a held line or an ambush that hasn't opened up yet. */
+    holdFire: false,
     /** Zombie Horde: when this zombie got through the wall (0: it hasn't). */
     behindAt: 0,
     flankDone: false,
@@ -213,6 +215,7 @@ export function resetSoldier(s, type, team, x, z, yaw, order) {
   s.dragging = false
   s.dragDone = false
   s.dragT = -99
+  s.holdFire = false
   s.behindAt = 0
   s.flankDone = false
   s.goalMode = 0

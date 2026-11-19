@@ -36,6 +36,7 @@ import { animate, J_PELVIS, wrapAngle } from './rig.js'
 import { makeSoldier, resetSoldier } from './soldier.js'
 import { createSpatial, rebuildSpatial } from './spatial.js'
 import { createSquads, squadOf, updateSquads } from './squads.js'
+import { createCommand, updateCommand } from './commander.js'
 import { mapTerrain } from './ground.js'
 import { mapLevels } from './pieces.js'
 import { rayTerrain } from './terrain.js'
@@ -166,6 +167,8 @@ export function createWorld(map, caps, mode = 'sandbox') {
     centroidT: 0,
     /** Squads (squads.js): who fights alongside whom, and how they move up. */
     squads: createSquads(),
+    /** Each team's commander (commander.js): jobs for the squads. */
+    command: createCommand(),
     /** Bumped when soldiers are added, removed or (de)selected: the HUD re-reads then. */
     version: 0,
   }
@@ -269,6 +272,7 @@ function tick(w, h) {
   }
 
   updateSquads(w, h)
+  updateCommand(w, h)
   for (let i = 0; i < living.length; i += 1) updateSoldier(w, living[i], h)
   updateVehicles(w, h)
   updateBullets(w)
@@ -608,6 +612,14 @@ function think(w, s, type) {
   const crawling = s.legL > 0 && s.legR > 0
   const tdist = target ? Math.hypot(target.x - s.x, target.z - s.z) : Infinity
   let stationary = false
+  // Holding a line, or lying in ambush: hold fire till they're close (or we're found:
+  // hit or shot at), then the whole squad opens up together.
+  s.holdFire = false
+  const sq = squadOf(w, s)
+  if (sq && !w.zmode && (s.order === 'hold' || sq.role === 'ambush')) {
+    if (!sq.sprung && (s.hurtT < 1 || s.suppress > 0.35 || (target && tdist < type.range * AMBUSH_RANGE))) sq.sprung = true
+    s.holdFire = !sq.sprung
+  }
 
   if (s.order === 'move') {
     releaseCover(w, s)
@@ -653,7 +665,7 @@ function think(w, s, type) {
     }
     // In a squad: the wedge out of contact, bounding in contact (squads.js). Snipers and
     // machine gunners set up on a post instead: high ground covering the enemy.
-    const q = flanking ? null : squadOf(w, s)
+    const q = flanking ? null : sq
     const inSquad = q ? squadThink(w, s, type, q, target, nearest, tdist) : null
     if (inSquad !== null) stationary = inSquad
     else if (!flanking && POST[type.key] && s.deck < 0 && !w.zmode && postThink(w, s, type, target)) stationary = false
@@ -856,6 +868,9 @@ function findPost(w, s, type) {
   return best
 }
 
+/** Holding fire (a held line, an ambush) until a target's within this share of range. */
+const AMBUSH_RANGE = 0.5
+
 /** Where a squad thinks the enemy is, when the soldier himself can't see one. */
 const FOCUS = { x: 0, z: 0 }
 /** Spacing in the wedge (m). */
@@ -869,8 +884,17 @@ const DASH = 9
  * enemy's within his engagement range, so it's every man into cover and shooting.
  */
 function squadThink(w, s, type, q, target, nearest, tdist) {
+  // Falling back: everyone to the rally point behind the line, no stopping to fight.
+  if (q.role === 'fallback') {
+    releaseCover(w, s)
+    const a = s.rank * 2.4
+    setGoal(s, clamp(q.gx + Math.sin(a) * 2.5, -w.obs.limitX + 1, w.obs.limitX - 1), clamp(q.gz + Math.cos(a) * 2.5, -w.obs.limitZ + 1, w.obs.limitZ - 1))
+    return false
+  }
+  // Ambush: in cover where they are, waiting (holdFire, in think).
+  if (q.role === 'ambush') return overwatch(w, s, type, target)
   if (target && tdist <= type.engage * s.engageK) return null
-  if (q.contact) {
+  if (q.contact && q.role === 'assault') {
     FOCUS.x = target ? target.x : q.ex
     FOCUS.z = target ? target.z : q.ez
     // (A machine gunner holds the base of fire, unless there's nobody else to move.)
@@ -886,11 +910,13 @@ function squadThink(w, s, type, q, target, nearest, tdist) {
     }
     return overwatch(w, s, type, target)
   }
-  // Out of contact: a wedge behind the leader, who waits for stragglers.
+  // Out of contact (or on the move for the commander: a flank, reinforcing): a wedge
+  // behind the leader, who waits for stragglers.
   releaseCover(w, s)
   const leader = w.slots[q.leader]
   if (s.slot === q.leader || !leader || !leader.alive) {
-    if (!nearest) {
+    const goal = q.role === 'assault' ? nearest : null
+    if (q.role === 'assault' && !nearest) {
       s.goalMode = 0
       return true
     }
@@ -900,7 +926,8 @@ function squadThink(w, s, type, q, target, nearest, tdist) {
       s.goalMode = 0
       return true
     }
-    setGoal(s, nearest.x, nearest.z)
+    if (goal) setGoal(s, goal.x, goal.z)
+    else setGoal(s, q.gx, q.gz)
     return false
   }
   const idx = Math.max(1, Math.abs(s.rank - q.leaderRank))
@@ -1199,7 +1226,7 @@ function combat(w, s, type, h) {
   // Mortar set up on the ground: hands down at the tube, not up holding it.
   if (type.crew && s.setT > 0.5) s.ready = Math.max(0, s.ready - h * 7)
 
-  if (s.reloadT > 0 || s.fireT > 0 || s.mag <= 0) return
+  if (s.reloadT > 0 || s.fireT > 0 || s.mag <= 0 || s.holdFire) return
   if (Math.abs(wrapAngle(want - s.aimYaw)) > 0.12) return
   // Flamethrowers keep pouring it on when hit; everyone else flinches.
   if (dist > type.range || (s.ready < 0.8 && !type.crew) || (s.staggerT > 0 && !type.flame)) return
