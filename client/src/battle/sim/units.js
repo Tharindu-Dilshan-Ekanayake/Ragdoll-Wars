@@ -469,7 +469,8 @@ export const DOCK_GROUPS = [
 export const VEHICLE_KEYS = ['jeep', 'apc', 'tank', 'gunship', 'scout']
 
 /** Weapon meshes (a unit uses `model` or its own key). */
-export const WEAPON_MODELS = ['pistol', 'smg', 'rifle', 'shotgun', 'sniper', 'mg', 'rocket', 'flame', 'mortar']
+/** The weapon models (render/models.js); 'mortarSet' is a mortar set up on the ground, not carried. */
+export const WEAPON_MODELS = ['pistol', 'smg', 'rifle', 'shotgun', 'sniper', 'mg', 'rocket', 'flame', 'mortar', 'mortarSet']
 export const weaponModelIndex = (key) => WEAPON_MODELS.indexOf(UNIT_TYPES[key]?.model || key)
 
 /** Quick battle: the same mixed army for each side, as [type, count, z offset]. */

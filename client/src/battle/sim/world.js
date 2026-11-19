@@ -458,12 +458,16 @@ function think(w, s, type) {
       s.loaderOf = -1
       s.loaderOfId = 0
     } else if (!s.downed && s.order !== 'move') {
+      // Kneeling at the side of the tube, hands free for the rounds.
       releaseCover(w, s)
-      const side = Math.cos(g.aimYaw)
-      const sideZ = -Math.sin(g.aimYaw)
-      const lx = g.x + side * 1.3 - Math.sin(g.aimYaw) * 0.4
-      const lz = g.z + sideZ * 1.3 - Math.cos(g.aimYaw) * 0.4
-      if (Math.hypot(lx - s.x, lz - s.z) > 0.8) setGoal(s, lx, lz)
+      s.target = null
+      s.targetId = 0
+      s.sees = false
+      const fx = Math.sin(g.aimYaw)
+      const fz = Math.cos(g.aimYaw)
+      const lx = g.x + fx * 0.85 + fz * 0.8
+      const lz = g.z + fz * 0.85 - fx * 0.8
+      if (Math.hypot(lx - s.x, lz - s.z) > 0.5) setGoal(s, lx, lz)
       else s.goalMode = 0
       s.wantProne = false
       s.wantCrouch = s.goalMode === 0
@@ -791,6 +795,24 @@ function combat(w, s, type, h) {
       return
     }
   }
+  // A mortar loader: face the tube and drop a round in each time it fires.
+  if (s.loaderOf >= 0) {
+    const g = w.slots[s.loaderOf]
+    if (g && g.alive && g.id === s.loaderOfId) {
+      const tx = g.x + Math.sin(g.aimYaw) * 0.8 - s.x
+      const tz = g.z + Math.cos(g.aimYaw) * 0.8 - s.z
+      const face = Math.atan2(tx, tz)
+      s.yaw += wrapAngle(face - s.yaw) * Math.min(1, h * 5)
+      s.aimYaw += wrapAngle(face - s.aimYaw) * Math.min(1, h * 6)
+      s.aimPitch *= 1 - Math.min(1, h * 3)
+      s.ready = Math.max(0, s.ready - h * 3)
+      if (s.loadT > 0) {
+        s.loadT = Math.max(0, s.loadT - h)
+        s.reloadP = 1 - s.loadT
+      } else s.reloadP = -1
+      return
+    }
+  }
   if (s.reloadT > 0) {
     s.reloadT -= h
     const total = type.reload * (1 + 0.4 * (s.armL + s.armR))
@@ -802,6 +824,8 @@ function combat(w, s, type, h) {
     }
   }
   if (s.fireT > 0) s.fireT -= h
+  // A crewed mortar is set up once its gunner has been still a moment.
+  if (type.crew) s.setT = s.vx * s.vx + s.vz * s.vz > 0.05 ? 0 : s.setT + h
 
   let t = s.target
   if (t && (!t.alive || t.id !== s.targetId)) {
@@ -828,11 +852,13 @@ function combat(w, s, type, h) {
   const pitch = type.indirect ? 0.95 : Math.atan2(aimY(t) - muzzleH(s), Math.max(1, dist))
   s.aimPitch += (pitch - s.aimPitch) * Math.min(1, h * 8)
   s.ready = Math.min(1, s.ready + h * 3.5)
+  // Mortar set up on the ground: hands down at the tube, not up holding it.
+  if (type.crew && s.setT > 0.5) s.ready = Math.max(0, s.ready - h * 7)
 
   if (s.reloadT > 0 || s.fireT > 0 || s.mag <= 0) return
   if (Math.abs(wrapAngle(want - s.aimYaw)) > 0.12) return
   // Flamethrowers keep pouring it on when hit; everyone else flinches.
-  if (dist > type.range || s.ready < 0.8 || (s.staggerT > 0 && !type.flame)) return
+  if (dist > type.range || (s.ready < 0.8 && !type.crew) || (s.staggerT > 0 && !type.flame)) return
   const moving = s.vx * s.vx + s.vz * s.vz > 0.6
   if (moving && !type.runAndGun) return
   if (Math.abs(wrapAngle(s.aimYaw - s.yaw)) > 1.15) return
@@ -840,14 +866,19 @@ function combat(w, s, type, h) {
 
   if (type.proj) {
     if (type.minRange && dist < type.minRange) return
-    // A mortar needs its loader beside it to fire.
-    if (type.crew && !hasLoader(w, s)) return
+    // A mortar fires once it's set up, with its loader beside it to drop the round in.
+    if (type.crew && (s.setT < 1.2 || !hasLoader(w, s))) return
     const sy = Math.sin(s.aimYaw)
     const cy = Math.cos(s.aimYaw)
     const up = type.indirect ? 0.45 : 0
-    if (!launchProjectile(w, s, type, t, s.x + sy * 0.7 - cy * 0.1, muzzleH(s) + up, s.z + cy * 0.7 + sy * 0.1, aimY(t))) return
+    // A set-up mortar fires from its muzzle on the ground in front of the gunner.
+    const mx = type.crew ? s.x + sy * 1.3 : s.x + sy * 0.7 - cy * 0.1
+    const my = type.crew ? s.fy + 1.2 : muzzleH(s) + up
+    const mz = type.crew ? s.z + cy * 1.3 : s.z + cy * 0.7 + sy * 0.1
+    if (!launchProjectile(w, s, type, t, mx, my, mz, aimY(t))) return
     s.recoil = 1
     s.lastShotT = w.time
+    if (type.crew) w.slots[s.buddySlot].loadT = 0.9
   } else if (type.flame) {
     const sy = Math.sin(s.aimYaw)
     const cy = Math.cos(s.aimYaw)

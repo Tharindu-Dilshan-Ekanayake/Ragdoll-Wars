@@ -1034,7 +1034,7 @@ export default function MapView({ map, focus }) {
     const hills = terrain ? buildHills(...(map.hills || [165, 260]), map.hillScale ?? 1, themeOf(map), map.sea ? map.sea.z : null, map.fog, viewDistance) : null
     const sea = terrain && map.sea ? new PlaneGeometry(1200, 600).rotateX(-Math.PI / 2).translate(0, -0.35, map.sea.z - 300) : null
     // Set pieces (cranes, ships, hangars, houses...) and the basins' water and quays.
-    const sets = terrain ? buildSetGeometries(map) : null
+    const sets = terrain ? buildSetGeometries(map, { lite: maxTexture < 1024 }) : null
     const basins = terrain && map.water?.length ? basinGeometry(map.water) : null
     const quays = basins ? quayCurbs(map.water) : null
     // An indoor floor (the warehouse), on its own sharper texture.

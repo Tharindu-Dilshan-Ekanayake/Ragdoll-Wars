@@ -74,6 +74,9 @@ const frustum = new Frustum()
 const projView = new Matrix4()
 const sphere = new Sphere()
 
+/** The weapon mesh for a mortar set up on the ground. */
+const MORTAR_SET = WEAPON_MODELS.indexOf('mortarSet')
+
 function writeMatrix(arr, o, px, py, pz, qx, qy, qz, qw, s) {
   const x2 = qx + qx
   const y2 = qy + qy
@@ -276,12 +279,21 @@ export default function Soldiers({ getWorld, capacity = MAX_SLOTS }) {
             ca[idx * 3 + 1] = col[1] * k
             ca[idx * 3 + 2] = col[2] * k
           }
-          const wi = weaponModelIndex(s.type)
+          // A mortar gunner standing still has his mortar set up on the ground in front of
+          // him; a loader at work has put his rifle away.
+          const settled = s.alive && !s.downed && s.dropY <= 0 && s.animMove < 0.15
+          const deployed = settled && UNIT_TYPES[s.type].crew
+          const wi = deployed ? MORTAR_SET : settled && s.loaderOf >= 0 ? -1 : weaponModelIndex(s.type)
           if (wi >= 0) {
             const mesh = set.weapons[wi]
             const idx = wcounts[wi]++
-            const o = P_WEAPON * TRS
-            writeMatrix(mesh.instanceMatrix.array, idx * 16, trs[o], trs[o + 1], trs[o + 2], trs[o + 3], trs[o + 4], trs[o + 5], trs[o + 6], trs[o + 7])
+            if (deployed) {
+              const half = s.aimYaw / 2
+              writeMatrix(mesh.instanceMatrix.array, idx * 16, s.x + Math.sin(s.aimYaw) * 0.8, s.fy, s.z + Math.cos(s.aimYaw) * 0.8, 0, Math.sin(half), 0, Math.cos(half), 1)
+            } else {
+              const o = P_WEAPON * TRS
+              writeMatrix(mesh.instanceMatrix.array, idx * 16, trs[o], trs[o + 1], trs[o + 2], trs[o + 3], trs[o + 4], trs[o + 5], trs[o + 6], trs[o + 7])
+            }
             const ca = mesh.instanceColor.array
             ca[idx * 3] = ca[idx * 3 + 1] = ca[idx * 3 + 2] = s.alive ? 1 : 0.8
           }

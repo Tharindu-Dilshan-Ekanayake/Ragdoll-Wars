@@ -67,6 +67,7 @@ class SetBuilder {
     this.oz = 0
     this.rot = 0
     this.seed = 0
+    this.lite = false
   }
 
   begin(x, z, rot, seed) {
@@ -1267,7 +1268,7 @@ function truss(b, o) {
   b.bar(-len / 2, h, 0, len / 2, h, 0, 0.22, c)
   b.bar(-len / 2, h, 0, 0, h + rise, 0, 0.2, c)
   b.bar(0, h + rise, 0, len / 2, h, 0, 0.2, c)
-  const n = 8
+  const n = b.lite ? 4 : 8
   for (let k = 1; k < n; k += 1) {
     const x = -len / 2 + (len * k) / n
     const top = h + rise * (1 - Math.abs(x) / (len / 2))
@@ -1297,7 +1298,7 @@ function rack(b, o) {
   for (let i = 0; i <= bays; i += 1) {
     const x = -len / 2 + i * bw
     for (const z of [-0.5, 0.5]) b.box(x, 2.3, z, 0.09, 4.6, 0.09, '#2f5a8f')
-    for (let y = 0.6; y < 4.6; y += 1.2) b.bar(x, y, -0.5, x, y + 0.6, 0.5, 0.04, '#2f5a8f')
+    if (!b.lite) b.bar(x, 0.4, -0.5, x, 4.2, 0.5, 0.04, '#2f5a8f')
   }
   for (const y of [0.15, 1.6, 3.05]) {
     for (const z of [-0.5, 0.5]) b.box(0, y, z, len, 0.12, 0.08, '#e07a20')
@@ -1307,7 +1308,7 @@ function rack(b, o) {
       if (k < 0.12) continue
       const x = -len / 2 + (i + 0.5) * bw
       const gh = y > 3 ? 0.9 : 1.15
-      b.box(x, y + 0.14, 0, bw * 0.8, 0.12, 0.95, '#8a6a46')
+      if (!b.lite) b.box(x, y + 0.14, 0, bw * 0.8, 0.12, 0.95, '#8a6a46')
       const c = GOODS[(k * GOODS.length * 7) % GOODS.length | 0]
       if (k > 0.85) {
         for (const dx of [-0.35, 0.35]) for (const dz of [-0.22, 0.22]) b.cyl(x + dx * bw * 0.6, y + 0.2 + 0.45, dz, 0.22, 0.22, 0.9, '#2f5f8f', 8)
@@ -1395,9 +1396,11 @@ const DRAW = {
 }
 
 /** Every set of `map` as three geometries ({ plain, concrete, steel }), or null if none. */
-export function buildSetGeometries(map) {
+export function buildSetGeometries(map, { lite = false } = {}) {
   if (!map.sets?.length) return null
   const b = new SetBuilder()
+  // LOW: the busiest kinds leave out their finest structure.
+  b.lite = lite
   map.sets.forEach(([kind, x, z, rot = 0, opts = {}], i) => {
     const draw = DRAW[kind]
     if (!draw) return

@@ -379,8 +379,38 @@ function mortar() {
   ])
 }
 
+/**
+ * A mortar set up on the ground (origin on the ground under the baseplate, firing towards
+ * +z): baseplate, the tube up at 60 degrees, the bipod spread, a sight on the side.
+ */
+function mortarSet() {
+  const el = Math.PI / 6
+  const leg = (sx) => {
+    const ax = 0
+    const ay = 0.62
+    const az = 0.42
+    const bx = sx * 0.34
+    const by = 0.02
+    const bz = 0.72
+    const len = Math.hypot(bx - ax, by - ay, bz - az)
+    const g = box(0.035, len, 0.035, BLACK)
+    const a = Math.atan2(bz - az, ay - by)
+    const r = Math.atan2(bx - ax, ay - by)
+    return place(g, (ax + bx) / 2, (ay + by) / 2, (az + bz) / 2, a, 0, -r)
+  }
+  return merge([
+    place(box(0.52, 0.05, 0.52, STEEL), 0, 0.025, 0),
+    place(cyl(0.055, 0.06, 1.25, 10, OLIVE), 0, 0.1 + 0.62 * Math.cos(el), 0.62 * Math.sin(el), el),
+    place(cyl(0.07, 0.07, 0.06, 10, BLACK), 0, 0.1 + 1.24 * Math.cos(el), 1.24 * Math.sin(el), el),
+    leg(1),
+    leg(-1),
+    place(box(0.7, 0.03, 0.03, BLACK), 0, 0.26, 0.66),
+    place(box(0.06, 0.12, 0.16, BLACK), 0.1, 0.66, 0.4),
+  ])
+}
+
 export function buildWeaponGeometries() {
-  return { pistol: pistol(), smg: smg(), rifle: rifle(), shotgun: shotgun(), sniper: sniper(), mg: mg(), rocket: rocket(), flame: flame(), mortar: mortar() }
+  return { pistol: pistol(), smg: smg(), rifle: rifle(), shotgun: shotgun(), sniper: sniper(), mg: mg(), rocket: rocket(), flame: flame(), mortar: mortar(), mortarSet: mortarSet() }
 }
 
 /** Triangle count of a geometry (for the perf report). */

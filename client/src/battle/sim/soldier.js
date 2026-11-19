@@ -112,6 +112,10 @@ export function makeSoldier(slot) {
     buddyId: 0,
     loaderOf: -1,
     loaderOfId: 0,
+    // A mortar gunner: how long he's been still (the mortar's set up after a moment);
+    // his loader: the round he's dropping in.
+    setT: 0,
+    loadT: 0,
     // Thrown by a blast without a ragdoll (over the ragdoll budget): a scripted arc.
     flinging: false,
     flingVX: 0,
@@ -218,6 +222,8 @@ export function resetSoldier(s, type, team, x, z, yaw, order) {
   s.buddyId = 0
   s.loaderOf = -1
   s.loaderOfId = 0
+  s.setT = 0
+  s.loadT = 0
   s.flinging = false
   s.flingY = 0
   s.flingAng = 0
