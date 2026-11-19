@@ -19,8 +19,9 @@ import { resolveIdentity } from '../bloxityApi.js'
  * snapshot ~15 times a second (sim/netProtocol.js) and draws it, with bodies, ragdolls
  * and effects played on their own machine.
  *
- * Modes: 'sandbox' (each player commands Blue or Red; teams auto-balance, players can
- * switch) and 'zombies' (Zombie Horde in co-op: two players, both on Blue, defending the
+ * Modes: 'sandbox' (each player commands Blue or Red, and the sides stay even: two
+ * players are one each, four are two a side; you get the side you asked for when it has
+ * room, and can switch only to the smaller side) and 'zombies' (Zombie Horde in co-op: two players, both on Blue, defending the
  * same wall with one shared army and purse - either can command any of it).
  * The first player in is the host: they can clear the field, change speed, pause and
  * load a saved battlefield; if they leave, the next player takes over.
@@ -134,9 +135,10 @@ export class BattleRoom extends Room {
   }
 
   onJoin(client, options, auth) {
-    // The side they asked for (sandbox); none asked, the emptier one.
+    // Sandbox sides stay even: the side they asked for if it isn't the bigger one, else
+    // the smaller side (two players: one each; four: two a side). Zombie Horde: all Blue.
     const asked = options?.team === 0 || options?.team === 1 ? options.team : null
-    const team = this.mode === 'zombies' ? 0 : asked ?? this.emptierTeam()
+    const team = this.mode === 'zombies' ? 0 : asked !== null && this.count(asked) <= this.count(1 - asked) ? asked : this.emptierTeam()
     const host = ![...this.players.values()].some((p) => p.host)
     this.players.set(client.sessionId, {
       name: auth?.name || 'Commander',
@@ -185,6 +187,28 @@ export class BattleRoom extends Room {
       if (next) next.host = true
     }
     this.sendPlayers()
+  }
+
+  /** How many players are on `team`. */
+  count(team) {
+    let n = 0
+    for (const p of this.players.values()) if (p.team === team) n += 1
+    return n
+  }
+
+  /**
+   * Evens the sides out (someone left the waiting room, say): players move from the
+   * bigger side to the smaller one - the host last - until they're at most one apart.
+   */
+  balance() {
+    if (this.mode !== 'sandbox') return
+    for (;;) {
+      const big = this.count(0) > this.count(1) ? 0 : 1
+      if (this.count(big) - this.count(1 - big) <= 1) return
+      const list = [...this.players.values()].filter((p) => p.team === big)
+      const mover = list.reverse().find((p) => !p.host) || list[0]
+      mover.team = 1 - big
+    }
   }
 
   emptierTeam() {
@@ -262,6 +286,8 @@ export class BattleRoom extends Room {
         if (this.started) return
         if (!p.host) return this.toast(client, 'Only the host can start the battle')
         this.started = true
+        this.balance()
+        this.sendPlayers()
         this.enc.buildVersion = -1
         this.setMetadata({ started: true })
         this.broadcast('start', { mapId: this.mapId, mode: this.mode })
@@ -269,7 +295,11 @@ export class BattleRoom extends Room {
       }
       case 'team': {
         if (this.mode !== 'sandbox') return
-        p.team = payload === 1 ? 1 : 0
+        const to = payload === 1 ? 1 : 0
+        if (to === p.team) return
+        // Only to the smaller side, so it stays one each (or two a side).
+        if (this.count(to) >= this.count(p.team)) return this.toast(client, 'The teams have to stay even - that side is full')
+        p.team = to
         this.sendPlayers()
         return
       }

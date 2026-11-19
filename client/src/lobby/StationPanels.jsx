@@ -208,7 +208,7 @@ function ZombiePanel() {
 }
 
 /** Blue or Red: which army you'll build in the battle. */
-function SidePick({ team, setTeam }) {
+function SidePick({ team, setTeam, full = [false, false] }) {
   return (
     <div className="ff-seg ff-mp__sides" role="group" aria-label="Your side">
       {[
@@ -219,6 +219,8 @@ function SidePick({ team, setTeam }) {
           type="button"
           key={id}
           className={`ff-chip ff-mp__side ff-mp__side--${id} ${team === id ? 'is-on' : ''}`}
+          disabled={full[id]}
+          title={full[id] ? 'That side is full: the teams stay even' : undefined}
           onClick={() => {
             setTeam(id)
             sfx.toggle()
@@ -226,6 +228,7 @@ function SidePick({ team, setTeam }) {
         >
           <span className="ff-mp__sidedot" />
           {label}
+          {full[id] ? ' (full)' : ''}
         </button>
       ))}
     </div>
@@ -249,6 +252,9 @@ function WaitingRoom() {
   const mapName = zombies ? ZOMBIE_MAP.name : MAPS.find((m) => m.id === mapId)?.name || mapId
   // Zombie Horde co-op is two of you on the one wall; a sandbox room takes four.
   const seats = zombies ? 2 : 4
+  // Sides stay even (the server holds to it): you can only move to the smaller one.
+  const onSide = (t) => players.filter((p) => p.team === t).length
+  const full = mine ? [0, 1].map((t) => t !== mine.team && onSide(t) >= onSide(mine.team)) : [false, false]
   const copy = async () => {
     sfx.click()
     try {
@@ -298,7 +304,8 @@ function WaitingRoom() {
         })}
       </div>
       {zombies && <p className="ff-wait__info">You both hold the same wall, side by side: one army, one purse - either of you can place and command any of it.</p>}
-      {!zombies && mine && <SidePick team={mine.team} setTeam={setRoomTeam} />}
+      {!zombies && <p className="ff-wait__info">Blue against Red, on the same map: two players are one each, four are two a side.</p>}
+      {!zombies && mine && <SidePick team={mine.team} setTeam={setRoomTeam} full={full} />}
       <div className="ff-mp__row">
         {host ? (
           <button
@@ -349,7 +356,10 @@ function MultiplayerPanel() {
     <div className="ff-mp">
       <section className="ff-mp__card ff-mp__card--wide">
         <h3>Your side</h3>
-        <p>Pick Blue or Red, then build your own army in the battle. You can switch side there too. (Zombie Horde: the two of you fight together on one side.)</p>
+        <p>
+          Blue against Red, on the same map: with two players it's one each, with four it's two a side. Pick the side you'd like - you get it if it has room. (Zombie Horde: the two of you fight
+          together on one side.)
+        </p>
         <SidePick team={team} setTeam={setTeam} />
       </section>
       <section className="ff-mp__card">
@@ -357,7 +367,7 @@ function MultiplayerPanel() {
         <p>
           {zombies
             ? 'You get a room code to send to one friend: Zombie Horde is two players, side by side on the same wall, with one army.'
-            : 'You get a room code to send to your friends: up to 4 players. You choose the mode and the map.'}
+            : 'You get a room code to send to your friends: 2 or 4 players, Blue against Red. You choose the map.'}
         </p>
         <div className="ff-seg">
           {[
