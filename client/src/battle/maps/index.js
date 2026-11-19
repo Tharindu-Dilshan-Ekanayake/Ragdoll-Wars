@@ -56,7 +56,7 @@ export const MAPS = [
     id: 'rustyard',
     name: 'Rustline Yard',
     blurb: 'A scrapyard behind rusted sheet walls: aisles of crushed cars, scrap heaps under magnet cranes, a car crusher, scrap wagons and an army camp at each end.',
-    size: '170 × 110 m',
+    size: '220 × 140 m',
     load: () => import('./rustlineYard.js'),
   },
 ]

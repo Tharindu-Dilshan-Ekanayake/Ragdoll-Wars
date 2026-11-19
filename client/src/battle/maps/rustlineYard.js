@@ -1,5 +1,5 @@
 import { mirrorSet } from '../sim/setpieces.js'
-import { box, mirrored, mirrorPatch, mirrorRoad, scatterTrees } from './mapKit.js'
+import { box, mirrored, mirrorPatch, mirrorRoad, mirrorTerrain, scatterTrees } from './mapKit.js'
 
 /**
  * Rustline Yard - a working scrapyard turned battlefield. Each half is a yard behind
@@ -40,7 +40,6 @@ const WEST_PIECES = [
   ['sandwall', -64, 19, 1],
   ['tower', -66, -24],
   ['tower', -66, 24],
-  ['helipad', -76, 0],
   ['floodlight', -70, -12],
   ['floodlight', -70, 12],
   ['radiomast', -84, -40],
@@ -80,7 +79,7 @@ const WEST_SETS = [
   ['carstack', -40, -7, 1, { n: 2 }],
   ['carstack', -24, -7, 1, { n: 3 }],
   // Rail spur with scrap wagons.
-  ['rail', -30, -20, 0, { len: 58 }],
+  ['rail', -41, -20, 0, { len: 80 }],
   ['railcar', -48, -20, 0, { color: '#6e4a34' }],
   ['railcar', -34, -20, 0, { seed: 0.1 }],
   // Site offices, tyres, tanks, lamps.
@@ -103,8 +102,58 @@ const CENTRE_SETS = [
   ['tyres', 3, 22, 0],
 ]
 
-const { obstacles, pieces } = mirrored(WEST, WEST_PIECES, CENTRE, [['carwreck', 3, 0, 1]])
-const westRoads = [{ width: 3, points: [[-56, -60], [-56, -26], [-38, -26]] }]
+// --- The bigger yard (220 x 140) ---------------------------------------------------
+// Each camp and its yard's west wall move 22 m back, the north and south walls 12 m
+// out (the walls re-laid to meet at the corners). Inside the ground that opens up: a
+// yard office and a canteen you can go inside, more car stacks and tyres, spoil heaps.
+const fx = (x) => (x < -58 ? x - 22 : x)
+const fz = (z) => (Math.abs(z) > 44 ? z + Math.sign(z) * 12 : z)
+const mv = (o) => ({ ...o, x: fx(o.x), z: fz(o.z) })
+const mvPiece = ([k, x, z, r]) => [k, fx(x), fz(z), r]
+const mvSet = ([k, x, z, r, o]) => [k, fx(x), fz(z), r, o]
+const WALLS = [
+  ['sheetwall', -44, 62, 0, { len: 76 }],
+  ['sheetwall', -44, -64, 0, { len: 76 }],
+  ['sheetwall', -82, 38, 1, { len: 48 }],
+  ['sheetwall', -82, -39, 1, { len: 50 }],
+]
+
+const NEW_WEST = [
+  box('container', -74, 4, 6.1, 2.5, 2.6, 2),
+  box('crate', -66, -10, 1.25, 1.25, 2.5),
+  box('crate', -67.35, -10, 1.25, 1.25),
+]
+const NEW_PIECES = [
+  ['drum', -76, -14],
+  ['drum', -76.8, -13.4],
+  ['carwreck', -64, 44, 1],
+  ['tanktrap', -62, -48],
+]
+const NEW_SETS = [
+  ['bldg', -70, 27, 0, { w: 12, d: 7, doors: [['e', 0], ['s', -3]], color: '#9a8c74', roof: '#6a5a46', floor: '#6f6455' }],
+  ['bldg', -70, -27, 0, { w: 9, d: 7, doors: [['e', 0]], split: null, color: '#8f8270', roof: '#6a5a46', floor: '#6f6455' }],
+  ...[-76, -71.5, -67].map((x, i) => ['carstack', x, 44, 0, { n: 2 + (i % 2) }]),
+  ...[-76, -71.5].map((x, i) => ['carstack', x, -44, 0, { n: 3 - i }]),
+  ['tyres', -62, 12, 0],
+  ['tyres', -62, -14, 0],
+]
+
+const WEST_ALL = [...WEST.map(mv), ...NEW_WEST]
+const WEST_PIECES_ALL = [...WEST_PIECES.map(mvPiece), ...NEW_PIECES]
+const WEST_SETS_ALL = [...WEST_SETS.filter((st) => st[0] !== 'sheetwall').map(mvSet), ...WALLS, ...NEW_SETS]
+
+const TERRAIN = mirrorTerrain({
+  hills: [
+    { x: -70, z: -54, r: 6, h: 1.8 },
+    { x: -100, z: -56, r: 9, h: 2.4 },
+    { x: -100, z: 56, r: 9, h: 2.2 },
+    { x: -18, z: 54, r: 5, h: 1.4 },
+  ],
+  rough: 0.25,
+})
+
+const { obstacles, pieces } = mirrored(WEST_ALL, WEST_PIECES_ALL, CENTRE, [['carwreck', 3, 0, 1]])
+const westRoads = [{ width: 3, points: [[-56, -72], [-56, -26], [-38, -26]] }]
 const mirrorPad = (p) => ({ ...p, x: -p.x })
 const mirrorLine = (l) => ({ ...l, points: l.points.map(([x, z]) => [-x, z]) })
 const WEST_PADS = [
@@ -113,27 +162,28 @@ const WEST_PADS = [
   { x: -34, z: -7, w: 22, d: 8, color: '#77705f', joints: 4 },
 ]
 const WEST_LINES = [
-  { points: [[-59, -20], [-1, -20]], width: 3.2, color: '#5e5446' },
-  { points: [[-59, -20], [-1, -20]], width: 2.6, color: '#3e3024', dash: [0.25, 0.55] },
+  { points: [[-81, -20], [-1, -20]], width: 3.2, color: '#5e5446' },
+  { points: [[-81, -20], [-1, -20]], width: 2.6, color: '#3e3024', dash: [0.25, 0.55] },
 ]
 
 export const RUSTLINE_YARD = {
   id: 'rustyard',
   name: 'Rustline Yard',
-  width: 170,
-  depth: 110,
+  width: 220,
+  depth: 140,
+  terrain: TERRAIN,
   bases: [
-    { x: -72, z: 0 },
-    { x: 72, z: 0 },
+    { x: -96, z: 0 },
+    { x: 96, z: 0 },
   ],
   obstacles,
   pieces,
-  sets: [...WEST_SETS, ...WEST_SETS.map(mirrorSet), ...CENTRE_SETS],
+  sets: [...WEST_SETS_ALL, ...WEST_SETS_ALL.map(mirrorSet), ...CENTRE_SETS],
   pads: [...WEST_PADS, ...WEST_PADS.map(mirrorPad)],
   lines: [...WEST_LINES, ...WEST_LINES.map(mirrorLine)],
-  roads: [{ width: 3.6, points: [[-92, 0], [92, 0]] }, ...westRoads, ...westRoads.map(mirrorRoad)],
+  roads: [{ width: 3.6, points: [[-118, 0], [118, 0]] }, ...westRoads, ...westRoads.map(mirrorRoad)],
   mud: [[-30, 28, 7], [-16, 32, 7], [-24, -40, 6], [-10, 8, 5]].flatMap((p) => [p, mirrorPatch(p)]),
-  trees: scatterTrees(50, 81, 85, 55),
+  trees: scatterTrees(56, 81, 110, 70),
   hills: [150, 250],
   hillScale: 1.1,
   theme: {
