@@ -1,5 +1,7 @@
 import { emitExplosion, emitFlame, emitFlash, emitImpact, emitSound } from './fx.js'
 import { collideCircle, segmentHit3D } from './obstacles.js'
+import { floorAt } from './levels.js'
+import { deckAt } from './rampart.js'
 import { groundAt } from './terrain.js'
 import { startRagdoll } from './ragdoll.js'
 import { J_PELVIS, wrapAngle } from './rig.js'
@@ -189,6 +191,69 @@ export function fireProjectile(w, team, shooter, mx, my, mz, tx, ty, tz, gun) {
   return true
 }
 
+/**
+ * A spitter's gob of acid (zombies.js), lobbed from (mx, my, mz) to land on (tx, ty, tz):
+ * a high arc, so it drops onto troops behind a parapet. Splashes on what it hits.
+ */
+export function fireAcid(w, shooter, mx, my, mz, tx, ty, tz, sp) {
+  const p = freeProjectile(w)
+  if (!p) return false
+  const dist = Math.hypot(tx - mx, tz - mz)
+  const T = 0.55 + dist / 17
+  p.active = true
+  p.kind = 'acid'
+  p.team = shooter.team
+  p.x = mx
+  p.y = my
+  p.z = mz
+  p.age = 0
+  p.grav = ACID_GRAVITY
+  p.vx = (tx - mx) / T
+  p.vz = (tz - mz) / T
+  p.vy = (ty - my + 0.5 * ACID_GRAVITY * T * T) / T
+  p.life = T + 2
+  p.radius = sp.radius
+  p.damage = sp.damage
+  p.anti = 0.2
+  p.shooter = shooter
+  p.shooterId = shooter.id
+  p.big = false
+  p.shell = false
+  emitSound(w.fx, 'spit', mx, my, mz, 0)
+  return true
+}
+
+const ACID_GRAVITY = 9.8
+
+/** The floor at (x, z) for a falling gob: a standing rampart section, a raised floor, the ground. */
+function acidFloor(w, x, z) {
+  let f = w.levels ? floorAt(w.levels, x, z) : groundAt(w.terrain, x, z)
+  const seg = deckAt(w.rampart, x, z)
+  if (seg >= 0 && w.rampart.segs[seg].h > f) f = w.rampart.segs[seg].h
+  return f
+}
+
+/** Acid splashing at (x, y, z): burns the soldiers it lands on (no blast, no throw). */
+function acidSplash(w, p, x, y, z, attacker) {
+  emitImpact(w.fx, x, y + 0.05, z, 5, w.time)
+  emitSound(w.fx, 'splat', x, y, z, 0)
+  const enemies = w.teamLiving[1 - p.team]
+  for (let i = 0; i < enemies.length; i += 1) {
+    const s = enemies[i]
+    if (!s.alive || s.dropY > 0) continue
+    const dx = s.x - x
+    const dz = s.z - z
+    const dy = s.fy + 0.9 - y
+    const d = Math.sqrt(dx * dx + dz * dz + dy * dy * 0.4)
+    if (d > p.radius) continue
+    const k = 1 - d / p.radius
+    const hl = Math.hypot(dx, dz) || 1
+    blastHit(w, s, p.damage * (0.4 + 0.6 * k), dx / hl, dz / hl, 0.05, attacker)
+    emitImpact(w.fx, s.x, s.fy + 1.1, s.z, 5, w.time)
+  }
+  blastVehicles(w, x, y, z, p.radius, p.damage * 0.5, attacker, p.anti)
+}
+
 export function updateProjectiles(w, h) {
   const pool = w.ord.projectiles
   for (let i = 0; i < pool.length; i += 1) {
@@ -208,6 +273,15 @@ export function updateProjectiles(w, h) {
     if (!w.terrain && p.y <= 0) {
       const tg = oy / (oy - p.y)
       if (tg < tHit) tHit = tg
+    }
+    // Acid lands on whatever floor it comes down on: the wall's walkway, a platform, the
+    // ground (the walkway's boxes don't stop things from above, so check it here).
+    if (p.kind === 'acid' && p.vy < 0) {
+      const f = acidFloor(w, p.x, p.z)
+      if (p.y <= f && oy > f) {
+        const tf = (oy - f) / (oy - p.y)
+        if (tf < tHit) tHit = tf
+      }
     }
     const direct = p.kind === 'rocket' || p.kind === 'cannon'
     if (direct && tHit > 1) {
@@ -247,7 +321,8 @@ export function updateProjectiles(w, h) {
       const attacker = p.shooter && p.shooter.id === p.shooterId ? p.shooter : null
       p.active = false
       p.shooter = null
-      explode(w, hx, hy, hz, p.radius, p.damage, attacker, p.anti)
+      if (p.kind === 'acid') acidSplash(w, p, hx, hy, hz, attacker)
+      else explode(w, hx, hy, hz, p.radius, p.damage, attacker, p.anti)
     }
   }
 }

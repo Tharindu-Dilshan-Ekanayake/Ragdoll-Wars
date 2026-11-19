@@ -1639,6 +1639,9 @@ function animStep(s, h) {
 
 // --- Commands (from the HUD / input) -------------------------------------------------
 
+/** How far in front of the wall you can put anything down in Zombie Horde (m). */
+export const WALL_REACH = 10
+
 /** Living soldiers of `team` (not counting ones still dropping in). */
 const teamCount = (w, team) => w.slots.reduce((n, s) => n + (s.used && s.alive && s.team === team ? 1 : 0), 0)
 
@@ -1647,6 +1650,11 @@ const teamCount = (w, team) => w.slots.reduce((n, s) => n + (s.used && s.alive &
  * Returns { spawned, limited } - limited is a reason string if the caps cut it short.
  */
 export function spawnUnits(w, typeKey, team, x, z, count, order, rot = 0) {
+  // Holding the wall (Zombie Horde): troops, vehicles, defences and mines go no further
+  // out than a little in front of it. Strikes go anywhere.
+  if (w.zmode && w.rampart && !UNIT_TYPES[typeKey]?.strike && x > w.rampart.front + WALL_REACH) {
+    return { spawned: 0, limited: `Place within ${WALL_REACH} m of the wall` }
+  }
   if (BUILD_TYPES[typeKey]) return placeStructures(w, typeKey, x, z, count, rot)
   const type = UNIT_TYPES[typeKey]
   if (!type) return { spawned: 0, limited: null }

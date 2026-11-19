@@ -3,11 +3,13 @@ import { J_PELVIS, wrapAngle } from './rig.js'
 import { damageStructureNear } from './structures.js'
 import { UNIT_TYPES } from './units.js'
 import { damageVehicle } from './vehicles.js'
+import { fireAcid } from './ordnance.js'
+import { segmentHit3D } from './obstacles.js'
 import { meleeHit, rebuildStatic, removeSoldier, spawnOne } from './world.js'
 import { clampToDeck, segAt } from './rampart.js'
 
 /**
- * Zombie Horde: hold the west side of the map against 15 waves of the undead.
+ * Zombie Horde: hold the west side of the map against 20 waves of the undead.
  *
  * Between waves there's a build phase (it ends when you press Start or the countdown
  * runs out). Every zombie killed pays its bounty, every wave cleared pays a bonus; you
@@ -15,7 +17,8 @@ import { clampToDeck, segAt } from './rampart.js'
  * east edge - and from the flanks in later waves - walk at your nearest soldier or
  * vehicle and hit what they reach; walled in, they bash through. Each one that gets all
  * the way across to the west edge is a breach: ten breaches and it's over. Survive
- * wave 15 to win.
+ * wave 20 to win. Spitters (from wave 4) lob acid from range, up onto the wall too;
+ * behemoths lead waves 10, 15 and 18, and the last wave is a horde of the big ones.
  *
  * On a map with a rampart (Mirefall Bastion) your troops stand up on the wall and the
  * zombies can't reach them: they pile up at its foot and batter the section in front of
@@ -27,7 +30,7 @@ import { clampToDeck, segAt } from './rampart.js'
  * (the preset's team cap); the rest wait their turn at the edge.
  */
 
-export const TOTAL_WAVES = 15
+export const TOTAL_WAVES = 20
 export const START_CASH = 500
 const BUILD_TIME_FIRST = 35
 const BUILD_TIME = 25
@@ -107,13 +110,17 @@ function composeWave(n) {
   const out = []
   const walkers = 6 + n * 3
   const runners = n >= 3 ? (n - 2) * 2 : 0
-  const brutes = n >= 5 ? Math.floor((n - 3) / 2) : 0
+  const brutes = (n >= 5 ? Math.floor((n - 3) / 2) : 0) + (n >= 19 ? 4 : 0)
+  const spitters = n >= 4 ? Math.min(10, Math.floor((n - 2) / 2)) : 0
   for (let i = 0; i < walkers; i += 1) out.push('zombie')
-  // Runners and brutes mixed in through the second half of the wave.
+  // Runners, spitters and brutes mixed in through the rest of the wave.
   for (let i = 0; i < runners; i += 1) out.splice(Math.floor(out.length * (0.3 + rand() * 0.7)), 0, 'runner')
+  for (let i = 0; i < spitters; i += 1) out.splice(Math.floor(out.length * (0.2 + rand() * 0.8)), 0, 'spitter')
   for (let i = 0; i < brutes; i += 1) out.splice(Math.floor(out.length * (0.5 + rand() * 0.5)), 0, 'brute')
-  if (n === 10) out.push('behemoth')
-  if (n === TOTAL_WAVES) out.push('behemoth', 'behemoth')
+  if (n === 10 || n === 18) out.push('behemoth')
+  if (n === 15) out.push('behemoth', 'behemoth')
+  // The last wave: the big ones, one after another at the end.
+  if (n === TOTAL_WAVES) out.push('brute', 'behemoth', 'brute', 'behemoth', 'brute', 'behemoth')
   return out
 }
 
@@ -322,6 +329,41 @@ export function onZombieKilled(w, s) {
 
 // --- The zombies themselves -------------------------------------------------------------
 
+/**
+ * A spitter's turn at range: the nearest soldier within reach that it can see (wall-top
+ * troops included) - stop, face them, retch up a gob of acid. True while it's busy.
+ */
+function spit(w, s, sp, h) {
+  s.spitT = (s.spitT || 0) - h
+  let best = null
+  let bestD = sp.range * sp.range
+  const soldiers = w.teamLiving[0]
+  for (let i = 0; i < soldiers.length; i += 1) {
+    const e = soldiers[i]
+    if (!e.alive || e.dropY > 0) continue
+    const d = (e.x - s.x) ** 2 + (e.z - s.z) ** 2
+    if (d < bestD) {
+      bestD = d
+      best = e
+    }
+  }
+  if (!best) return false
+  const my = s.fy + 1.5 * (UNIT_TYPES[s.type].size || 1)
+  // Lobbed: it drops in from above, so it only needs the target clear from the arc's
+  // height (over a parapet, not through a roof).
+  if (segmentHit3D(w.obs, (s.x + best.x) / 2, Math.max(my, best.fy) + 6, (s.z + best.z) / 2, best.x, best.fy + 1.2, best.z, 0) <= 1) return false
+  s.goalMode = 0
+  s.target = null
+  s.yaw += wrapAngle(Math.atan2(best.x - s.x, best.z - s.z) - s.yaw) * Math.min(1, h * 6)
+  if (s.spitT <= 0) {
+    s.spitT = sp.interval * (0.85 + rand() * 0.3)
+    s.recoil = 1
+    const lead = Math.sqrt(bestD) / 18
+    fireAcid(w, s, s.x, my, s.z, best.x + best.vx * lead, best.fy + 0.9, best.z + best.vz * lead, sp)
+  }
+  return true
+}
+
 /** The fallen rampart section nearest z, or null. */
 function nearestGap(r, z) {
   let best = null
@@ -408,6 +450,8 @@ export function zombieStep(w, s, type, h) {
   s.aimPitch = 0
   s.aimYaw += wrapAngle(s.yaw - s.aimYaw) * Math.min(1, h * 6)
   s.fireT -= h
+  // A spitter: anyone in range and in sight - on the wall or not - gets a gob of acid.
+  if (ai.spit && spit(w, s, ai.spit, h)) return
 
   const t = s.target
   if (t && (!t.alive || t.id !== s.targetId)) s.target = null

@@ -7,7 +7,7 @@
  *     v: 1,
  *     name,
  *     zombieBest,                    best Zombie Horde wave, 0..15
- *     badges: { bronze, silver, gold },
+ *     badges: { bronze, silver, gold, platinum },
  *     stats: { zombieKills, battles, playtime },   running totals (playtime in seconds)
  *     saves: [{ id, name, mapId, savedAt, counts, data }],   sandbox saves, newest first
  *     removed: { [saveId]: time },   deleted saves, so a merge doesn't bring them back
@@ -23,7 +23,7 @@
 export const PROFILE_VERSION = 1
 export const MAX_SAVES = 8
 export const MAX_WAVE = 15
-export const BADGE_IDS = ['bronze', 'silver', 'gold']
+export const BADGE_IDS = ['bronze', 'silver', 'gold', 'platinum']
 const MAX_REMOVED = 30
 /** A save's battlefield, as JSON, may be at most this big (one per network message). */
 export const MAX_SAVE_BYTES = 48 * 1024

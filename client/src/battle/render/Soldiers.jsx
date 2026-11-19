@@ -114,6 +114,7 @@ const ZOMBIE_COLORS = {
   runner: ['#7a5f4a', '#5a4434', '#4a4a40', '#3a2a1e', '#93b07a', '#2a2520'],
   brute: ['#6b3f33', '#4e3a2c', '#3a3f48', '#221d18', '#7a9a62', '#231f1b'],
   behemoth: ['#4d4f3a', '#3a3328', '#2e3238', '#1a1714', '#6c8a58', '#1d1a17'],
+  spitter: ['#6a7a3a', '#4f5a2c', '#3e4a32', '#2a2e1c', '#a6c25a', '#25281a'],
 }
 const ZOMBIE_PAL = Object.fromEntries(Object.entries(ZOMBIE_COLORS).map(([k, roles]) => [k, roles.map(toRGB)]))
 

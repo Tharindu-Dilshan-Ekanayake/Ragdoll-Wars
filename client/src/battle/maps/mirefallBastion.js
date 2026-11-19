@@ -87,6 +87,15 @@ const FIELD_PIECES = [
   ['bush', 10, 0],
   ['bush', 36, 28],
   ['bush', 52, -40],
+  // A dead wood and a burnt-out farm out in the marsh.
+  ...[[-4, -48], [2, -26], [12, 18], [20, -8], [24, 48], [38, -48], [42, 22], [58, -12], [62, 44], [70, 20], [74, -36], [80, 6], [-14, 40], [8, 52]].map(([x, z]) => ['deadtree', x, z]),
+  ['ruin', 46, 2],
+  ['ruin', 50, 8, 1],
+  ['rubble', 44, 10],
+  ['ruin', 16, -30, 1],
+  ['carwreck', 62, -26],
+  ['carwreck', 8, 32, 1],
+  ['rubble', 66, 34],
 ]
 
 export const MIREFALL_BASTION = {
@@ -114,7 +123,20 @@ export const MIREFALL_BASTION = {
   hills: [150, 250],
   hillScale: 1.3,
   /** Mist banks drifting over the marsh (Mist.jsx): the x range they fill. */
-  mist: { x0: -30, x1: 88 },
+  mist: { x0: -84, x1: 88, density: 1.4, dark: 0.35 },
+  /** Bog out in the marsh: it heaves and sinks (terrain.js); level by the wall to build on. */
+  terrain: {
+    hills: [
+      { x: 10, z: -40, r: 9, h: -0.9 },
+      { x: 30, z: 14, r: 10, h: -1 },
+      { x: 58, z: -30, r: 8, h: -0.8 },
+      { x: 20, z: 40, r: 9, h: 1.6 },
+      { x: 50, z: 46, r: 8, h: 1.4 },
+      { x: 70, z: -10, r: 10, h: 1.8 },
+    ],
+  },
+  /** How far out from the wall you may deploy (WALL_REACH in sim/world.js): marked. */
+  lines: [{ points: [[-24, -54], [-24, 54]], width: 0.35, color: 'rgba(200,40,30,0.75)', dash: [2, 1.5] }],
   /** Lamp posts along the top of the rampart (z positions). */
   lamps: [-48, -30, -11, 11, 30, 48],
   theme: {
@@ -133,18 +155,18 @@ export const MIREFALL_BASTION = {
     fence: '#3b3630',
     peak: '#6b7570',
     scatter: 'marsh',
-    clouds: 0.86,
-    cloudColor: '#6f7983',
-    ao: [14, 16, 14],
-    sun: '#aebdcc',
-    sunIntensity: 1.05,
-    skyLight: '#8296aa',
-    groundLight: '#2f352f',
-    ambient: 1.1,
+    clouds: 0.95,
+    cloudColor: '#505861',
+    ao: [10, 12, 10],
+    sun: '#9fb0b8',
+    sunIntensity: 0.8,
+    skyLight: '#6a7c8c',
+    groundLight: '#262b26',
+    ambient: 0.95,
   },
-  sky: { top: '#3a4655', horizon: '#788581', ground: '#465048' },
-  fog: '#74807d',
-  fogRange: [45, 210],
+  sky: { top: '#262f3a', horizon: '#56625f', ground: '#363e38' },
+  fog: '#5a6663',
+  fogRange: [30, 175],
 }
 
 export default MIREFALL_BASTION

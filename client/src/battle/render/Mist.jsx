@@ -75,7 +75,7 @@ const s3 = new Vector3()
 
 export default function Mist({ map }) {
   const level = useQuality((s) => s.level)
-  const count = map.mist ? PER_PRESET[level] ?? 0 : 0
+  const count = map.mist ? Math.round((PER_PRESET[level] ?? 0) * (map.mist.density || 1)) : 0
 
   const mist = useMemo(() => {
     if (!count) return null
@@ -86,7 +86,7 @@ export default function Mist({ map }) {
       fragmentShader: FRAG,
       uniforms: {
         uTex: { value: tex },
-        uColor: { value: new Color(map.fog).lerp(new Color('#dfe6e2'), 0.35) },
+        uColor: { value: new Color(map.fog).lerp(new Color('#dfe6e2'), 0.35 - (map.mist.dark || 0) * 0.6) },
         uOpacity: { value: 0.46 },
         uTime: mistClock,
       },

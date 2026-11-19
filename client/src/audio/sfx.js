@@ -57,7 +57,7 @@ function spend(b, dist) {
   }
   return false
 }
-const MINOR = new Set(['impact', 'hit', 'thud', 'reload', 'build', 'launch', 'mortar', 'flame', 'heal', 'spawn'])
+const MINOR = new Set(['impact', 'hit', 'thud', 'reload', 'build', 'launch', 'mortar', 'flame', 'heal', 'spawn', 'spit', 'splat'])
 
 function ensure() {
   if (ctx) return ctx
@@ -298,6 +298,20 @@ export function worldSound(kind, x, y, z, meta, listener) {
     noise(dest, t, { type: 'lowpass', freq: 1400, q: 0.5, gain: 1.1, attack: 0.004, decay: 1.1, sweepTo: 160 })
     if (dist < 45) noise(dest, t, { type: 'highpass', freq: 2200, q: 0.5, gain: 0.5, decay: 0.08 })
     noise(dest, t + 0.18, { type: 'lowpass', freq: 380, q: 0.4, gain: 0.45, attack: 0.08, decay: 1.4 })
+  } else if (kind === 'spit') {
+    // A spitter retching up a gob: a wet, rising gurgle.
+    if (dist > 45) return
+    const dest = spatial(dist, pan, 0.4)
+    if (!dest) return
+    noise(dest, t, { type: 'bandpass', freq: 520, q: 2.2, gain: 0.9, attack: 0.03, decay: 0.28, sweepTo: 1300 })
+    thump(dest, t + 0.05, { from: 160, to: 80, gain: 0.35, decay: 0.12 })
+  } else if (kind === 'splat') {
+    // Acid landing: a slap and a hiss.
+    if (dist > 40) return
+    const dest = spatial(dist, pan, 0.45)
+    if (!dest) return
+    noise(dest, t, { type: 'lowpass', freq: 900, q: 0.7, gain: 0.8, decay: 0.06 })
+    noise(dest, t + 0.03, { type: 'highpass', freq: 3800, q: 0.4, gain: 0.35, attack: 0.04, decay: 0.7 })
   } else if (kind === 'groan') {
     // A zombie's moan: a low, wobbling, filtered buzz (deeper for big ones).
     const size = meta || 1

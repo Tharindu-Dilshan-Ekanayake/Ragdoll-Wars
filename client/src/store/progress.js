@@ -17,7 +17,8 @@ export const BATTLE_MIN_SECONDS = 30
 export const ZOMBIE_BADGES = [
   { id: 'bronze', name: 'Bronze Star', wave: 5, text: 'Reach wave 5' },
   { id: 'silver', name: 'Silver Star', wave: 10, text: 'Reach wave 10' },
-  { id: 'gold', name: 'Gold Star', wave: 15, text: 'Survive all 15 waves' },
+  { id: 'gold', name: 'Gold Star', wave: 15, text: 'Reach wave 15' },
+  { id: 'platinum', name: 'Platinum Star', wave: 20, text: 'Survive all 20 waves' },
 ]
 
 const pick = (p) => ({ zombieBest: p.zombieBest, badges: p.badges, stats: p.stats })
@@ -57,7 +58,7 @@ export const useProgress = create((set, get) => {
     recordZombieRun: (wave, won, kills = 0) => {
       const { zombieBest, badges, stats } = get()
       const reached = won ? 15 : wave
-      const fresh = ZOMBIE_BADGES.filter((b) => !badges[b.id] && (b.id === 'gold' ? won : reached >= b.wave))
+      const fresh = ZOMBIE_BADGES.filter((b) => !badges[b.id] && (b.id === 'platinum' ? won : reached >= b.wave))
       const next = { zombieBest: Math.max(zombieBest, reached), badges: { ...badges }, stats: { ...stats, zombieKills: stats.zombieKills + Math.max(0, Math.floor(kills) || 0) } }
       for (const b of fresh) next.badges[b.id] = true
       update(next)

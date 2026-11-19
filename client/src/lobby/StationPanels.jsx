@@ -167,7 +167,7 @@ function ZombiePanel() {
     <div className="ff-zpanel">
       <div className="ff-zpanel__hero">
         <div className="ff-zpanel__tags">
-          <span className="ff-tag ff-tag--warn">15 waves</span>
+          <span className="ff-tag ff-tag--warn">20 waves</span>
           <span className="ff-tag">Best: wave {best || '-'}</span>
         </div>
         <div className="ff-zpanel__title">Keep the bastion standing.</div>

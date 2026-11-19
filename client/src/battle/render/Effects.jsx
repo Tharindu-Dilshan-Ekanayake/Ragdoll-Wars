@@ -96,6 +96,9 @@ const KINDS = {
   concrete: [4, '#b8b4aa', 0.24, 3.2, 2.4, 10, 0.6, 0.2],
   spark: [2, '#ffd27a', 0.12, 7, 2.5, 12, 0.18, 0],
   puff: [7, '#b5a68a', 0.9, 1.6, 0.4, -0.2, 0.9, 1.6],
+  // A spitter's acid splashing (impact kind 5).
+  acid: [7, '#86d62a', 0.24, 2.8, 2, 9, 0.55, 0.3],
+  acidmist: [3, '#a8e85a', 0.75, 0.5, 0.5, -0.25, 0.9, 1.9],
 }
 const KIND_RGB = Object.fromEntries(Object.entries(KINDS).map(([k, v]) => [k, new Color(v[1])]))
 
@@ -322,6 +325,9 @@ export default function Effects() {
           spawn('concrete', it.x, it.y, it.z)
           spawn('spark', it.x, it.y, it.z)
           spawn('dust', it.x, it.y, it.z)
+        } else if (it.kind === 5) {
+          spawn('acid', it.x, it.y, it.z)
+          spawn('acidmist', it.x, it.y, it.z)
         } else {
           spawn('puff', it.x, it.y, it.z)
         }

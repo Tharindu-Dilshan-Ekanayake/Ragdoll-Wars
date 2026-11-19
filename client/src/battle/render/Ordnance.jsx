@@ -198,7 +198,7 @@ export default function Ordnance() {
       scorch: instanced(geos.flat, mats.scorch, MAX_SCORCH),
       rockets: instanced(geos.rocket, mats.solid, MAX_PROJECTILES),
       shells: instanced(geos.shell, mats.shell, MAX_PROJECTILES),
-      glows: instanced(geos.card, mats.glow, MAX_PROJECTILES, true),
+      glows: instanced(geos.card, mats.glow, MAX_PROJECTILES * 2, true),
       flames: instanced(geos.flame, mats.flame, MAX_FLAMES),
       fires: instanced(geos.card, mats.fire, MAX_FIRES, true),
       crosses: instanced(geos.cross, mats.cross, MAX_HEALS),
@@ -326,6 +326,14 @@ export default function Ordnance() {
           const b = p.kind === 'bomb' ? (p.big ? 0.45 : 0.2) : 0.07
           put(M.shells, nSh, p.x, p.y, p.z, q4, b, b, b * 2.5)
           nSh += 1
+        } else if (p.kind === 'acid') {
+          // A glowing green gob with a fainter one trailing.
+          put(M.glows, nG, p.x, p.y, p.z, camQ, 0.42, 0.42, 0.42)
+          color(M.glows, nG, 0.45, 0.95, 0.15)
+          nG += 1
+          put(M.glows, nG, p.x - dir.x * 0.35, p.y - dir.y * 0.35, p.z - dir.z * 0.35, camQ, 0.3, 0.3, 0.3)
+          color(M.glows, nG, 0.3, 0.6, 0.1)
+          nG += 1
         } else if (p.kind === 'cannon') {
           put(M.shells, nSh, p.x, p.y, p.z, q4, 0.06, 0.06, 0.3)
           nSh += 1

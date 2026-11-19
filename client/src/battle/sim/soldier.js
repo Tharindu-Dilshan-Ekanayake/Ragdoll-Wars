@@ -55,6 +55,8 @@ export function makeSoldier(slot) {
     sees: false,
     thinkT: 0,
     fireT: 0,
+    /** A spitter zombie's time to its next gob of acid. */
+    spitT: 0,
     burstLeft: 1,
     shotsInBurst: 0,
     mag: 30,
