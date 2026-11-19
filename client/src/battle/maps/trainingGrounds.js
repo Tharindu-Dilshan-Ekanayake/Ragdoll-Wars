@@ -95,7 +95,7 @@ const CENTRE = [box('crate', -2.5, 0, 1.25, 1.25), box('crate', 2.5, 0, 1.25, 1.
  * windows to fire from), facing each other across a yard.
  */
 // A door into each room from the yard; the end walls keep their windows to fire from.
-const KILLHOUSE = { w: 14, d: 7, split: 0, doors: [['s', -4], ['s', 4]], color: '#cdc4ae' }
+const KILLHOUSE = { w: 14, d: 7, split: 0, floors: 2, doors: [['s', -4], ['s', 4]], color: '#cdc4ae' }
 const CENTRE_SETS = [
   ['bldg', 0, -7.5, 0, KILLHOUSE],
   ['bldg', 0, 7.5, 2, { ...KILLHOUSE, color: '#c4bba4' }],

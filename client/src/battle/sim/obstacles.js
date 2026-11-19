@@ -1,3 +1,4 @@
+import { slabAt } from './levels.js'
 import { groundAt, rayTerrain } from './terrain.js'
 
 /**
@@ -358,7 +359,12 @@ export function collideWalker(obs, p, r, stepTop) {
  * `maxTop` that it overlaps, or 0 on open ground.
  */
 export function floorUnder(obs, x, z, r, maxTop) {
-  const ground = groundAt(obs.terrain, x, z)
+  // The ground, or an upper floor (two-storey buildings) you're up at.
+  let ground = groundAt(obs.terrain, x, z)
+  if (obs.levels && obs.levels.slabs) {
+    const up = slabAt(obs.levels, x, z)
+    if (up === up && up <= maxTop && up > ground) ground = up
+  }
   const list = bucketAt(obs, x, z)
   if (!list) return ground
   const d = obs.data

@@ -1,5 +1,6 @@
 import { GRAVITY } from './constants.js'
 import { pushOutSphere } from './obstacles.js'
+import { slabAt } from './levels.js'
 import { groundAt } from './terrain.js'
 import {
   BONE,
@@ -219,7 +220,12 @@ export function stepRagdoll(s, dt, obs) {
     for (let j = 0; j < JOINT_COUNT; j += 1) {
       const i = j * 3
       const r = RADIUS[j]
-      const ground = obs.terrain ? groundAt(obs.terrain, p[i], p[i + 2]) + r : r
+      let ground = obs.terrain ? groundAt(obs.terrain, p[i], p[i + 2]) + r : r
+      // Dying upstairs: the body lands on the floor it was on, not the one below.
+      if (obs.levels && obs.levels.slabs) {
+        const up = slabAt(obs.levels, p[i], p[i + 2])
+        if (up === up && p[i + 1] > up - 0.4 && up + r > ground) ground = up + r
+      }
       if (p[i + 1] < ground) {
         p[i + 1] = ground
         if (j === J_PELVIS || j === J_SH_L || j === J_HEAD) landed = true
@@ -233,7 +239,11 @@ export function stepRagdoll(s, dt, obs) {
   let motion = 0
   for (let j = 0; j < JOINT_COUNT; j += 1) {
     const i = j * 3
-    const floor = obs.terrain ? groundAt(obs.terrain, p[i], p[i + 2]) : 0
+    let floor = obs.terrain ? groundAt(obs.terrain, p[i], p[i + 2]) : 0
+    if (obs.levels && obs.levels.slabs) {
+      const up = slabAt(obs.levels, p[i], p[i + 2])
+      if (up === up && p[i + 1] > up - 0.4) floor = Math.max(floor, up)
+    }
     if (p[i + 1] <= floor + RADIUS[j] + 0.01) {
       q[i] = p[i] - (p[i] - q[i]) * keep
       q[i + 2] = p[i + 2] - (p[i + 2] - q[i + 2]) * keep

@@ -130,7 +130,7 @@ const NEW_PIECES = [
   ['tanktrap', -62, -48],
 ]
 const NEW_SETS = [
-  ['bldg', -70, 27, 0, { w: 12, d: 7, doors: [['e', 0], ['s', -3]], color: '#9a8c74', roof: '#6a5a46', floor: '#6f6455' }],
+  ['bldg', -70, 27, 0, { w: 12, d: 7, floors: 2, doors: [['e', 0], ['s', -3]], color: '#9a8c74', roof: '#6a5a46', floor: '#6f6455' }],
   ['bldg', -70, -27, 0, { w: 9, d: 7, doors: [['e', 0]], split: null, color: '#8f8270', roof: '#6a5a46', floor: '#6f6455' }],
   ...[-76, -71.5, -67].map((x, i) => ['carstack', x, 44, 0, { n: 2 + (i % 2) }]),
   ...[-76, -71.5].map((x, i) => ['carstack', x, -44, 0, { n: 3 - i }]),

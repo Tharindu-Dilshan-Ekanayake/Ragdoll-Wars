@@ -97,7 +97,7 @@ const NEW_PIECES = [
   ['drum', -78.8, 22.6],
 ]
 const NEW_SETS = [
-  ['bldg', -71, 31, 0, { w: 12, d: 8, doors: [['s', 3], ['e', 0]], color: '#c9c4b8' }],
+  ['bldg', -71, 31, 0, { w: 12, d: 8, floors: 2, doors: [['s', 3], ['e', 0]], color: '#c9c4b8' }],
   ['bldg', -70, -14, 0, { w: 8, d: 6, doors: [['n', 0]], split: null, color: '#bdb6a6' }],
   ['revetment', -94, 30, 2],
   ['fighter', -94, 29, 1],

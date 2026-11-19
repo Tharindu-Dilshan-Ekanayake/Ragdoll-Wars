@@ -13,6 +13,9 @@ import { groundAt, rayTerrain, steepAlong } from './terrain.js'
  *       ladder leaning on a wall, climbed slowly; the nav links its cells end to end).
  *   { roof: true, x, z, w, d, h }                            - the flat top of a building
  *       that's already an obstacle box (pieces.js finds these and their ladders).
+ *   { slab: true, x, z, w, d, h }                            - an upper floor with room to
+ *       walk underneath (two-storey buildings): it's only your floor once you're up at
+ *       its height (floorAt's fromY), reached by the stairs (a ramp) beside it.
  *
  * The full list for a map, with the roofs and ladders, is `mapLevels(map)` (pieces.js).
  *
@@ -56,6 +59,7 @@ export function buildLevels(list, terrain = null) {
     h: l.h,
     ramp: l.ramp || null,
     ladder: Boolean(l.ladder),
+    slab: Boolean(l.slab),
   }))
   let x0 = Infinity
   let x1 = -Infinity
@@ -82,7 +86,7 @@ export function buildLevels(list, terrain = null) {
     const r1 = Math.min(rows - 1, Math.floor((it.z1 - z0) / BUCKET))
     for (let r = r0; r <= r1; r += 1) for (let c = c0; c <= c1; c += 1) buckets[r * cols + c].push(it)
   }
-  return { items, x0, x1, z0, z1, cols, rows, buckets, terrain }
+  return { items, x0, x1, z0, z1, cols, rows, buckets, terrain, slabs: items.some((it) => it.slab) }
 }
 
 /** The levels that might be at (x, z) (inside the overall bounds). */
@@ -97,24 +101,41 @@ function heightOf(it, x, z) {
   return (it.h * (it.z1 - z)) / (it.z1 - it.z0)
 }
 
-/** Height of the floor at (x, z): a platform's top, partway up a ramp, else the ground. */
-export function floorAt(L, x, z) {
+/**
+ * Height of the floor at (x, z): a platform's top, partway up a ramp, else the ground.
+ * `fromY`: the height you're at now - an upper floor (slab) only counts once you're
+ * within a step of it (so walking underneath it you stay downstairs). Default: the top.
+ */
+export function floorAt(L, x, z, fromY = Infinity) {
   if (!L) return 0
   const g = L.terrain ? groundAt(L.terrain, x, z) : 0
-  const f = levelFloorAt(L, x, z)
+  const f = levelFloorAt(L, x, z, fromY)
   return f > g ? f : g
 }
 
 /** The raised floor at (x, z) (level heights are over level ground), or -Infinity if none. */
-export function levelFloorAt(L, x, z) {
+export function levelFloorAt(L, x, z, fromY = Infinity) {
   if (!L || x < L.x0 || x > L.x1 || z < L.z0 || z > L.z1) return -Infinity
   let f = -Infinity
   const items = bucketOf(L, x, z)
   for (let i = 0; i < items.length; i += 1) {
     const it = items[i]
     if (x < it.x0 || x > it.x1 || z < it.z0 || z > it.z1) continue
+    if (it.slab && it.h > fromY + STEP) continue
     const h = heightOf(it, x, z)
     if (h > f) f = h
+  }
+  return f
+}
+
+/** The upper floor (slab) over (x, z), or NaN if none. */
+export function slabAt(L, x, z) {
+  if (!L || !L.slabs || x < L.x0 || x > L.x1 || z < L.z0 || z > L.z1) return NaN
+  let f = NaN
+  const items = bucketOf(L, x, z)
+  for (let i = 0; i < items.length; i += 1) {
+    const it = items[i]
+    if (it.slab && x >= it.x0 && x <= it.x1 && z >= it.z0 && z <= it.z1 && !(it.h <= f)) f = it.h
   }
   return f
 }
@@ -141,7 +162,7 @@ export function ladderAt(L, x, z) {
  * (over a railing-less edge, up a platform's side): then the flow field must lead. Only
  * the stretches of the segment over a level are sampled.
  */
-export function touchesLevels(L, ax, az, bx, bz, pad) {
+export function touchesLevels(L, ax, az, bx, bz, pad, fromY = Infinity) {
   if (!L) return false
   if (L.terrain && steepAlong(L.terrain, ax, az, bx, bz, STEP)) return true
   const minX = Math.min(ax, bx) - pad
@@ -152,7 +173,7 @@ export function touchesLevels(L, ax, az, bx, bz, pad) {
   const dx = bx - ax
   const dz = bz - az
   const len = Math.hypot(dx, dz) || 1
-  let f = floorAt(L, ax, az)
+  let f = floorAt(L, ax, az, fromY)
   for (const it of L.items) {
     if (maxX < it.x0 || minX > it.x1 || maxZ < it.z0 || minZ > it.z1) continue
     // The part of the segment inside this level's box (grown by pad).
@@ -174,11 +195,11 @@ export function touchesLevels(L, ax, az, bx, bz, pad) {
     }
     if (t1 < t0) continue
     const n = Math.max(2, Math.ceil(((t1 - t0) * len) / 0.4))
-    let prev = floorAt(L, ax + dx * t0, az + dz * t0)
+    let prev = floorAt(L, ax + dx * t0, az + dz * t0, f)
     if (Math.abs(prev - f) > STEP) return true
     for (let k = 1; k <= n; k += 1) {
       const t = t0 + ((t1 - t0) * k) / n
-      const h = floorAt(L, ax + dx * t, az + dz * t)
+      const h = floorAt(L, ax + dx * t, az + dz * t, prev)
       if (Math.abs(h - prev) > STEP) return true
       prev = h
     }
@@ -193,9 +214,9 @@ export function touchesLevels(L, ax, az, bx, bz, pad) {
  * stays put.
  */
 export function stepOnLevels(L, ox, oz, p, f0 = floorAt(L, ox, oz)) {
-  if (Math.abs(floorAt(L, p.x, p.z) - f0) <= STEP) return
-  if (Math.abs(floorAt(L, p.x, oz) - f0) <= STEP) p.z = oz
-  else if (Math.abs(floorAt(L, ox, p.z) - f0) <= STEP) p.x = ox
+  if (Math.abs(floorAt(L, p.x, p.z, f0) - f0) <= STEP) return
+  if (Math.abs(floorAt(L, p.x, oz, f0) - f0) <= STEP) p.z = oz
+  else if (Math.abs(floorAt(L, ox, p.z, f0) - f0) <= STEP) p.x = ox
   else {
     p.x = ox
     p.z = oz
@@ -244,8 +265,9 @@ const rampSteps = (h) => Math.max(4, Math.ceil(h / 0.3))
 export function levelObstacles(list) {
   const out = []
   for (const l of list) {
-    // A roof is its building's own box (pieces.js marks that as a level).
-    if (l.roof) continue
+    // A roof is its building's own box (pieces.js marks that as a level); an upper floor
+    // has nothing under it to be solid (floorAt, the walker and ragdolls know it's there).
+    if (l.roof || l.slab) continue
     if (l.ramp) {
       const n = rampSteps(l.h)
       const alongX = l.ramp[0] === 'x'

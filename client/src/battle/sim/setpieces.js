@@ -14,7 +14,7 @@
 const B = (x, z, w, d, h, extra) => ({ x, z, w, d, h, ...extra })
 
 /** Enterable buildings ('bldg'): wall thickness, doorway and window sizes (m). */
-export const BLDG = { t: 0.3, door: 2.2, doorH: 2.4, win: 1.3, sill: 1.0, winTop: 2.3 }
+export const BLDG = { t: 0.3, door: 2.2, doorH: 2.4, win: 1.3, sill: 1.0, winTop: 2.3, storey: 3.0, stairW: 2.0, stairRun: 7.0 }
 
 /**
  * An enterable building's plan in its own frame (x along w, z along d), shared by the
@@ -27,6 +27,11 @@ export const BLDG = { t: 0.3, door: 2.2, doorH: 2.4, win: 1.3, sill: 1.0, winTop
  *                      default: one room a third of the way along when w >= 10)
  *   o.windows          false for none (default: every ~2.8 m clear of doors and corners)
  *   o.furnish          false for an empty shell
+ *   o.floors           2 for an upstairs: walls twice the height, a stair up the inside
+ *                      of the north wall (-z) to an upper floor with a stairwell, the
+ *                      windows repeated above (they're one column of open wall in the
+ *                      sim: shoot out of either floor). `levels` then lists the floor
+ *                      and stair (levels.js) in the building's frame.
  * Returns { walls: [{x, z, w, d, h, sill?, door?}], openings: [{side, x, z, along, kind}],
  * furniture: [{x, z, w, d, h, kind}] } - walls include sill boxes under windows (sill:
  * true, low cover you fire over) and lintel-less doorway gaps.
@@ -34,8 +39,13 @@ export const BLDG = { t: 0.3, door: 2.2, doorH: 2.4, win: 1.3, sill: 1.0, winTop
 export function bldgLayout(o) {
   const w = o.w || 12
   const d = o.d || 8
-  const h = o.h || 3.2
-  const { t, door, win, sill } = BLDG
+  const two = o.floors === 2
+  const storey = two ? BLDG.storey : o.h || 3.2
+  const h = two ? storey * 2 : storey
+  const { t, door, win, sill, stairW, stairRun } = BLDG
+  // The stair strip along the inside of the north wall (two storeys).
+  const stairX0 = -w / 2 + t + 0.2
+  const stripZ1 = -d / 2 + t + stairW
   const doors = o.doors || [['s', 0]]
   const walls = []
   const openings = []
@@ -70,13 +80,12 @@ export function bldgLayout(o) {
     }
     run(from, len / 2, h)
   }
-  // A partition across the building with a doorway in it.
+  // A partition across the building with a doorway in it (stopping short of the stairs).
   const split = o.split !== undefined ? o.split : w >= 10 ? -w / 6 : null
   if (split !== null) {
-    const span = d - 2 * t
-    const dz = o.splitDoor || 0
-    const lo = -span / 2
-    const hi = span / 2
+    const lo = two ? stripZ1 : -d / 2 + t
+    const hi = d / 2 - t
+    const dz = o.splitDoor !== undefined ? o.splitDoor : (lo + hi) / 2
     if (dz - door / 2 - lo > 0.05) walls.push(B(split, (lo + dz - door / 2) / 2, t, dz - door / 2 - lo, h))
     if (hi - (dz + door / 2) > 0.05) walls.push(B(split, (dz + door / 2 + hi) / 2, t, hi - (dz + door / 2), h))
     openings.push({ side: 'in', kind: 'door', x: split, z: dz, along: door })
@@ -89,7 +98,18 @@ export function bldgLayout(o) {
     furniture.push({ kind: 'shelf', x: big + Math.min(2.2, w * 0.15), z: -d / 2 + t + 0.3, w: 1.8, d: 0.5, h: 1.9 })
     if (split !== null) furniture.push({ kind: 'crate', x: (split - w / 2) / 2, z: d / 2 - t - 0.8, w: 1.1, d: 1.1, h: 1.1 })
   }
-  return { walls, openings, furniture, w, d, h }
+  // Upstairs: the floor (in two pieces round the stairwell) and the stair.
+  const levels = []
+  if (two) {
+    const xi0 = -w / 2 + t
+    const xi1 = w / 2 - t
+    const zi1 = d / 2 - t
+    levels.push({ slab: true, x: 0, z: (stripZ1 + zi1) / 2, w: xi1 - xi0, d: zi1 - stripZ1, h: storey })
+    const land0 = stairX0 + stairRun
+    levels.push({ slab: true, x: (land0 + xi1) / 2, z: (-d / 2 + t + stripZ1) / 2, w: xi1 - land0, d: stairW, h: storey })
+    levels.push({ ramp: 'x+', stair: true, x: stairX0 + stairRun / 2, z: (-d / 2 + t + stripZ1) / 2, w: stairRun, d: stairW, h: storey })
+  }
+  return { walls, openings, furniture, levels, w, d, h, storey, two, stairX0, stripZ1 }
 }
 
 /** Collision boxes per kind, local frame. `o` = the set's options. */

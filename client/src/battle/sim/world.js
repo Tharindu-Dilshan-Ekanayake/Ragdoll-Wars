@@ -11,7 +11,7 @@ import {
   SOLDIER_RADIUS,
 } from './constants.js'
 import { createFx, emitDecal, emitFlash, emitImpact, emitSound, emitTracer } from './fx.js'
-import { buildLevels, floorAt, ladderItem, stepOnLevels, touchesLevels } from './levels.js'
+import { buildLevels, floorAt, ladderItem, slabAt, stepOnLevels, touchesLevels } from './levels.js'
 import { createNavGrid, FlowFields, vehicleGrid } from './nav.js'
 import {
   assignPatient,
@@ -84,13 +84,24 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v)
 /** Cover spots that don't sit inside another box. */
 function coverSpotsFor(obs, L) {
   const probe = { x: 0, z: 0 }
-  return buildCoverSpots(obs).filter((sp) => {
+  const spots = buildCoverSpots(obs).filter((sp) => {
     probe.x = sp.x
     probe.z = sp.z
-    // Behind a platform's railing: high ground (the AI likes it).
-    sp.up = L ? floorAt(L, sp.x, sp.z) > 1 : false
+    // The floor it's on (the ground layer); behind a platform's railing it's high ground
+    // (the AI likes it).
+    sp.y = L ? floorAt(L, sp.x, sp.z, -Infinity) : 0
+    sp.up = sp.y > 1
     return !collideCircle(obs, probe, SOLDIER_RADIUS * 0.9)
   })
+  // Upstairs in a two-storey building the same window has a spot on the floor above.
+  if (L && L.slabs) {
+    for (let i = 0, n = spots.length; i < n; i += 1) {
+      const sp = spots[i]
+      const up = slabAt(L, sp.x, sp.z)
+      if (up === up) spots.push({ ...sp, y: up, up: true, taken: -1 })
+    }
+  }
+  return spots
 }
 
 /** How much a cover spot's high ground is worth to `type`, in metres of extra walk. */
@@ -105,6 +116,8 @@ export function createWorld(map, caps, mode = 'sandbox') {
   const terrain = mapTerrain(map)
   obs.terrain = terrain
   const levels = buildLevels(mapLevels(map), terrain)
+  // (Upper floors hold up the walker and the dead too.)
+  obs.levels = levels
   const grid = createNavGrid(obsMap, obs, levels)
   const vgrid = vehicleGrid(grid)
   const slots = Array.from({ length: MAX_SLOTS }, (_, i) => makeSoldier(i))
@@ -172,6 +185,7 @@ export function rebuildStatic(w) {
   w.obsMap.obstacles = obstacles
   w.obs = buildObstacles(w.obsMap)
   w.obs.terrain = w.terrain
+  w.obs.levels = w.levels
   w.grid = createNavGrid(w.obsMap, w.obs, w.levels)
   w.flow = new FlowFields(w.grid, { budget: 1 })
   const vgrid = vehicleGrid(w.grid)
@@ -515,14 +529,15 @@ function think(w, s, type) {
   if (s.order === 'move') {
     releaseCover(w, s)
     const d = Math.hypot(s.moveX - s.x, s.moveZ - s.z)
-    if (d < 0.9) {
+    // (Sent upstairs: there means up there.)
+    if (d < 0.9 && (s.moveY === null || Math.abs(s.fy - s.moveY) < 0.8)) {
       s.order = 'hold'
       s.holdX = s.x
       s.holdZ = s.z
       s.goalMode = 0
       stationary = true
     } else {
-      setGoal(s, s.moveX, s.moveZ)
+      setGoal(s, s.moveX, s.moveZ, s.moveY)
     }
   } else if (s.order === 'hold') {
     stationary = !seekCover(w, s, type, target, s.holdX, s.holdZ, 8)
@@ -580,7 +595,7 @@ function think(w, s, type) {
     }
   }
 
-  const inCover = s.cover >= 0 && Math.hypot(w.coverSpots[s.cover].x - s.x, w.coverSpots[s.cover].z - s.z) < 0.7
+  const inCover = s.cover >= 0 && Math.hypot(w.coverSpots[s.cover].x - s.x, w.coverSpots[s.cover].z - s.z) < 0.7 && Math.abs(w.coverSpots[s.cover].y - s.fy) < 0.8
   if (inCover) {
     stationary = true
     if (!s.coverAt) s.coverAt = w.time
@@ -604,7 +619,7 @@ function bound(w, s, type, target) {
     const sp = spots[s.cover]
     const d = Math.hypot(sp.x - s.x, sp.z - s.z)
     if (d > 0.5) {
-      setGoal(s, sp.x, sp.z)
+      setGoal(s, sp.x, sp.z, sp.y)
       return true
     }
     // In it: hold a moment (firing if he can) before the next dash.
@@ -639,7 +654,7 @@ function bound(w, s, type, target) {
   spots[best].taken = s.slot
   s.cover = best
   s.coverAt = 0
-  setGoal(s, spots[best].x, spots[best].z)
+  setGoal(s, spots[best].x, spots[best].z, spots[best].y)
   return true
 }
 
@@ -727,9 +742,10 @@ function linkCrew(gunner, loader) {
   loader.loaderOfId = gunner.id
 }
 
-function setGoal(s, x, z) {
+function setGoal(s, x, z, y = null) {
   s.goalX = x
   s.goalZ = z
+  s.goalY = y
   s.goalMode = 1
 }
 
@@ -756,7 +772,7 @@ function seekCover(w, s, type, target, cx, cz, radius, always = false) {
     // Still shelters us from the target?
     if ((target.x - sp.x) * sp.nx + (target.z - sp.z) * sp.nz < -0.5) {
       const d = Math.hypot(sp.x - s.x, sp.z - s.z)
-      if (d > 0.4) setGoal(s, sp.x, sp.z)
+      if (d > 0.4) setGoal(s, sp.x, sp.z, sp.y)
       else s.goalMode = 0
       return true
     }
@@ -788,7 +804,7 @@ function seekCover(w, s, type, target, cx, cz, radius, always = false) {
   spots[best].taken = s.slot
   s.cover = best
   s.coverAt = 0
-  setGoal(s, spots[best].x, spots[best].z)
+  setGoal(s, spots[best].x, spots[best].z, spots[best].y)
   return true
 }
 
@@ -1454,17 +1470,19 @@ function move(w, s, type, h) {
     const gx = s.goalX - s.x
     const gz = s.goalZ - s.z
     const dist = Math.hypot(gx, gz)
-    if (dist < 0.35) {
+    // Upstairs while the goal's down (or the reverse): not there yet, and the field leads.
+    const otherFloor = s.goalY !== null && w.levels !== null && w.levels.slabs && Math.abs(s.fy - s.goalY) > 0.8
+    if (dist < 0.35 && !otherFloor) {
       s.goalMode = 0
     } else {
       // Straight there when the way is clear (always, up on the rampart), else follow
       // the flow field.
       // (Over raised floors the field knows where the ramps are.)
-      if (s.deck >= 0 || (dist < 30 && segmentClear2D(w.obs, s.x, s.z, s.goalX, s.goalZ, 0.35) && !touchesLevels(w.levels, s.x, s.z, s.goalX, s.goalZ, 0.6))) {
+      if (s.deck >= 0 || (!otherFloor && dist < 30 && segmentClear2D(w.obs, s.x, s.z, s.goalX, s.goalZ, 0.35) && !touchesLevels(w.levels, s.x, s.z, s.goalX, s.goalZ, 0.6, s.fy))) {
         dirX = gx / dist
         dirZ = gz / dist
       } else {
-        const field = w.flow.get(s.goalX, s.goalZ)
+        const field = w.flow.get(s.goalX, s.goalZ, s.goalY)
         if (field && w.flow.direction(field, s.x, s.z, DIR_OUT, w.levels ? s.fy : null)) {
           dirX = DIR_OUT.x
           dirZ = DIR_OUT.z
@@ -1572,7 +1590,7 @@ function move(w, s, type, h) {
   }
   s.x = POS.x
   s.z = POS.z
-  if (w.levels && s.deck < 0) s.fy = floorAt(w.levels, s.x, s.z)
+  if (w.levels && s.deck < 0) s.fy = floorAt(w.levels, s.x, s.z, s.fy)
   const moved = Math.hypot(s.x - ox, s.z - oz)
   const realSpeed = moved / h
 
@@ -1925,6 +1943,8 @@ export function moveSelected(w, x, z) {
     else if (toDeck >= 0) collideCircle(w.obs, POS, SOLDIER_RADIUS + 0.1)
     s.moveX = POS.x
     s.moveZ = POS.z
+    // Into a two-storey building: the floor you can see from above (upstairs).
+    s.moveY = w.levels && w.levels.slabs ? floorAt(w.levels, POS.x, POS.z) : null
     s.thinkT = 0
     s.progressT = 0
     s.progressD = Infinity

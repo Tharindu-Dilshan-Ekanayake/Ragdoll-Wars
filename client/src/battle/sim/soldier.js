@@ -40,10 +40,14 @@ export function makeSoldier(slot) {
     holdZ: 0,
     moveX: 0,
     moveZ: 0,
+    /** The move order's floor height (upstairs or down; null: wherever). */
+    moveY: null,
     flankSide: 1,
     flankDone: false,
     goalX: 0,
     goalZ: 0,
+    /** The goal's floor height, for two-storey buildings (null: the ground layer). */
+    goalY: null,
     goalMode: 0,
     target: null,
     targetId: 0,
@@ -170,6 +174,8 @@ export function resetSoldier(s, type, team, x, z, yaw, order) {
   s.flankSide = z >= 0 ? 1 : -1
   s.flankDone = false
   s.goalMode = 0
+  s.goalY = null
+  s.moveY = null
   s.target = null
   s.targetId = 0
   s.nearest = null

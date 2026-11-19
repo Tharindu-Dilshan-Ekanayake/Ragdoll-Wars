@@ -111,7 +111,7 @@ const NEW_PIECES = [
   ['floodlight', -70, -4],
 ]
 const NEW_SETS = [
-  ['bldg', -78, -3, 0, { w: 12, d: 8, doors: [['n', 3], ['e', 0]], color: '#c9c4b8' }],
+  ['bldg', -78, -3, 0, { w: 12, d: 8, floors: 2, doors: [['n', 3], ['e', 0]], color: '#c9c4b8' }],
   ['bldg', -79, 13, 0, { w: 9, d: 6, doors: [['e', 0], ['s', -2]], split: null, color: '#b9b2a2' }],
   ['forklift', -71, -12, 0, { color: '#d8a22c', flip: true }],
   ['pallets', -86, 3, 0],

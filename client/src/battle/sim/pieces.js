@@ -1,6 +1,6 @@
 import { levelObstacles } from './levels.js'
 import { buildObstacles } from './obstacles.js'
-import { setBoxes, setObstacles } from './setpieces.js'
+import { bldgLayout, rotLocal, setBoxes, setObstacles } from './setpieces.js'
 
 /**
  * The build-mode catalogue and map scenery pieces, as plain data with no imports, so the
@@ -152,6 +152,20 @@ export function mapLevels(map) {
   let out = levelCache.get(map)
   if (out) return out
   out = (map.levels || []).slice()
+  // Two-storey buildings' upper floors and stairs, turned into place.
+  for (const [kind, x, z, rot = 0, opts = {}] of map.sets || []) {
+    if (kind !== 'bldg' || opts.floors !== 2) continue
+    for (const l of bldgLayout(opts).levels) {
+      const [rx, rz] = rotLocal(l.x, l.z, rot)
+      const odd = rot & 1
+      const lv = { ...l, x: x + rx, z: z + rz, w: odd ? l.d : l.w, d: odd ? l.w : l.d }
+      if (l.ramp) {
+        const [dx, dz] = rotLocal(l.ramp[1] === '+' ? 1 : -1, 0, rot)
+        lv.ramp = dx ? `x${dx > 0 ? '+' : '-'}` : `z${dz > 0 ? '+' : '-'}`
+      }
+      out.push(lv)
+    }
+  }
   const base = baseObstacles(map)
   const roofs = []
   for (const [kind, x, z, rot, opts = {}] of map.sets || []) {

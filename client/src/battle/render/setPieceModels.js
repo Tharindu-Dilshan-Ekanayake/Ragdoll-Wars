@@ -1372,8 +1372,16 @@ function bldg(b, o) {
     const top = op.kind === 'door' ? doorH : winTop
     const lw = alongX ? op.along : t
     const ld = alongX ? t : op.along
-    // The wall over the opening.
-    b.box(op.x, (top + h) / 2, op.z, lw, h - top, ld, c, 'plain', 2, 0)
+    // The wall over the opening (two storeys: up to the window above, and over that).
+    if (L.two && op.kind === 'win' && op.side !== 'in') {
+      const s2 = L.storey
+      b.box(op.x, (top + s2 + BLDG.sill) / 2, op.z, lw, s2 + BLDG.sill - top, ld, c, 'plain', 2, 0)
+      b.box(op.x, (s2 + winTop + h) / 2, op.z, lw, h - s2 - winTop, ld, c, 'plain', 2, 0)
+      const fw2 = alongX ? op.along + 0.16 : t + 0.08
+      const fd2 = alongX ? t + 0.08 : op.along + 0.16
+      b.box(op.x, s2 + winTop + 0.06, op.z, fw2, 0.12, fd2, trim, 'detail')
+      b.box(op.x, s2 + BLDG.sill + 0.03, op.z, alongX ? op.along + 0.2 : t + 0.16, 0.06, alongX ? t + 0.16 : op.along + 0.2, trim, 'detail')
+    } else b.box(op.x, (top + h) / 2, op.z, lw, h - top, ld, c, 'plain', 2, 0)
     // Frame: a head and two jambs, proud of the wall.
     const fw = alongX ? op.along + 0.16 : t + 0.08
     const fd = alongX ? t + 0.08 : op.along + 0.16
@@ -1398,6 +1406,27 @@ function bldg(b, o) {
     } else {
       b.box(f.x, f.h / 2, f.z, f.w, f.h, f.d, '#9a7a4e')
     }
+  }
+  // Upstairs: the floor round the stairwell (its underside the ceiling below), the stair,
+  // a rail along the stairwell, a table.
+  if (L.two) {
+    const s2 = L.storey
+    for (const lv of L.levels) {
+      if (lv.slab) b.box(lv.x, s2 - 0.1, lv.z, lv.w, 0.2, lv.d, o.floor || '#8b7d66')
+      else if (lv.ramp) {
+        const n = Math.ceil(s2 / 0.2)
+        const run = lv.w / n
+        for (let k = 0; k < n; k += 1) {
+          const top = ((k + 1) / n) * s2
+          b.box(lv.x - lv.w / 2 + run * (k + 0.5), top / 2, lv.z, run + 0.01, top, lv.d, k % 2 ? '#9a968c' : '#a39f95', 'concrete')
+        }
+      }
+    }
+    const land0 = L.stairX0 + BLDG.stairRun
+    b.box((L.stairX0 + land0) / 2, s2 + 0.95, L.stripZ1 + 0.05, land0 - L.stairX0, 0.06, 0.06, '#5a5e62', 'detail')
+    for (let x = L.stairX0 + 0.4; x < land0; x += 1.2) b.box(x, s2 + 0.48, L.stripZ1 + 0.05, 0.05, 0.95, 0.05, '#5a5e62', 'detail')
+    b.box(L.w / 4, s2 + 0.76, 1, 1.6, 0.08, 0.9, '#6b4a2e')
+    for (const sx of [-1, 1]) b.box(L.w / 4 + sx * 0.7, s2 + 0.36, 1, 0.08, 0.72, 0.8, '#5a3e26', 'detail')
   }
   // The roof: a slab with a parapet (the cutaway mesh).
   const rc = o.roof || shade(c, 0.88)

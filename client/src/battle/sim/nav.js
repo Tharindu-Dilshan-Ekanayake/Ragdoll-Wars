@@ -1,4 +1,4 @@
-import { floorAt, ladderAt, levelFloorAt } from './levels.js'
+import { floorAt, ladderAt, levelFloorAt, slabAt } from './levels.js'
 import { groundAt } from './terrain.js'
 
 /**
@@ -55,25 +55,77 @@ export function createNavGrid(map, obstacles, L = null) {
   let floor = null
   let ladder = null
   let vblock = null
+  // Upper floors (two-storey buildings): a second layer of cells, NaN where there's none.
+  let upper = null
   if (L) {
     floor = new Float32Array(cols * rows)
     ladder = new Uint8Array(cols * rows)
     vblock = new Uint8Array(cols * rows)
+    if (L.slabs) upper = new Float32Array(cols * rows)
     for (let r = 0; r < rows; r += 1) {
       for (let c = 0; c < cols; c += 1) {
         const x = -halfW + (c + 0.5) * CELL
         const z = -halfD + (r + 0.5) * CELL
         const i = r * cols + c
-        floor[i] = floorAt(L, x, z)
+        // The ground layer: everything but upper floors.
+        floor[i] = floorAt(L, x, z, -Infinity)
         ladder[i] = ladderAt(L, x, z)
+        if (upper) upper[i] = slabAt(L, x, z)
         // Vehicles keep off raised floors and out of trenches.
         vblock[i] = levelFloorAt(L, x, z) > 0.05 || groundAt(L.terrain, x, z) < -0.5 ? 1 : 0
       }
     }
   }
-  const grid = { cols, rows, halfW, halfD, cell: CELL, blocked, floor, ladder, vblock, levels: L, links: null }
+  const grid = { cols, rows, halfW, halfD, cell: CELL, blocked, floor, ladder, vblock, upper, levels: L, links: null, links1: null, up: null, down: null }
   grid.links = linkMask(grid)
+  if (upper) upperLinks(grid)
   return grid
+}
+
+/** Whether v isn't NaN. */
+const has = (v) => v === v
+
+/**
+ * The upper layer's links: between upper-floor cells a step apart (links1), and between
+ * the ground layer and the upper one where the top of a stair meets the floor beside it
+ * (up: ground cell -> upper neighbour, down: the reverse), orthogonal steps only.
+ */
+function upperLinks(g) {
+  const { cols, rows, blocked, floor, upper } = g
+  const n = cols * rows
+  g.links1 = new Uint8Array(n)
+  g.up = new Uint8Array(n)
+  g.down = new Uint8Array(n)
+  for (let r = 0; r < rows; r += 1) {
+    for (let c = 0; c < cols; c += 1) {
+      const cur = r * cols + c
+      if (blocked[cur]) continue
+      const hasUp = has(upper[cur])
+      let m1 = 0
+      let mu = 0
+      let md = 0
+      for (let k = 0; k < 8; k += 1) {
+        const nb = NEIGHBOURS[k]
+        const nc = c + nb[0]
+        const nr = r + nb[1]
+        if (nc < 0 || nr < 0 || nc >= cols || nr >= rows) continue
+        const ni = nr * cols + nc
+        if (blocked[ni]) continue
+        const nUp = has(upper[ni])
+        if (hasUp && nUp && Math.abs(upper[cur] - upper[ni]) <= STEP) {
+          const ca = r * cols + nc
+          const cb = nr * cols + c
+          if (k < 4 || (!blocked[ca] && !blocked[cb] && has(upper[ca]) && has(upper[cb]))) m1 |= 1 << k
+        }
+        if (k >= 4) continue
+        if (nUp && Math.abs(floor[cur] - upper[ni]) <= STEP) mu |= 1 << k
+        if (hasUp && Math.abs(upper[cur] - floor[ni]) <= STEP) md |= 1 << k
+      }
+      g.links1[cur] = m1
+      g.up[cur] = mu
+      g.down[cur] = md
+    }
+  }
 }
 
 /**
@@ -114,7 +166,7 @@ export function vehicleGrid(grid) {
   if (!grid.vblock) return null
   const blocked = grid.blocked.slice()
   for (let i = 0; i < blocked.length; i += 1) if (grid.vblock[i]) blocked[i] = 1
-  const v = { ...grid, blocked, floor: null, ladder: null, vblock: null, levels: null, links: null }
+  const v = { ...grid, blocked, floor: null, ladder: null, vblock: null, upper: null, levels: null, links: null, links1: null, up: null, down: null }
   v.links = linkMask(v)
   return v
 }
@@ -141,8 +193,8 @@ const cellZ = (grid, i) => -grid.halfD + (Math.floor(i / grid.cols) + 0.5) * gri
  * Nearest walkable cell to `start` (spiral search) on floor f (the goal's real floor: a
  * cell's centre can be off the roof whose edge it straddles), or -1.
  */
-function nearestOpen(grid, start, f = 0) {
-  const floor = grid.floor
+function nearestOpen(grid, start, f = 0, layer = 0) {
+  const floor = layer ? grid.upper : grid.floor
   if (!grid.blocked[start] && (!floor || Math.abs(floor[start] - f) <= STEP)) return start
   const sc = start % grid.cols
   const sr = Math.floor(start / grid.cols)
@@ -213,6 +265,9 @@ const NEIGHBOURS = [
   [-1, -1, DIAG],
 ]
 
+/** Which layer a point at height y over cell i is on: 1 on an upper floor, else 0. */
+const layerOf = (g, i, y) => (g.upper !== null && y !== null && y !== undefined && has(g.upper[i]) && y > g.upper[i] - 1.2 ? 1 : 0)
+
 export class FlowFields {
   constructor(grid, { maxFields = 28, budget = 1 } = {}) {
     this.grid = grid
@@ -220,7 +275,9 @@ export class FlowFields {
     this.budget = budget
     this.left = budget
     this.cache = new Map()
-    this.heap = new Heap(grid.cols * grid.rows * 4)
+    // Nodes: one per cell, and a second per cell for the upper-floor layer.
+    this.nodes = grid.cols * grid.rows * (grid.upper ? 2 : 1)
+    this.heap = new Heap(this.nodes * 4)
     this.builds = 0
   }
 
@@ -229,24 +286,25 @@ export class FlowFields {
     this.left = this.budget
   }
 
-  /** Goals within ~5 m share a field. */
-  keyFor(x, z) {
+  /** Goals within ~5 m share a field (y: the goal's height, for upstairs vs down). */
+  keyFor(x, z, y) {
     const g = this.grid
     const c = Math.floor((x + g.halfW) / (g.cell * 4))
     const r = Math.floor((z + g.halfD) / (g.cell * 4))
     // Up on a platform (or down in a trench) is a different goal from the ground beside
-    // it; over open hills it isn't.
+    // it; over open hills it isn't. Upstairs is different again.
     let up = 0
     if (g.levels) {
-      const lev = levelFloorAt(g.levels, x, z)
+      const lev = levelFloorAt(g.levels, x, z, -Infinity)
       up = lev > 0.05 ? Math.round(lev * 2) : groundAt(g.levels.terrain, x, z) < -0.5 ? -1 : 0
+      if (layerOf(g, cellIndex(g, x, z), y)) up = 500
     }
     return up * 1e8 + r * 10000 + c
   }
 
-  /** The field leading to (x, z), or null if it isn't built yet and the budget is spent. */
-  get(x, z) {
-    const key = this.keyFor(x, z)
+  /** The field leading to (x, z) [at height y], or null if it isn't built yet and the budget is spent. */
+  get(x, z, y = null) {
+    const key = this.keyFor(x, z, y)
     const hit = this.cache.get(key)
     if (hit) {
       // Refresh recency.
@@ -256,38 +314,51 @@ export class FlowFields {
     }
     if (this.left <= 0) return null
     this.left -= 1
-    const field = this.build(x, z)
+    const field = this.build(x, z, y)
     if (this.cache.size >= this.maxFields) this.cache.delete(this.cache.keys().next().value)
     this.cache.set(key, field)
     return field
   }
 
-  build(x, z) {
+  build(x, z, y = null) {
     const g = this.grid
     const n = g.cols * g.rows
-    const cost = new Uint32Array(n).fill(UNREACHED)
-    const goal = nearestOpen(g, cellIndex(g, x, z), g.levels ? floorAt(g.levels, x, z) : 0)
+    const cost = new Uint32Array(this.nodes).fill(UNREACHED)
+    const start = cellIndex(g, x, z)
+    const layer = layerOf(g, start, y)
+    const goalCell = layer ? nearestOpen(g, start, g.upper[start], 1) : nearestOpen(g, start, g.levels ? floorAt(g.levels, x, z, -Infinity) : 0)
     this.builds += 1
-    if (goal < 0) return { cost, goal }
+    if (goalCell < 0) return { cost, goal: -1 }
+    const goal = goalCell + layer * n
     const heap = this.heap
     heap.size = 0
     cost[goal] = 0
     heap.push(0, goal)
-    const { cols, ladder, links } = g
+    const { cols, ladder, links, links1, up, down } = g
     while (heap.size > 0) {
-      const cur = heap.pop()
-      const cc = cost[cur]
-      const m = links[cur]
-      if (!m) continue
-      for (let k = 0; k < 8; k += 1) {
-        if (!(m & (1 << k))) continue
-        const nb = NEIGHBOURS[k]
-        const ni = cur + nb[1] * cols + nb[0]
-        // Climbing is slow: a ladder cell costs three.
-        const nextCost = cc + (ladder !== null && (ladder[ni] || ladder[cur]) ? nb[2] * 3 : nb[2])
-        if (nextCost < cost[ni]) {
-          cost[ni] = nextCost
-          heap.push(nextCost, ni)
+      const node = heap.pop()
+      const cc = cost[node]
+      const upstairs = node >= n
+      const cur = upstairs ? node - n : node
+      // Same layer, then across (a stair's top and the floor beside it).
+      for (let pass = 0; pass < 2; pass += 1) {
+        let m
+        if (pass === 0) m = upstairs ? links1[cur] : links[cur]
+        else m = up ? (upstairs ? down[cur] : up[cur]) : 0
+        if (!m) continue
+        const base = (pass === 0) === upstairs ? n : 0
+        for (let k = 0; k < 8; k += 1) {
+          if (!(m & (1 << k))) continue
+          const nb = NEIGHBOURS[k]
+          const ni = cur + nb[1] * cols + nb[0]
+          // Climbing is slow: a ladder cell costs three.
+          const step = !upstairs && pass === 0 && ladder !== null && (ladder[ni] || ladder[cur]) ? nb[2] * 3 : nb[2]
+          const nextCost = cc + step
+          const nn = ni + base
+          if (nextCost < cost[nn]) {
+            cost[nn] = nextCost
+            heap.push(nextCost, nn)
+          }
         }
       }
     }
@@ -297,14 +368,35 @@ export class FlowFields {
   /**
    * Direction to walk from (x, z) along `field`, written to out.x / out.z (unit length).
    * Returns false at the goal or where the field can't help (walk straight then).
-   * `fy`: the walker's own floor height, where a cell straddles a roof's edge and its
-   * centre's floor isn't the one he's standing on: then he heads for a neighbour on his
-   * own floor instead.
+   * `fy`: the walker's own floor height: upstairs or down, and where a cell straddles a
+   * roof's edge and its centre's floor isn't the one he's standing on, he heads for a
+   * neighbour on his own floor instead.
    */
   direction(field, x, z, out, fy = null) {
     const g = this.grid
+    const n = g.cols * g.rows
     const { cols, rows, blocked, floor, ladder } = g
     const i = cellIndex(g, x, z)
+    if (layerOf(g, i, fy)) {
+      const here = field.cost[n + i]
+      if (here === 0) return false
+      let best = here
+      let bestI = -1
+      for (let pass = 0; pass < 2; pass += 1) {
+        const m = pass === 0 ? g.links1[i] : g.down[i]
+        for (let k = 0; k < 8; k += 1) {
+          if (!(m & (1 << k))) continue
+          const nb = NEIGHBOURS[k]
+          const ni = i + nb[1] * cols + nb[0]
+          const cst = field.cost[ni + (pass === 0 ? n : 0)]
+          if (cst < best) {
+            best = cst
+            bestI = ni
+          }
+        }
+      }
+      return aim(g, bestI, x, z, out)
+    }
     const off = floor !== null && fy !== null && !ladder[i] && Math.abs(floor[i] - fy) > STEP
     const here = field.cost[i]
     if (here === 0 && !off) return false
@@ -326,12 +418,30 @@ export class FlowFields {
         bestI = ni
       }
     }
-    if (bestI < 0) return false
-    const dx = cellX(g, bestI) - x
-    const dz = cellZ(g, bestI) - z
-    const len = Math.hypot(dx, dz) || 1
-    out.x = dx / len
-    out.z = dz / len
-    return true
+    // Off the top of a stair onto the floor above.
+    if (!off && g.up) {
+      const m = g.up[i]
+      for (let k = 0; k < 4; k += 1) {
+        if (!(m & (1 << k))) continue
+        const nb = NEIGHBOURS[k]
+        const ni = i + nb[1] * cols + nb[0]
+        if (field.cost[n + ni] < best) {
+          best = field.cost[n + ni]
+          bestI = ni
+        }
+      }
+    }
+    return aim(g, bestI, x, z, out)
   }
+}
+
+/** Unit direction from (x, z) to cell i's centre into out; false if there's no cell. */
+function aim(g, i, x, z, out) {
+  if (i < 0) return false
+  const dx = cellX(g, i) - x
+  const dz = cellZ(g, i) - z
+  const len = Math.hypot(dx, dz) || 1
+  out.x = dx / len
+  out.z = dz / len
+  return true
 }
