@@ -18,7 +18,7 @@ import { MAX_SLOTS } from '../sim/constants'
 import { groundAt } from '../sim/terrain'
 import { animate, buildParts, J_PELVIS, PART_COUNT, P_WEAPON, TRS } from '../sim/rig'
 import { UNIT_TYPES, WEAPON_MODELS, weaponModelIndex } from '../sim/units'
-import { addFrameHook, PHASE } from '../state'
+import { addFrameHook, battle, PHASE } from '../state'
 import { buildSoldierGeometries, buildWeaponGeometries } from './models'
 import { getTextures } from './textures'
 
@@ -41,6 +41,13 @@ const PART_TO_MESH = [0, 1, 2, 3, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10]
 const PER_SOLDIER = [1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2]
 /** Parts big enough to be worth a realtime shadow (small ones and weapons skip it). */
 const CASTS_SHADOW = [true, true, true, true, true, true, false, true, true, false, false]
+/**
+ * Limb meshes (upper arms, thighs, shins): their shadows only when the camera is close
+ * (on foot, or zoomed in). From the commander's height a body's shadow reads the same
+ * without them, and they're over a third of the soldiers' shadow pass.
+ */
+const LIMB_SHADOW = [false, false, false, false, false, true, false, true, true, false, false]
+const NEAR_SHADOWS = 45
 
 // Colour role per part: 0 shirt, 1 vest, 2 pants, 3 helmet, 4 skin, 5 boots. Sleeves are
 // rolled up: shirt on the upper arms (with the cuff baked in, models.js), bare forearms.
@@ -192,6 +199,15 @@ export default function Soldiers({ getWorld, capacity = MAX_SLOTS }) {
         const cam = state.camera
         if (!w) return
         const q = useQuality.getState().settings
+        if (realtimeShadows) {
+          const near = battle.walk.on || battle.view.dist < NEAR_SHADOWS
+          if (near !== rig.limbShadows) {
+            rig.limbShadows = near
+            rig.sets[0].parts.forEach((m, i) => {
+              if (LIMB_SHADOW[i]) m.castShadow = near
+            })
+          }
+        }
         rig.frame += 1
         const frame = rig.frame
         projView.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse)
@@ -336,7 +352,7 @@ export default function Soldiers({ getWorld, capacity = MAX_SLOTS }) {
   return (
     <group>
       {rig.sets.map((set, si) => [
-        ...set.parts.map((m, i) => <primitive key={`p${si}-${i}`} object={m} castShadow={realtimeShadows && si === 0 && CASTS_SHADOW[i]} />),
+        ...set.parts.map((m, i) => <primitive key={`p${si}-${i}`} object={m} castShadow={realtimeShadows && si === 0 && CASTS_SHADOW[i] && (!LIMB_SHADOW[i] || rig.limbShadows !== false)} />),
         ...set.weapons.map((m, i) => <primitive key={`w${si}-${i}`} object={m} castShadow={false} />),
       ])}
       <primitive object={rig.shadows} visible={!realtimeShadows} />
