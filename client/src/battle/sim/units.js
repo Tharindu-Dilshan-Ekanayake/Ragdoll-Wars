@@ -232,7 +232,7 @@ export const UNIT_TYPES = {
     runAndGun: true,
     prone: false,
     heavy: false,
-    medic: { range: 40, heal: 70, time: 2.4 },
+    medic: { range: 40, heal: 70, time: 2.4, revive: 4.5 },
     max: 8,
     model: 'pistol',
     front: 0.17,
@@ -242,7 +242,7 @@ export const UNIT_TYPES = {
   mortar: {
     key: 'mortar',
     name: 'Mortar',
-    role: 'Artillery',
+    role: 'Artillery · 2-man team',
     hp: 100,
     speed: 3.6,
     range: 130,
@@ -262,6 +262,8 @@ export const UNIT_TYPES = {
     heavy: false,
     proj: 'shell',
     indirect: true,
+    // A gunner and a loader: the tube only fires with the loader beside it.
+    crew: 2,
     blast: { radius: 5, damage: 160 },
     max: 4,
     front: 0.42,

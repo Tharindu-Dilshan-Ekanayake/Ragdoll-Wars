@@ -94,6 +94,7 @@ export class BattleRoom extends Room {
     this.mapId = map.id
     this.w = createWorld(map, CAPS, this.mode)
     this.w.deaths = []
+    this.w.revives = []
     if (this.mode === 'zombies') initZombieMode(this.w)
     this.enc = createEncoder(this.w)
     this.code = null

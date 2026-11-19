@@ -103,6 +103,15 @@ export function makeSoldier(slot) {
     healT: 0,
     medicId: 0,
     medicSlot: -1,
+    // How far in this one likes to fight (a share of his weapon's engage range), so a
+    // squad doesn't stop shoulder to shoulder; and when he settled into his cover.
+    engageK: 1,
+    coverAt: 0,
+    // Mortar crews: the gunner's loader (slot and id), and on the loader's side his gunner.
+    buddySlot: -1,
+    buddyId: 0,
+    loaderOf: -1,
+    loaderOfId: 0,
     // Thrown by a blast without a ragdoll (over the ragdoll budget): a scripted arc.
     flinging: false,
     flingVX: 0,
@@ -203,6 +212,12 @@ export function resetSoldier(s, type, team, x, z, yaw, order) {
   s.healT = 0
   s.medicId = 0
   s.medicSlot = -1
+  s.engageK = 0.68 + Math.random() * 0.32
+  s.coverAt = 0
+  s.buddySlot = -1
+  s.buddyId = 0
+  s.loaderOf = -1
+  s.loaderOfId = 0
   s.flinging = false
   s.flingY = 0
   s.flingAng = 0

@@ -13,6 +13,8 @@ import { UNIT_TYPES } from './units.js'
  *   p            projectiles, PROJECTILE_STRIDE each
  *   m            mines, MINE_STRIDE each
  *   d            deaths since the last snapshot: [id, part, dx, dy, dz, power, blast, charred] (cm / tenths)
+ *   rv           soldiers a medic revived since the last snapshot (ids): clients clear the
+ *                body they drew for each (absent when none)
  *   fx           new effects: tr tracers, fl flashes, im impacts, de decals, ex explosions,
  *                fm flames, so sounds
  *   st           stats [alive0, alive1, lost0, lost1, downed0, downed1, kills0, kills1]
@@ -206,6 +208,10 @@ export function encodeSnapshot(w, enc) {
     const b = []
     for (const p0 of w.build.list) b.push(p0.key, q(p0.x), q(p0.z), p0.rot)
     snap.b = b
+  }
+  if (w.revives && w.revives.length) {
+    snap.rv = w.revives.slice()
+    w.revives.length = 0
   }
   return snap
 }

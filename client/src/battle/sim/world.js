@@ -14,6 +14,7 @@ import { createFx, emitDecal, emitFlash, emitImpact, emitSound, emitTracer } fro
 import { createNavGrid, FlowFields } from './nav.js'
 import {
   assignPatient,
+  canRevive,
   clearOrdnance,
   clearPatient,
   createOrdnance,
@@ -22,6 +23,7 @@ import {
   healPatient,
   launchProjectile,
   needsMedic,
+  patientPos,
   placeMines,
   updateMines,
   updateProjectiles,
@@ -64,6 +66,10 @@ const STAND_EYE = 1.5
 const STAND_MUZZLE = 1.38
 
 const rand = Math.random
+/** Scratch for a patient's position. */
+const PPOS = { x: 0, z: 0 }
+/** Scratch: taken cover spots near a search (gatherTaken). */
+const TAKEN = []
 const gauss = () => (rand() + rand() + rand() - 1.5) * 2
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v)
 
@@ -420,9 +426,10 @@ function think(w, s, type) {
   // (a move order from the player comes first).
   if (type.medic && !s.downed && s.order !== 'move') {
     const p = s.patient
-    if (p && (!p.alive || p.id !== s.patientId || !needsMedic(p))) clearPatient(s)
+    if (p && (p.id !== s.patientId || (p.alive ? !needsMedic(p) : !canRevive(w, p, s.team)))) clearPatient(s)
     if (!s.patient) {
-      const found = findPatient(w, s, s.order === 'hold' ? 14 : type.medic.range)
+      // The fallen too, while the team has room for them back.
+      const found = findPatient(w, s, s.order === 'hold' ? 14 : type.medic.range, teamCount(w, s.team) < w.caps.units)
       if (found) assignPatient(s, found)
     }
     if (s.patient) {
@@ -431,16 +438,39 @@ function think(w, s, type) {
       s.targetId = 0
       s.sees = false
       releaseCover(w, s)
-      const dx = q.x - s.x
-      const dz = q.z - s.z
+      patientPos(q, PPOS)
+      const dx = PPOS.x - s.x
+      const dz = PPOS.z - s.z
       const d = Math.hypot(dx, dz)
-      if (d > 0.95) setGoal(s, q.x - (dx / (d || 1)) * 0.75, q.z - (dz / (d || 1)) * 0.75)
+      if (d > 0.95) setGoal(s, PPOS.x - (dx / (d || 1)) * 0.75, PPOS.z - (dz / (d || 1)) * 0.75)
       else s.goalMode = 0
       s.wantProne = false
       s.wantCrouch = d < 1.6
       return
     }
   }
+
+  // Mortar crew: a loader sticks by his gunner (shooting at what he can see from there);
+  // a gunner who's lost his loader calls the nearest rifleman over.
+  if (s.loaderOf >= 0) {
+    const g = w.slots[s.loaderOf]
+    if (!g || !g.alive || g.id !== s.loaderOfId) {
+      s.loaderOf = -1
+      s.loaderOfId = 0
+    } else if (!s.downed && s.order !== 'move') {
+      releaseCover(w, s)
+      const side = Math.cos(g.aimYaw)
+      const sideZ = -Math.sin(g.aimYaw)
+      const lx = g.x + side * 1.3 - Math.sin(g.aimYaw) * 0.4
+      const lz = g.z + sideZ * 1.3 - Math.cos(g.aimYaw) * 0.4
+      if (Math.hypot(lx - s.x, lz - s.z) > 0.8) setGoal(s, lx, lz)
+      else s.goalMode = 0
+      s.wantProne = false
+      s.wantCrouch = s.goalMode === 0
+      return
+    }
+  }
+  if (type.crew && !s.downed && !hasLoader(w, s)) findLoader(w, s)
 
   if (s.downed) {
     // Drag themselves back a little, then lie there.
@@ -496,12 +526,22 @@ function think(w, s, type) {
       }
     }
     if (!flanking) {
-      if (target && tdist <= type.engage) {
-        stationary = !seekCover(w, s, type, target, s.x, s.z, 10)
-        if (stationary) s.goalMode = 0
+      if (target && tdist <= type.engage * s.engageK) {
+        // Close enough: into cover near here - badly hurt, cover behind - or, with none,
+        // stay put but out of a teammate's way.
+        const hurt = s.hp < s.maxHp * 0.35
+        const away = hurt ? 7 / (tdist || 1) : 0
+        stationary = !seekCover(w, s, type, target, s.x - (target.x - s.x) * away, s.z - (target.z - s.z) * away, hurt ? 14 : 16, true)
+        if (stationary) {
+          s.goalMode = 0
+          spreadOut(w, s, target)
+        }
       } else if (target) {
-        releaseCover(w, s)
-        setGoal(s, target.x, target.z)
+        // Too far: bound forward from cover to cover, pausing in each to fire.
+        if (!bound(w, s, type, target)) {
+          releaseCover(w, s)
+          setGoal(s, target.x, target.z)
+        }
       } else if (nearest) {
         releaseCover(w, s)
         setGoal(s, nearest.x, nearest.z)
@@ -513,9 +553,150 @@ function think(w, s, type) {
   }
 
   const inCover = s.cover >= 0 && Math.hypot(w.coverSpots[s.cover].x - s.x, w.coverSpots[s.cover].z - s.z) < 0.7
-  if (inCover) stationary = true
-  s.wantProne = crawling || (type.prone && stationary && (Boolean(target) || s.order === 'hold'))
-  s.wantCrouch = !s.wantProne && stationary && (inCover || (Boolean(target) && s.crouchy) || s.hurtT < 3 || s.suppress > 0.35)
+  if (inCover) {
+    stationary = true
+    if (!s.coverAt) s.coverAt = w.time
+  }
+  // Pinned down in the open: get flat.
+  const pinned = stationary && !inCover && Boolean(target) && s.suppress > 0.6 && !type.flame && !type.medic
+  s.wantProne = crawling || pinned || (type.prone && stationary && (Boolean(target) || s.order === 'hold'))
+  s.wantCrouch = !s.wantProne && stationary && (inCover || Boolean(target) || s.hurtT < 3 || s.suppress > 0.35)
+}
+
+/**
+ * Advancing on a target out of range: the next bit of cover on the way - nearer the
+ * target, not too far a dash, facing the right way, not crowded - then a pause in it to
+ * fire before the next. Returns false when there's no cover worth using (walk on).
+ */
+function bound(w, s, type, target) {
+  if (type.prone || s.deck >= 0) return false
+  const spots = w.coverSpots
+  const tdist = Math.hypot(target.x - s.x, target.z - s.z)
+  if (s.cover >= 0) {
+    const sp = spots[s.cover]
+    const d = Math.hypot(sp.x - s.x, sp.z - s.z)
+    if (d > 0.5) {
+      setGoal(s, sp.x, sp.z)
+      return true
+    }
+    // In it: hold a moment (firing if he can) before the next dash.
+    if (s.coverAt && w.time - s.coverAt < 2.5 + (s.slot % 5) * 0.5) {
+      s.goalMode = 0
+      return true
+    }
+    releaseCover(w, s)
+  }
+  let best = -1
+  let bestScore = Infinity
+  gatherTaken(spots, s.x, s.z, 21)
+  for (let i = 0; i < spots.length; i += 1) {
+    const sp = spots[i]
+    if (sp.taken >= 0) continue
+    const dx = sp.x - s.x
+    const dz = sp.z - s.z
+    const d = Math.hypot(dx, dz)
+    if (d > 18 || d < 2) continue
+    const tx = target.x - sp.x
+    const tz = target.z - sp.z
+    const td = Math.hypot(tx, tz)
+    if (td > tdist - 4) continue
+    if (tx * sp.nx + tz * sp.nz > -1) continue
+    const score = d + td * 0.35 + crowding(sp) * 5
+    if (score < bestScore) {
+      bestScore = score
+      best = i
+    }
+  }
+  if (best < 0) return false
+  spots[best].taken = s.slot
+  s.cover = best
+  s.coverAt = 0
+  setGoal(s, spots[best].x, spots[best].z)
+  return true
+}
+
+/** Gathers the taken cover spots within `r` of (x, z) into TAKEN (for crowding()). */
+function gatherTaken(spots, x, z, r) {
+  TAKEN.length = 0
+  for (let i = 0; i < spots.length; i += 1) {
+    const o = spots[i]
+    if (o.taken >= 0 && Math.abs(o.x - x) < r && Math.abs(o.z - z) < r) TAKEN.push(o)
+  }
+}
+
+/** How many of the gathered taken spots are within 2.5 m of `sp`. */
+function crowding(sp) {
+  let n = 0
+  for (let i = 0; i < TAKEN.length; i += 1) {
+    const o = TAKEN[i]
+    if (o !== sp && Math.abs(o.x - sp.x) < 2.5 && Math.abs(o.z - sp.z) < 2.5) n += 1
+  }
+  return n
+}
+
+/**
+ * Holding a spot in the open: if a teammate stands right beside him, step out to the side
+ * (across the line to the target), so they don't make one big target in a row.
+ */
+function spreadOut(w, s, target) {
+  const mates = w.teamLiving[s.team]
+  for (let i = 0; i < mates.length; i += 1) {
+    const m = mates[i]
+    if (m === s || m.loaderOf >= 0 || m.buddySlot === s.slot) continue
+    const dx = m.x - s.x
+    const dz = m.z - s.z
+    if (dx * dx + dz * dz > 2.6) continue
+    const tx = target.x - s.x
+    const tz = target.z - s.z
+    const tl = Math.hypot(tx, tz) || 1
+    // Sideways, away from the teammate.
+    let px = -tz / tl
+    let pz = tx / tl
+    if (px * dx + pz * dz > 0) {
+      px = -px
+      pz = -pz
+    }
+    setGoal(s, clamp(s.x + px * 2.2, -w.obs.limitX + 1, w.obs.limitX - 1), clamp(s.z + pz * 2.2, -w.obs.limitZ + 1, w.obs.limitZ - 1))
+    return
+  }
+}
+
+/** Whether mortar gunner `s` has his loader alive beside him. */
+function hasLoader(w, s) {
+  if (s.buddySlot < 0) return false
+  const l = w.slots[s.buddySlot]
+  if (!l || !l.alive || l.id !== s.buddyId || l.loaderOfId !== s.id) {
+    s.buddySlot = -1
+    s.buddyId = 0
+    return false
+  }
+  return true
+}
+
+/** A gunner without a loader takes the nearest free rifleman within 20 m as his new one. */
+function findLoader(w, s) {
+  const mates = w.teamLiving[s.team]
+  let best = null
+  let bestD = 400
+  for (let i = 0; i < mates.length; i += 1) {
+    const m = mates[i]
+    if (m === s || m.downed || m.loaderOf >= 0 || m.dropY > 0) continue
+    const t = UNIT_TYPES[m.type]
+    if (t.medic || t.crew || t.proj || t.flame || t.prone || t.zombieAI) continue
+    const d2 = (m.x - s.x) ** 2 + (m.z - s.z) ** 2
+    if (d2 < bestD) {
+      bestD = d2
+      best = m
+    }
+  }
+  if (best) linkCrew(s, best)
+}
+
+function linkCrew(gunner, loader) {
+  gunner.buddySlot = loader.slot
+  gunner.buddyId = loader.id
+  loader.loaderOf = gunner.slot
+  loader.loaderOfId = gunner.id
 }
 
 function setGoal(s, x, z) {
@@ -536,7 +717,7 @@ function releaseCover(w, s) {
  * Low cover between us and the target, within `radius` of (cx, cz). Takes and walks to
  * it; returns true while heading there or sitting in it.
  */
-function seekCover(w, s, type, target, cx, cz, radius) {
+function seekCover(w, s, type, target, cx, cz, radius, always = false) {
   // Up on the rampart the parapet is the cover.
   if (type.prone || !target || s.deck >= 0) {
     releaseCover(w, s)
@@ -553,26 +734,32 @@ function seekCover(w, s, type, target, cx, cz, radius) {
     }
     releaseCover(w, s)
   }
-  // Only bother when under fire or ready to settle in.
-  if (s.hurtT > 6 && s.suppress < 0.3 && !s.crouchy) return false
+  // Holding: only bother when under fire or ready to settle in. Fighting: always.
+  if (!always && s.hurtT > 6 && s.suppress < 0.3 && !s.crouchy) return false
   let best = -1
-  let bestD = radius
+  let bestScore = Infinity
   const spots = w.coverSpots
+  gatherTaken(spots, cx, cz, radius + 3)
   for (let i = 0; i < spots.length; i += 1) {
     const sp = spots[i]
     if (sp.taken >= 0) continue
     const d = Math.hypot(sp.x - cx, sp.z - cz)
-    if (d >= bestD) continue
+    if (d >= radius) continue
     const tx = target.x - sp.x
     const tz = target.z - sp.z
     if (tx * sp.nx + tz * sp.nz > -1) continue
     if (Math.hypot(tx, tz) > type.range * 0.95) continue
-    best = i
-    bestD = d
+    // Nearest first, but not bunched up with the others.
+    const score = d + crowding(sp) * 4
+    if (score < bestScore) {
+      best = i
+      bestScore = score
+    }
   }
   if (best < 0) return false
   spots[best].taken = s.slot
   s.cover = best
+  s.coverAt = 0
   setGoal(s, spots[best].x, spots[best].z)
   return true
 }
@@ -585,17 +772,19 @@ function combat(w, s, type, h) {
   // A medic at work: kneel by the patient until they're patched up.
   if (s.patient) {
     const p = s.patient
-    if (!p.alive || p.id !== s.patientId) clearPatient(s)
+    if (p.id !== s.patientId || (!p.alive && !canRevive(w, p, s.team))) clearPatient(s)
     else {
-      const dx = p.x - s.x
-      const dz = p.z - s.z
+      patientPos(p, PPOS)
+      const dx = PPOS.x - s.x
+      const dz = PPOS.z - s.z
       s.aimYaw += wrapAngle(Math.atan2(dx, dz) - s.aimYaw) * Math.min(1, h * 6)
       s.aimPitch *= 1 - Math.min(1, h * 3)
       s.ready = Math.max(0, s.ready - h * 3)
       if (Math.hypot(dx, dz) < 1.4) {
         s.healT += h
-        if (s.healT >= type.medic.time) {
-          healPatient(w, p, type.medic)
+        if (s.healT >= (p.alive ? type.medic.time : type.medic.revive)) {
+          if (p.alive) healPatient(w, p, type.medic)
+          else if (teamCount(w, p.team) < w.caps.units) reviveSoldier(w, p)
           clearPatient(s)
         }
       } else s.healT = 0
@@ -651,6 +840,8 @@ function combat(w, s, type, h) {
 
   if (type.proj) {
     if (type.minRange && dist < type.minRange) return
+    // A mortar needs its loader beside it to fire.
+    if (type.crew && !hasLoader(w, s)) return
     const sy = Math.sin(s.aimYaw)
     const cy = Math.cos(s.aimYaw)
     const up = type.indirect ? 0.45 : 0
@@ -1371,9 +1562,12 @@ export function spawnUnits(w, typeKey, team, x, z, count, order, rot = 0) {
     if (have >= type.max) return { spawned: 0, limited: `Max ${type.max} ${type.name}s per team` }
     if (type.max - have < room) room = type.max - have
   }
-  if (count > room) {
+  // Crewed weapons come with their crew (a mortar and its loader): room for all of them.
+  const crew = type.crew || 1
+  if (count * crew > room) {
     limited = `Team limit reached (${w.caps.units})`
-    count = room
+    count = Math.floor(room / crew)
+    if (count <= 0) return { spawned: 0, limited }
   }
   const enemyBase = w.map.bases[1 - team]
   const face = Math.atan2(enemyBase.x - x, enemyBase.z - z)
@@ -1405,6 +1599,26 @@ export function spawnUnits(w, typeKey, team, x, z, count, order, rot = 0) {
     s.dropV = 0
     s.scale = 0.2
     spawned += 1
+    if (crew > 1) {
+      // The loader lands beside his gunner.
+      const l = allocSlot(w)
+      if (l) {
+        POS.x = s.x + fz * 1.3
+        POS.z = s.z - fx * 1.3
+        if (deck >= 0) clampToDeck(w.rampart, deck, POS)
+        else collideCircle(w.obs, POS, SOLDIER_RADIUS)
+        resetSoldier(l, UNIT_TYPES.rifle, team, POS.x, POS.z, face, order)
+        if (deck >= 0) {
+          l.deck = deck
+          l.fy = s.fy
+        }
+        l.dropY = s.dropY + 0.3
+        l.dropV = 0
+        l.scale = 0.2
+        linkCrew(s, l)
+        spawned += 1
+      }
+    }
   }
   w.stats.deployed[team] += spawned
   if (spawned) {
@@ -1426,6 +1640,61 @@ export function spawnOne(w, type, team, x, z, yaw, order) {
   w.stats.deployed[team] += 1
   w.version += 1
   return s
+}
+
+/**
+ * A medic brings fallen soldier `b` back: up off the ground where he lay, badly hurt but
+ * able to fight. Multiplayer clients are told (w.revives) so they clear the body they drew.
+ */
+export function reviveSoldier(w, b) {
+  const j = b.joints
+  POS.x = clamp(j[J_PELVIS * 3], -w.obs.limitX, w.obs.limitX)
+  POS.z = clamp(j[J_PELVIS * 3 + 2], -w.obs.limitZ, w.obs.limitZ)
+  collideCircle(w.obs, POS, SOLDIER_RADIUS)
+  b.x = POS.x
+  b.z = POS.z
+  let i = w.bodies.indexOf(b)
+  if (i >= 0) w.bodies.splice(i, 1)
+  i = w.ragdolls.indexOf(b)
+  if (i >= 0) w.ragdolls.splice(i, 1)
+  b.alive = true
+  b.ragActive = false
+  b.crumple = false
+  b.flinging = false
+  b.sinkT = 0
+  b.burnT = 0
+  b.hp = b.maxHp * 0.35
+  b.bleed = 0
+  b.downed = false
+  b.downT = 0
+  b.staggerT = 1.2
+  b.hurtT = 0
+  b.suppress = 0.5
+  // Lying down to start with: he gets up (animStep blends it).
+  b.wDown = 1
+  b.wProne = 0
+  b.wCrouch = 0
+  b.vx = 0
+  b.vz = 0
+  b.goalMode = 0
+  b.target = null
+  b.targetId = 0
+  b.order = 'hold'
+  b.holdX = b.x
+  b.holdZ = b.z
+  b.legL = 0
+  b.legR = 0
+  b.armL = 0
+  b.armR = 0
+  b.medicId = 0
+  b.medicSlot = -1
+  b.dropY = 0
+  b.cover = -1
+  w.stats.lost[b.team] = Math.max(0, w.stats.lost[b.team] - 1)
+  if (w.revives) w.revives.push(b.id)
+  emitSound(w.fx, 'heal', b.x, 1, b.z, 0)
+  b.poseVersion += 1
+  w.version += 1
 }
 
 /**

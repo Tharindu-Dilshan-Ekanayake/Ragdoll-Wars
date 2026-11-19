@@ -62,6 +62,14 @@ export function applySnapshot(w, net, snap) {
   w.timeScale = snap.ts
   const seen = new Set()
 
+  // --- Revived by a medic: the body this client drew goes (he's back in the list below) ---
+  if (snap.rv) {
+    for (const id of snap.rv) {
+      const body = w.bodies.find((b) => b.id === id)
+      if (body) dropSlot(w, body)
+    }
+  }
+
   // --- Soldiers -------------------------------------------------------------------------
   const s = snap.s
   for (let i = 0; i < s.length; i += SOLDIER_STRIDE) {

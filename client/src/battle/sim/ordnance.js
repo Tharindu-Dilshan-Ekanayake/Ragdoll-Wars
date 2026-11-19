@@ -448,6 +448,33 @@ export function needsMedic(p) {
   return 0
 }
 
+/** How long a fallen soldier can still be brought back by a medic (seconds). */
+export const REVIVE_WINDOW = 30
+
+/**
+ * Whether fallen soldier `b` can still be revived by a medic of `team`: a teammate, dead
+ * a short while, lying still (not mid-ragdoll or sinking away), and not burned.
+ */
+export function canRevive(w, b, team) {
+  return Boolean(
+    b.used && !b.alive && b.team === team && !b.charred && b.sinkT === 0 && !b.ragActive && !b.crumple && !b.flinging && w.time - b.deadT < REVIVE_WINDOW && !UNIT_TYPES[b.type].zombieAI,
+  )
+}
+
+/** Where a patient is: a living one where he stands, a fallen one where his body lies. */
+export function patientPos(p, out) {
+  if (p.alive) {
+    out.x = p.x
+    out.z = p.z
+  } else {
+    out.x = p.joints[J_PELVIS * 3]
+    out.z = p.joints[J_PELVIS * 3 + 2]
+  }
+  return out
+}
+
+const PP = { x: 0, z: 0 }
+
 /** Whether another living medic is already on its way to `p`. */
 function claimed(w, p, medic) {
   if (!p.medicId || p.medicId === medic.id) return false
@@ -455,11 +482,28 @@ function claimed(w, p, medic) {
   return Boolean(m && m.alive && m.id === p.medicId && m.patient === p)
 }
 
-/** The most urgent hurt teammate within `range` of medic `s` that no one's seeing to. */
-export function findPatient(w, s, range) {
+/**
+ * The most urgent hurt teammate within `range` of medic `s` that no one's seeing to - or,
+ * with `bodies`, a fallen one he can still revive (just behind the downed in urgency).
+ */
+export function findPatient(w, s, range, bodies = false) {
   const friends = w.teamLiving[s.team]
   let best = null
   let bestScore = Infinity
+  if (bodies) {
+    for (let i = 0; i < w.bodies.length; i += 1) {
+      const b = w.bodies[i]
+      if (!canRevive(w, b, s.team) || claimed(w, b, s)) continue
+      patientPos(b, PP)
+      const d = Math.hypot(PP.x - s.x, PP.z - s.z)
+      if (d > range) continue
+      const score = d - 2.8 * 12
+      if (score < bestScore) {
+        bestScore = score
+        best = b
+      }
+    }
+  }
   for (let i = 0; i < friends.length; i += 1) {
     const p = friends[i]
     if (p === s || p.dropY > 0) continue
