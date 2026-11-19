@@ -334,6 +334,24 @@ function paintGround(map, S = 512) {
  * Shared vertices keep it smooth and crack-free (a flat cell's edge points are all at 0,
  * like its split neighbour's). Same UVs as the flat plane, so the painted map lines up.
  */
+/**
+ * The ground's height outside the fence: rolling, and with `map.rim` ({ x, z } metres)
+ * rising into ridges past the sides (z) and ends (x), so the battlefield sits in a valley
+ * and its edge doesn't show. 0 inside.
+ */
+function outsideY(map, x, z) {
+  const ox = Math.abs(x) - map.width / 2 - 7
+  const oz = Math.abs(z) - map.depth / 2 - 7
+  const out = Math.max(ox, oz, 0)
+  if (out <= 0) return null
+  let y = Math.min(1, out / 25) * (fbm(x * 0.03, z * 0.03) * 7 - 1.5)
+  if (map.rim) {
+    const rise = (o, h) => (o > 0 ? Math.min(1, o / 28) ** 1.4 * h * (0.7 + fbm(x * 0.05 + 3, z * 0.05) * 0.6) : 0)
+    y += Math.max(rise(oz, map.rim.z || 0), rise(ox, map.rim.x || 0))
+  }
+  return y
+}
+
 function buildTerrainGround(map, T) {
   const NX = 56
   const NZ = 42
@@ -346,8 +364,8 @@ function buildTerrainGround(map, T) {
   const verts = new Map()
   const heightAt = (x, z) => {
     let y = groundAt(T, x, z)
-    const out = Math.max(Math.abs(x) - map.width / 2 - 7, Math.abs(z) - map.depth / 2 - 7, 0)
-    if (out > 0) y = Math.min(1, out / 25) * (fbm(x * 0.03, z * 0.03) * 7 - 1.5)
+    const oy = outsideY(map, x, z)
+    if (oy !== null) y = oy
     if (map.sea && z < map.sea.z) y = Math.max(-2.5, (z - map.sea.z) * 0.25)
     return y
   }
@@ -416,8 +434,8 @@ function buildGround(map) {
     const x = p.getX(i)
     const z = p.getZ(i)
     // Rolling ground outside the fence; the battlefield itself is flat.
-    const out = Math.max(Math.abs(x) - map.width / 2 - 7, Math.abs(z) - map.depth / 2 - 7, 0)
-    if (out > 0) p.setY(i, Math.min(1, out / 25) * (fbm(x * 0.03, z * 0.03) * 7 - 1.5))
+    const oy = outsideY(map, x, z)
+    if (oy !== null) p.setY(i, oy)
     // A beach: past the shoreline the ground slopes away under the water.
     if (map.sea && z < map.sea.z) p.setY(i, Math.max(-2.5, (z - map.sea.z) * 0.25))
   }
@@ -1128,7 +1146,7 @@ export default function MapView({ map, focus }) {
     // (The rampart draws itself: Rampart.jsx.)
     const cover = buildCover({ obstacles: [...map.obstacles.filter((o) => !o.rampart), ...coverBoxesOf(pieces)], levels: mapLevels(map) })
     const piecesGeo = pieces.length ? buildPiecesGeometry(pieces) : null
-    const fence = terrain ? buildFence(map) : null
+    const fence = terrain && map.fence !== false ? buildFence(map) : null
     const hills = terrain ? buildHills(...(map.hills || [165, 260]), map.hillScale ?? 1, themeOf(map), map.sea ? map.sea.z : null, map.fog, viewDistance) : null
     const sea = terrain && map.sea ? new PlaneGeometry(1200, 600).rotateX(-Math.PI / 2).translate(0, -0.35, map.sea.z - 300) : null
     // Set pieces (cranes, ships, hangars, houses...) and the basins' water and quays.
@@ -1208,7 +1226,8 @@ export default function MapView({ map, focus }) {
     const c = new Color()
     all.forEach((t, i) => {
       q4.setFromAxisAngle(up, t.r)
-      p3.set(t.x, 0, t.z)
+      // Outside the fence the ground rolls (and rises into ridges): stand the tree on it.
+      p3.set(t.x, terrain ? Math.max(-0.3, (outsideY(map, t.x, t.z) ?? 0) - 0.25) : 0, t.z)
       s3.set(t.s, t.s * (0.9 + hash(t.x, t.z) * 0.4), t.s)
       m4.compose(p3, q4, s3)
       trunks.setMatrixAt(i, m4)

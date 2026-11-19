@@ -32,7 +32,10 @@ import GameLogo from './GameLogo'
 
 const isTouch = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches
 
-/** Zombie Horde's top bar: wave, zombies left, cash, breaches, and Start wave. */
+/** How much of the rampart is left, in percent, from its sections' (-1: fallen). */
+const wallLeft = (wall) => Math.round(wall.reduce((a, p) => a + Math.max(0, p), 0) / wall.length)
+
+/** Zombie Horde's top bar: wave, zombies left, cash, the wall or breaches, and Start wave. */
 function ZombieBar() {
   const z = useHud((s) => s.zombie)
   if (!z) return null
@@ -66,13 +69,20 @@ function ZombieBar() {
           </span>
         </div>
       )}
-      <div className={`ff-zbar__cell ${z.breaches >= z.maxBreaches - 3 ? 'is-danger' : ''}`}>
-        <span className="ff-zbar__label">Breaches</span>
-        <span className="ff-zbar__num">
-          {z.breaches}
-          <small>/{z.maxBreaches}</small>
-        </span>
-      </div>
+      {z.wall ? (
+        <div className={`ff-zbar__cell ${wallLeft(z.wall) < 35 ? 'is-danger' : ''}`}>
+          <span className="ff-zbar__label">Wall</span>
+          <span className="ff-zbar__num">{wallLeft(z.wall)}%</span>
+        </div>
+      ) : (
+        <div className={`ff-zbar__cell ${z.breaches >= z.maxBreaches - 3 ? 'is-danger' : ''}`}>
+          <span className="ff-zbar__label">Breaches</span>
+          <span className="ff-zbar__num">
+            {z.breaches}
+            <small>/{z.maxBreaches}</small>
+          </span>
+        </div>
+      )}
       {building && (
         <button type="button" className="ff-btn ff-btn--accent ff-zbar__go" onClick={startWaveNow}>
           Start wave
@@ -106,9 +116,9 @@ function ZombieResult({ onExit }) {
     <div className="ff-modal" role="dialog" aria-label="Zombie Horde">
       <div className="ff-modal__card ff-zresult">
         <div className="ff-modal__kicker">Zombie Horde</div>
-        <h2>{won ? 'You held the line!' : `Overrun on wave ${z.wave}`}</h2>
+        <h2>{won ? 'You held the line!' : z.wall ? `The wall fell on wave ${z.wave}` : `Overrun on wave ${z.wave}`}</h2>
         <p className="ff-modal__text">
-          {won ? `All ${z.total} waves survived` : `${z.breaches} zombies broke through`} · {z.kills} zombies dropped · best wave {Math.max(best, won ? z.total : z.wave)}
+          {won ? `All ${z.total} waves survived` : z.wall ? 'The horde tore the whole wall down' : `${z.breaches} zombies broke through`} · {z.kills} zombies dropped · best wave {Math.max(best, won ? z.total : z.wave)}
         </p>
         {fresh.length > 0 && (
           <div className="ff-badges">

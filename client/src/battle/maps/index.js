@@ -65,8 +65,8 @@ export const MAPS = [
 export const ZOMBIE_MAP = {
   id: 'bastion',
   name: 'Mirefall Bastion',
-  blurb: 'A stone rampart across a drowned, misty marsh: hold it against the horde from the top of the wall.',
-  size: '170 × 110 m',
+  blurb: 'A stone rampart across a drowned, misty valley: hold it against the horde from the top of the wall. If the whole wall falls, it is over.',
+  size: '230 × 150 m',
   load: () => import('./mirefallBastion.js'),
 }
 

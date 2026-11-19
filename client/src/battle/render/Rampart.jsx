@@ -130,6 +130,9 @@ export default function Rampart({ map }) {
       wall.box(o.x, o.h / 2, o.z, o.w, o.h, o.d, col('#837f75'))
       tagSince(wall, from, -1, wallTags)
     }
+    // Wings: the wall running on past the battlefield into the ridges either side
+    // (scenery only, so it doesn't just stop at the edge of the map).
+    for (const g of map.wings || []) sectionGeometry(wall, wallTags, { ...g, seg: -1 }, { x: g.x + g.w / 2 - 0.25, w: 0.5 })
     const wallGeo = wall.build()
     wallGeo.setAttribute('aSeg', new Float32BufferAttribute(wallTags, 1))
     const rubbleGeo = rubble.build()

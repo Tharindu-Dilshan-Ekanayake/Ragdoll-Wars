@@ -6,7 +6,8 @@ import { damageVehicle } from './vehicles.js'
 import { fireAcid } from './ordnance.js'
 import { segmentHit3D } from './obstacles.js'
 import { meleeHit, rebuildStatic, removeSoldier, spawnOne } from './world.js'
-import { clampToDeck, segAt } from './rampart.js'
+import { clampToDeck, rampartHealth, segAt } from './rampart.js'
+import { cellIndex, reachableFrom } from './nav.js'
 
 /**
  * Zombie Horde: hold the west side of the map against 20 waves of the undead.
@@ -20,10 +21,12 @@ import { clampToDeck, segAt } from './rampart.js'
  * wave 20 to win. Spitters (from wave 4) lob acid from range, up onto the wall too;
  * behemoths lead waves 10, 15 and 18, and the last wave is a horde of the big ones.
  *
- * On a map with a rampart (Mirefall Bastion) your troops stand up on the wall and the
- * zombies can't reach them: they pile up at its foot and batter the section in front of
- * them. A section battered to nothing falls - with whoever stood on it - and the horde
- * pours through the gap; cleared waves patch the wall up and rebuild what fell.
+ * On a map with a rampart (Mirefall Bastion) the wall is what you defend: your troops
+ * stand up on it and the zombies can't reach them, so they pile up at its foot and batter
+ * the section in front of them. A section battered to nothing falls - with whoever stood
+ * on it - and the horde pours through the gap; one that gets right through to the camp
+ * wrecks more of the wall. When the whole wall is down, it's over. Cleared waves patch
+ * it up (a little) and rebuild what fell (at a quarter).
  *
  * Zombies are team 1 soldiers with a zombie type, so everything else - bullets, fire,
  * blasts, ragdolls, the renderer - just works on them. Only so many are alive at once
@@ -31,10 +34,18 @@ import { clampToDeck, segAt } from './rampart.js'
  */
 
 export const TOTAL_WAVES = 20
-export const START_CASH = 500
+export const START_CASH = 450
 const BUILD_TIME_FIRST = 35
 const BUILD_TIME = 25
 const MAX_BREACHES = 10
+/** How hard zombies hit the wall (times their melee damage and `bash`). */
+const WALL_BASH = 2.4
+/** A zombie through to the camp behind a rampart: the wall damage it does. */
+const BREACH_WALL = 1200
+/** Zombies get tougher as the waves go on: this much more health per wave. */
+const HP_PER_WAVE = 0.06
+/** Share of a zombie's listed bounty you actually get. */
+const BOUNTY = 0.7
 
 /** What everything costs in Zombie Horde. */
 export const PRICES = {
@@ -108,17 +119,17 @@ export function initZombieMode(w) {
 /** The zombies of wave `n`, in the order they come. */
 function composeWave(n) {
   const out = []
-  const walkers = 6 + n * 3
-  const runners = n >= 3 ? (n - 2) * 2 : 0
-  const brutes = (n >= 5 ? Math.floor((n - 3) / 2) : 0) + (n >= 19 ? 4 : 0)
-  const spitters = n >= 4 ? Math.min(10, Math.floor((n - 2) / 2)) : 0
+  const walkers = 10 + n * 4
+  const runners = n >= 2 ? (n - 1) * 3 : 0
+  const brutes = (n >= 4 ? Math.floor((n - 2) / 2) : 0) + (n >= 15 ? 3 : 0) + (n >= 19 ? 4 : 0)
+  const spitters = n >= 3 ? Math.min(14, Math.floor(n / 2) + 1) : 0
   for (let i = 0; i < walkers; i += 1) out.push('zombie')
   // Runners, spitters and brutes mixed in through the rest of the wave.
   for (let i = 0; i < runners; i += 1) out.splice(Math.floor(out.length * (0.3 + rand() * 0.7)), 0, 'runner')
   for (let i = 0; i < spitters; i += 1) out.splice(Math.floor(out.length * (0.2 + rand() * 0.8)), 0, 'spitter')
   for (let i = 0; i < brutes; i += 1) out.splice(Math.floor(out.length * (0.5 + rand() * 0.5)), 0, 'brute')
-  if (n === 10 || n === 18) out.push('behemoth')
-  if (n === 15) out.push('behemoth', 'behemoth')
+  if (n === 8 || n === 12) out.push('behemoth')
+  if (n === 10 || n === 15 || n === 18) out.push('behemoth', 'behemoth')
   // The last wave: the big ones, one after another at the end.
   if (n === TOTAL_WAVES) out.push('brute', 'behemoth', 'brute', 'behemoth', 'brute', 'behemoth')
   return out
@@ -148,7 +159,7 @@ export function restartZombies(w) {
 
 /** A blow to a rampart section; it falls when it's had enough. */
 function hitWall(w, seg, dmg, s) {
-  seg.hp -= dmg
+  seg.hp -= dmg * WALL_BASH
   const r = w.rampart
   emitImpact(w.fx, r.front + 0.05, 0.4 + rand() * 2.6, s.z + (rand() - 0.5) * 0.8, 2, w.time)
   if (rand() < 0.35) emitSound(w.fx, 'thud', r.front, 1.5, s.z, 0)
@@ -208,11 +219,11 @@ export function repairRampart(w, full = false) {
   let rebuilt = false
   for (const seg of r.segs) {
     if (seg.up) {
-      seg.hp = full ? seg.max : Math.min(seg.max, seg.hp + seg.max * 0.35)
+      seg.hp = full ? seg.max : Math.min(seg.max, seg.hp + seg.max * 0.12)
       continue
     }
     seg.up = true
-    seg.hp = full ? seg.max : seg.max * 0.5
+    seg.hp = full ? seg.max : seg.max * 0.25
     for (const o of seg.boxes) if (!w.baseObstacles.includes(o)) w.baseObstacles.push(o)
     rebuilt = true
     const p = { x: 0, z: 0 }
@@ -235,33 +246,40 @@ export function repairRampart(w, full = false) {
   w.version += 1
 }
 
-function spawnZombie(w, key) {
+/** Where a zombie of the coming wave climbs out: by the rampart, out of the mist off the wall. */
+function spawnPoint(w) {
   const lx = w.obs.limitX
   const lz = w.obs.limitZ
-  let x
-  let z
   const r = w.rampart
   // Facing a rampart they come out of the mist 40-70 m off the wall, not the far edge.
   if (r) {
-    x = r.front + 40 + rand() * 30
-    z = (rand() * 2 - 1) * (lz - 4)
-    if (w.zmode.wave >= 6 && rand() < 0.25) {
-      x = r.front + 14 + rand() * 40
-      z = (rand() < 0.5 ? -1 : 1) * (lz - 2)
-    }
-  } else if (w.zmode.wave >= 6 && rand() < 0.3) {
-    // From the east edge; later waves send some round the flanks too.
-    x = 10 + rand() * (lx - 14)
-    z = (rand() < 0.5 ? -1 : 1) * (lz - 2)
-  } else {
-    x = lx - 2 - rand() * 18
-    z = (rand() * 2 - 1) * (lz - 6)
+    if (w.zmode.wave >= 6 && rand() < 0.25) return [r.front + 14 + rand() * 40, (rand() < 0.5 ? -1 : 1) * (lz - 2)]
+    return [r.front + 40 + rand() * 30, (rand() * 2 - 1) * (lz - 4)]
+  }
+  // From the east edge; later waves send some round the flanks too.
+  if (w.zmode.wave >= 6 && rand() < 0.3) return [10 + rand() * (lx - 14), (rand() < 0.5 ? -1 : 1) * (lz - 2)]
+  return [lx - 2 - rand() * 18, (rand() * 2 - 1) * (lz - 6)]
+}
+
+function spawnZombie(w, key) {
+  // Only on open ground that joins up with the rest of the field (not shut in a ruin).
+  const g = w.grid
+  if (!g.zReach) {
+    const far = w.map.bases[1]
+    g.zReach = reachableFrom(g, far.x, far.z)
+  }
+  let x = 0
+  let z = 0
+  for (let tries = 0; tries < 10; tries += 1) {
+    ;[x, z] = spawnPoint(w)
+    if (g.zReach[cellIndex(g, x, z)]) break
   }
   const s = spawnOne(w, UNIT_TYPES[key], 1, x, z, -Math.PI / 2, 'attack')
   if (!s) return false
   s.dropY = 0
   s.scale = 1
   s.thinkT = rand() * 0.3
+  s.hp = s.maxHp = Math.round(s.maxHp * (1 + (w.zmode.wave - 1) * HP_PER_WAVE))
   return true
 }
 
@@ -285,30 +303,41 @@ export function updateZombieMode(w, h) {
     }
     if (!spawnZombie(w, z.queue[0])) break
     z.queue.shift()
-    z.spawnT += Math.max(0.12, 0.5 - z.wave * 0.025)
+    z.spawnT += Math.max(0.1, 0.45 - z.wave * 0.025)
   }
-  // Through to the west edge: a breach.
+  // Through to the west edge: a breach (behind a rampart, it wrecks more of the wall).
   const edge = -w.obs.limitX + 4
+  const r = w.rampart
   for (let i = 0; i < zombies.length; i += 1) {
     const s = zombies[i]
     if (s.alive && s.x < edge) {
       removeSoldier(w, s)
       z.breaches += 1
       emitSound(w.fx, 'breach', s.x, 1, s.z, 0)
+      if (r) {
+        let weakest = null
+        for (const g of r.segs) if (g.up && (!weakest || g.hp < weakest.hp)) weakest = g
+        if (weakest) {
+          weakest.hp -= BREACH_WALL
+          if (weakest.hp <= 0) collapseSegment(w, weakest)
+          else r.version += 1
+        }
+      }
       w.version += 1
     }
   }
   let alive = 0
   for (let i = 0; i < zombies.length; i += 1) if (zombies[i].alive) alive += 1
   z.left = z.queue.length + alive
-  if (z.breaches >= z.maxBreaches) {
+  // The wall is down (with a rampart), or too many got through (without).
+  if (r ? rampartHealth(r) <= 0 : z.breaches >= z.maxBreaches) {
     z.result = 'lost'
     w.version += 1
     return
   }
   if (z.left === 0) {
     repairRampart(w)
-    z.cash += 150 + z.wave * 30
+    z.cash += 100 + z.wave * 15
     if (z.wave >= z.total) {
       z.result = 'won'
     } else {
@@ -323,7 +352,7 @@ export function updateZombieMode(w, h) {
 export function onZombieKilled(w, s) {
   const z = w.zmode
   if (!z) return
-  z.cash += UNIT_TYPES[s.type].zombieAI.reward
+  z.cash += Math.round(UNIT_TYPES[s.type].zombieAI.reward * BOUNTY)
   z.kills += 1
 }
 
@@ -479,7 +508,7 @@ export function zombieStep(w, s, type, h) {
     const r = w.rampart
     const seg = r.segs[s.wallSeg]
     if (!seg.up) s.wallSeg = -1
-    else if (s.x - r.front < ai.reach * (type.size || 1) * 0.6 + 0.9) {
+    else if (s.x > r.front - 1 && s.x - r.front < ai.reach * (type.size || 1) * 0.6 + 0.9) {
       s.goalMode = 0
       s.yaw += wrapAngle(-Math.PI / 2 - s.yaw) * Math.min(1, h * 8)
       if (s.fireT <= 0) {

@@ -265,6 +265,32 @@ const NEIGHBOURS = [
   [-1, -1, DIAG],
 ]
 
+/**
+ * The ground cells you can walk to from (x, z), as a 0/1 mask (a flood over the links).
+ * Zombie Horde spawns only on these, never shut in a ruin it can't find its way out of.
+ */
+export function reachableFrom(grid, x, z) {
+  const n = grid.cols * grid.rows
+  const seen = new Uint8Array(n)
+  const start = nearestOpen(grid, cellIndex(grid, x, z))
+  if (start < 0) return seen
+  const stack = [start]
+  seen[start] = 1
+  while (stack.length) {
+    const i = stack.pop()
+    const m = grid.links[i]
+    for (let k = 0; k < 8; k += 1) {
+      if (!(m & (1 << k))) continue
+      const ni = i + NEIGHBOURS[k][1] * grid.cols + NEIGHBOURS[k][0]
+      if (!seen[ni]) {
+        seen[ni] = 1
+        stack.push(ni)
+      }
+    }
+  }
+  return seen
+}
+
 /** Which layer a point at height y over cell i is on: 1 on an upper floor, else 0. */
 const layerOf = (g, i, y) => (g.upper !== null && y !== null && y !== undefined && has(g.upper[i]) && y > g.upper[i] - 1.2 ? 1 : 0)
 
