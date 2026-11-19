@@ -792,6 +792,22 @@ button {
   margin-left: auto;
   color: var(--ff-text, #e9eef2);
 }
+.ff-tab--show {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ff-accent);
+  border-color: var(--ff-accent);
+  animation: ff-rise 0.25s ease-out;
+}
+.ff-tab--show .ff-ico {
+  width: 1em;
+  height: 1em;
+}
+.ff-tab--show:hover {
+  color: #1e1206;
+  background: var(--ff-accent);
+}
 .ff-card--build .ff-card__icon {
   color: #e7c48e;
 }

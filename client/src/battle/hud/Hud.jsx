@@ -527,12 +527,29 @@ function Tray() {
             className={`ff-tab ${tab === key ? 'is-on' : ''}`}
             onClick={() => {
               setTab(key)
+              // Tucked away: a tab brings the tray back up too.
+              if (hidden) toggleDock()
               sfx.toggle()
             }}
           >
             {label}
           </button>
         ))}
+        {/* Tucked away, the fold button's down with the cards: this brings them back. */}
+        {hidden && (
+          <button
+            type="button"
+            className="ff-tab ff-tab--show"
+            title="Show the cards"
+            onClick={() => {
+              toggleDock()
+              sfx.toggle()
+            }}
+          >
+            <Glyph name="chevron" className="ff-ico is-flipped" />
+            Show
+          </button>
+        )}
         {building && (
           <button
             type="button"
