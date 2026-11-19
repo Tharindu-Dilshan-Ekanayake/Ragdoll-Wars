@@ -22,7 +22,6 @@ import { BodyDiagram, Glyph, WeaponIcon } from './icons'
 import { renderThumbnails } from './thumbnails'
 import { useHud } from './hudStore'
 import Panels from './Panels'
-import GameLogo from './GameLogo'
 
 /**
  * The battle HUD (DOM over the canvas). Layout: score and speed across the top, the
@@ -786,7 +785,6 @@ function WalkControls() {
   if (!walking) return null
   return (
     <>
-      <div className="ff-walkhint">{isTouch ? 'Stick to walk · drag to look · Top view to deploy troops' : 'WASD walk · Shift run · Space jump · drag to look · V top view'}</div>
       <TouchStick target="walk" />
     </>
   )
@@ -803,7 +801,6 @@ export default function Hud({ onExit }) {
   return (
     <div className={`ff-hud ${walking ? 'is-walking' : ''}`} data-quality={level}>
       <TopBar />
-      <GameLogo />
       <Corner onExit={onExit} />
       <Rail />
       <Inspector />

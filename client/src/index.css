@@ -340,42 +340,6 @@ button {
   top: calc(var(--u) * 12 + 50px);
 }
 
-/* The game's logo, top-left. */
-.ff-logo {
-  position: absolute;
-  top: calc(var(--u) * 10);
-  left: calc(var(--u) * 12);
-  display: flex;
-  align-items: center;
-  gap: calc(var(--u) * 8);
-  pointer-events: none;
-  user-select: none;
-}
-.ff-logo__mark {
-  width: calc(var(--u) * 46);
-  height: calc(var(--u) * 46);
-  min-width: 34px;
-  min-height: 34px;
-  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45));
-}
-.ff-logo__name {
-  display: flex;
-  flex-direction: column;
-  font-family: var(--ff-display);
-  font-size: max(15px, calc(var(--u) * 21));
-  line-height: 0.92;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: #fff;
-  text-shadow:
-    0 2px 0 rgba(0, 0, 0, 0.55),
-    0 0 10px rgba(0, 0, 0, 0.35);
-}
-.ff-logo__accent {
-  color: var(--ff-accent);
-}
-
 .ff-rail {
   position: absolute;
   left: calc(var(--u) * 12);
@@ -1603,10 +1567,6 @@ button {
   .ff-lobbyhud .ff-corner {
     top: 104px;
   }
-  .ff-logo {
-    top: 6px;
-    left: 8px;
-  }
   .ff-rail {
     top: 110px;
     left: 8px;
@@ -1733,19 +1693,6 @@ button {
 .ff-viewbtn .ff-ico {
   width: 1.3em;
   height: 1.3em;
-}
-.ff-hud .ff-walkhint {
-  position: absolute;
-  top: calc(var(--u) * 74);
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 4px 14px;
-  border-radius: 99px;
-  font-size: calc(var(--u) * 13);
-  white-space: nowrap;
-  color: #fff;
-  background: rgba(10, 12, 16, 0.62);
-  pointer-events: none;
 }
 /* On a phone the stick and jump button need the corners: the dock steps aside. */
 @media (pointer: coarse) {
