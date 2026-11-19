@@ -141,6 +141,18 @@ export class BattleRoom extends Room {
     this.sendPlayers()
   }
 
+  /**
+   * A deploy or scale-down (SIGTERM): Colyseus has already locked the room, so nobody new
+   * joins it. By default it would now drop everyone; instead the battle carries on until
+   * the players have all left (the room then closes by itself and the server exits).
+   * Legion waits up to ten minutes, so at nine the stragglers are let go and can rejoin
+   * on the new server.
+   */
+  onBeforeShutdown() {
+    this.broadcast('toast', { text: 'The server is updating: this battle ends when everyone has left', kind: 'info' })
+    this.clock.setTimeout(() => this.disconnect(), 9 * 60 * 1000)
+  }
+
   async onLeave(client, consented) {
     if (!consented) {
       try {
