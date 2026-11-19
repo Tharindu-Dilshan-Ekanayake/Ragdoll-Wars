@@ -331,9 +331,49 @@ button {
 .ff-corner {
   position: absolute;
   top: calc(var(--u) * 12);
-  left: calc(var(--u) * 12);
+  right: calc(var(--u) * 12);
   display: flex;
   gap: calc(var(--u) * 8);
+}
+/* In the lobby the name chip has the corner: the buttons sit under it. */
+.ff-lobbyhud .ff-corner {
+  top: calc(var(--u) * 12 + 50px);
+}
+
+/* The game's logo, top-left. */
+.ff-logo {
+  position: absolute;
+  top: calc(var(--u) * 10);
+  left: calc(var(--u) * 12);
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u) * 8);
+  pointer-events: none;
+  user-select: none;
+}
+.ff-logo__mark {
+  width: calc(var(--u) * 46);
+  height: calc(var(--u) * 46);
+  min-width: 34px;
+  min-height: 34px;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45));
+}
+.ff-logo__name {
+  display: flex;
+  flex-direction: column;
+  font-family: var(--ff-display);
+  font-size: max(15px, calc(var(--u) * 21));
+  line-height: 0.92;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #fff;
+  text-shadow:
+    0 2px 0 rgba(0, 0, 0, 0.55),
+    0 0 10px rgba(0, 0, 0, 0.35);
+}
+.ff-logo__accent {
+  color: var(--ff-accent);
 }
 
 .ff-rail {
@@ -921,7 +961,7 @@ button {
 
 .ff-inspect {
   position: absolute;
-  top: calc(var(--u) * 12);
+  top: calc(var(--u) * 12 + 52px);
   right: calc(var(--u) * 12);
   width: calc(var(--u) * 300);
   min-width: 230px;
@@ -1558,6 +1598,13 @@ button {
   }
   .ff-corner {
     top: 8px;
+    right: 8px;
+  }
+  .ff-lobbyhud .ff-corner {
+    top: 104px;
+  }
+  .ff-logo {
+    top: 6px;
     left: 8px;
   }
   .ff-rail {

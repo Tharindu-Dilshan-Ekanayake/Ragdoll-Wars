@@ -22,6 +22,7 @@ import { BodyDiagram, Glyph, WeaponIcon } from './icons'
 import { renderThumbnails } from './thumbnails'
 import { useHud } from './hudStore'
 import Panels from './Panels'
+import GameLogo from './GameLogo'
 
 /**
  * The battle HUD (DOM over the canvas). Layout: score and speed across the top, the
@@ -792,6 +793,7 @@ export default function Hud({ onExit }) {
   return (
     <div className={`ff-hud ${walking ? 'is-walking' : ''}`} data-quality={level}>
       <TopBar />
+      <GameLogo />
       <Corner onExit={onExit} />
       <Rail />
       <Inspector />

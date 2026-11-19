@@ -8,12 +8,13 @@ import { lobby, useLobby } from './lobbyState'
 import StationPanels from './StationPanels'
 import { cloudText, useCloud } from '../net/cloud'
 import TouchStick from './TouchStick'
+import GameLogo from '../battle/hud/GameLogo'
 
 const isTouch = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches
 
 /**
- * The lobby HUD: settings and help top-left, where you are top-centre, your name and
- * sign-in top-right, the "open" prompt while you stand on a pad, touch controls, and the
+ * The lobby HUD: the logo top-left, settings and help top-right under your name and
+ * sign-in, where you are top-centre, the "open" prompt while you stand on a pad, touch controls, and the
  * station panels.
  */
 export default function LobbyHud() {
@@ -75,6 +76,7 @@ export default function LobbyHud() {
 
   return (
     <div className="ff-hud ff-lobbyhud">
+      <GameLogo />
       <div className="ff-corner">
         <button type="button" className="ff-iconbtn" title="Settings" onClick={() => open('settings')}>
           <Glyph name="gear" className="ff-ico" />
