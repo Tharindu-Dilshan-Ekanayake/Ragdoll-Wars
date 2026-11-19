@@ -1225,7 +1225,119 @@ function bus(b, o) {
   for (const x of [3.6, -3.4]) for (const sz of [-1, 1]) b.cyl(x, 0.32, sz * 1.05, 0.32, 0.32, 0.28, '#3a3532', 10, Math.PI / 2)
 }
 
+// --- Warehouse interior -----------------------------------------------------------------
+
+/**
+ * A warehouse's wall from inside (interior face +z): corrugated panels on a concrete
+ * kerb, blue steel columns every 6 m, a strip of high windows, roller doors at `doors`.
+ */
+function shedwall(b, o) {
+  const len = o.len || 20
+  const h = o.h || 8
+  const panel = o.color || '#9aa3a8'
+  b.box(0, h / 2, 0, len, h, 0.3, panel, 'steel', 1.2)
+  b.box(0, 0.5, 0.2, len, 1, 0.5, '#8d8a82', 'concrete')
+  const doors = o.doors || []
+  for (let x = -len / 2 + 3; x <= len / 2 - 2.9; x += 6) {
+    b.box(x, h / 2, 0.3, 0.36, h, 0.3, '#2f5a8f')
+    b.box(x, h / 2, 0.47, 0.5, h, 0.04, '#3a6aa0', 'detail', 2, 32)
+  }
+  for (let x = -len / 2 + 6; x < len / 2 - 1; x += 6) {
+    if (doors.some((d) => Math.abs(d - x) < 3)) continue
+    b.box(x, h - 1.4, 0.17, 4.6, 1.1, 0.04, '#2a3a46', 'glass', 2, 32)
+    b.box(x, h - 2.02, 0.22, 4.8, 0.08, 0.14, '#cfd3d6', 'detail')
+  }
+  // Roller doors: shutter, guide rails, the motor box, hazard stripes on the posts.
+  for (const x of doors) {
+    b.box(x, 2.4, 0.2, 4.4, 4.8, 0.08, '#c8c4b8', 'steel', 0.6)
+    b.box(x, 5.05, 0.32, 4.8, 0.5, 0.5, '#7d8186')
+    for (const sx of [-1, 1]) {
+      b.box(x + sx * 2.3, 2.5, 0.28, 0.14, 5, 0.14, '#5a5e62', 'detail')
+      for (let y = 0.3; y < 1.6; y += 0.4) b.box(x + sx * 2.55, y, 0.36, 0.3, 0.2, 0.06, y % 0.8 < 0.4 ? '#e0b23a' : '#1d1f21', 'detail', 2, 32)
+    }
+  }
+}
+
+/** A steel roof truss spanning along local x at height `h` (no roof on it: the camera looks in from above). */
+function truss(b, o) {
+  const len = o.len || 40
+  const h = o.h || 8
+  const rise = 2.2
+  const c = '#4a6a8a'
+  b.bar(-len / 2, h, 0, len / 2, h, 0, 0.22, c)
+  b.bar(-len / 2, h, 0, 0, h + rise, 0, 0.2, c)
+  b.bar(0, h + rise, 0, len / 2, h, 0, 0.2, c)
+  const n = 8
+  for (let k = 1; k < n; k += 1) {
+    const x = -len / 2 + (len * k) / n
+    const top = h + rise * (1 - Math.abs(x) / (len / 2))
+    b.bar(x, h, 0, x, top, 0, 0.1, c)
+    if (k < n - 1) {
+      const x2 = -len / 2 + (len * (k + 1)) / n
+      const top2 = h + rise * (1 - Math.abs(x2) / (len / 2))
+      b.bar(x, h, 0, x2, top2, 0, 0.08, c)
+    }
+  }
+  // A row of hanging lights under it.
+  for (let x = -len / 2 + len / 8; x < len / 2; x += len / 4) {
+    b.box(x, h - 0.6, 0, 0.04, 1.2, 0.04, '#2a2c2e', 'detail')
+    b.box(x, h - 1.25, 0, 1.4, 0.12, 0.35, '#e8e6df', 'detail')
+    b.box(x, h - 1.33, 0, 1.3, 0.04, 0.28, '#fff6d8', 'detail')
+  }
+}
+
+const GOODS = ['#b08a5a', '#a37c4e', '#c9b48e', '#e8e6df', '#3f6f99', '#8a3f30', '#5d7a4a']
+
+/** Pallet racking along local x: blue uprights, orange beams, three levels of loaded pallets. */
+function rack(b, o) {
+  const len = o.len || 12
+  const s = (o.seed || 0.4) * 80
+  const bays = Math.max(1, Math.round(len / 2.8))
+  const bw = len / bays
+  for (let i = 0; i <= bays; i += 1) {
+    const x = -len / 2 + i * bw
+    for (const z of [-0.5, 0.5]) b.box(x, 2.3, z, 0.09, 4.6, 0.09, '#2f5a8f')
+    for (let y = 0.6; y < 4.6; y += 1.2) b.bar(x, y, -0.5, x, y + 0.6, 0.5, 0.04, '#2f5a8f')
+  }
+  for (const y of [0.15, 1.6, 3.05]) {
+    for (const z of [-0.5, 0.5]) b.box(0, y, z, len, 0.12, 0.08, '#e07a20')
+    b.box(0, y + 0.07, 0, len, 0.02, 1, '#7d8186', 'detail', 2, 8)
+    for (let i = 0; i < bays; i += 1) {
+      const k = hash(s + i, y * 3)
+      if (k < 0.12) continue
+      const x = -len / 2 + (i + 0.5) * bw
+      const gh = y > 3 ? 0.9 : 1.15
+      b.box(x, y + 0.14, 0, bw * 0.8, 0.12, 0.95, '#8a6a46')
+      const c = GOODS[(k * GOODS.length * 7) % GOODS.length | 0]
+      if (k > 0.85) {
+        for (const dx of [-0.35, 0.35]) for (const dz of [-0.22, 0.22]) b.cyl(x + dx * bw * 0.6, y + 0.2 + 0.45, dz, 0.22, 0.22, 0.9, '#2f5f8f', 8)
+      } else b.box(x, y + 0.2 + gh / 2, 0, bw * 0.76, gh, 0.9, c)
+    }
+  }
+}
+
+/** A counterbalance forklift, forks towards +x. */
+function forklift(b, o) {
+  const Y = o.color || '#e0b23a'
+  b.box(-0.2, 0.75, 0, 1.9, 0.8, 1.15, Y)
+  b.box(-1.0, 0.95, 0, 0.5, 1.1, 1.15, '#3a3d40')
+  b.box(-0.35, 1.25, 0, 0.6, 0.15, 0.6, '#1d1f21')
+  b.box(-0.55, 1.6, 0, 0.12, 0.6, 0.55, '#1d1f21')
+  for (const x of [-0.95, 0.45]) for (const z of [-0.5, 0.5]) b.box(x, 1.7, z, 0.07, 1.9, 0.07, '#2a2c2e')
+  b.box(-0.25, 2.65, 0, 1.55, 0.06, 1.1, '#2a2c2e')
+  for (const z of [-0.35, 0.35]) b.box(0.85, 1.6, z, 0.1, 3.2, 0.1, '#3a3d40')
+  b.box(0.92, 0.55, 0, 0.08, 0.9, 0.95, '#3a3d40')
+  for (const z of [-0.3, 0.3]) b.box(1.45, 0.08, z, 1.1, 0.06, 0.12, '#2a2c2e')
+  b.box(0.2, 1.05, 0.59, 0.5, 0.3, 0.02, '#1d1f21', 'detail', 2, 32)
+  b.box(-0.55, 2.75, 0, 0.18, 0.12, 0.18, '#f0a020', 'detail')
+  wheelsAt(b, [-0.75, 0.55], 0.5, 0.3)
+}
+
 const DRAW = {
+  shedwall,
+  truss,
+  rack,
+  forklift,
   barracks,
   flagpole,
   climbwall,

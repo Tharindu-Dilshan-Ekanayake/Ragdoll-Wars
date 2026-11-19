@@ -677,6 +677,101 @@ function glassMaterial(sky) {
   return m
 }
 
+/**
+ * An indoor floor (`map.floor`: { x, z, w, d, tile, colors: [a, b], grout }): square
+ * tiles in two tones with grout lines, a little wear and grime, the map's painted lines
+ * and lettering over them, and contact shadows round everything standing on it - its
+ * own texture, sharper than the ground's, drawn on a plane just above the ground.
+ */
+function paintFloor(map, size) {
+  const f = map.floor
+  const c = document.createElement('canvas')
+  c.width = size
+  c.height = Math.max(64, Math.round((size * f.d) / f.w))
+  const ctx = c.getContext('2d')
+  const kx = c.width / f.w
+  const kz = c.height / f.d
+  const x0 = f.x - f.w / 2
+  const z0 = f.z - f.d / 2
+  const toX = (x) => (x - x0) * kx
+  const toY = (z) => (z - z0) * kz
+  const t = f.tile || 1.6
+  const [ca, cb] = f.colors || ['#b9b6ae', '#a9a69f']
+  for (let i = 0; i * t < f.w; i += 1) {
+    for (let j = 0; j * t < f.d; j += 1) {
+      ctx.fillStyle = (i + j) % 2 ? cb : ca
+      ctx.fillRect(i * t * kx, j * t * kz, t * kx + 1, t * kz + 1)
+      // Each tile a shade off its neighbours.
+      const k = hash(i * 1.31, j * 2.17)
+      ctx.fillStyle = k > 0.5 ? `rgba(255,255,255,${(k - 0.5) * 0.08})` : `rgba(0,0,0,${(0.5 - k) * 0.1})`
+      ctx.fillRect(i * t * kx, j * t * kz, t * kx, t * kz)
+    }
+  }
+  // Grout.
+  ctx.strokeStyle = f.grout || 'rgba(55,55,55,0.35)'
+  ctx.lineWidth = Math.max(1, 0.05 * kx)
+  ctx.beginPath()
+  for (let x = t; x < f.w; x += t) {
+    ctx.moveTo(x * kx, 0)
+    ctx.lineTo(x * kx, c.height)
+  }
+  for (let z = t; z < f.d; z += t) {
+    ctx.moveTo(0, z * kz)
+    ctx.lineTo(c.width, z * kz)
+  }
+  ctx.stroke()
+  // Scuffs and oil stains, heavier along the busy middle.
+  for (let n = 0; n < 160; n += 1) {
+    const x = hash(n, 3.1) * f.w
+    const z = hash(n, 7.7) * f.d
+    const r = (0.4 + hash(n, 1.9) * 2.2) * kx
+    const g = ctx.createRadialGradient(x * kx, z * kz, 0, x * kx, z * kz, r)
+    g.addColorStop(0, `rgba(40,36,30,${0.05 + hash(n, 5.3) * 0.1})`)
+    g.addColorStop(1, 'rgba(40,36,30,0)')
+    ctx.fillStyle = g
+    ctx.fillRect(x * kx - r, z * kz - r, r * 2, r * 2)
+  }
+  // The map's floor markings.
+  ctx.lineCap = 'butt'
+  for (const ln of map.lines || []) {
+    ctx.strokeStyle = ln.color
+    ctx.lineWidth = Math.max(1, ln.width * kx)
+    ctx.setLineDash(ln.dash ? ln.dash.map((n) => n * kx) : [])
+    ctx.beginPath()
+    ln.points.forEach(([x, z], i) => (i ? ctx.lineTo(toX(x), toY(z)) : ctx.moveTo(toX(x), toY(z))))
+    ctx.stroke()
+  }
+  ctx.setLineDash([])
+  for (const tx of map.texts || []) {
+    ctx.save()
+    ctx.translate(toX(tx.x), toY(tx.z))
+    ctx.rotate(tx.rot || 0)
+    ctx.fillStyle = tx.color || 'rgba(240,240,235,0.9)'
+    ctx.font = `bold ${Math.round(tx.size * kz)}px sans-serif`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(tx.text, 0, 0)
+    ctx.restore()
+  }
+  // Contact shadows under everything that stands on the floor.
+  for (const o of mapObstacles(map)) {
+    if (o.water || o.h < 0.3) continue
+    const lift = Math.min(1, o.h / 2.6) * 0.6 + 0.4
+    for (const [pad, a] of [
+      [1.2, 0.06],
+      [0.6, 0.08],
+      [0.25, 0.12],
+    ]) {
+      ctx.fillStyle = `rgba(20,20,22,${a * lift})`
+      ctx.fillRect(toX(o.x - o.w / 2 - pad), toY(o.z - o.d / 2 - pad), (o.w + pad * 2) * kx, (o.d + pad * 2) * kz)
+    }
+  }
+  const tex = new CanvasTexture(c)
+  tex.colorSpace = SRGBColorSpace
+  tex.anisotropy = 8
+  return tex
+}
+
 function basinGeometry(water) {
   const parts = water.map((r) => {
     const g = new PlaneGeometry(r.w, r.d).rotateX(-Math.PI / 2).translate(r.x, 0.07, r.z)
@@ -942,6 +1037,9 @@ export default function MapView({ map, focus }) {
     const sets = terrain ? buildSetGeometries(map) : null
     const basins = terrain && map.water?.length ? basinGeometry(map.water) : null
     const quays = basins ? quayCurbs(map.water) : null
+    // An indoor floor (the warehouse), on its own sharper texture.
+    const floorMap = terrain && map.floor ? paintFloor(map, maxTexture >= 1024 ? 1024 : 512) : null
+    const floor = floorMap ? new PlaneGeometry(map.floor.w, map.floor.d).rotateX(-Math.PI / 2).translate(map.floor.x, 0.012, map.floor.z) : null
     const mats = {
       ground: groundMap ? groundMaterial(groundMap, tex.grass) : null,
       concrete: withGrime(new MeshLambertMaterial({ vertexColors: true, map: tex.concrete }), 'ff-grime-concrete'),
@@ -958,8 +1056,9 @@ export default function MapView({ map, focus }) {
       hills: new MeshLambertMaterial({ vertexColors: true, side: DoubleSide }),
       sea: map.sea ? seaMaterial(map.sea.z) : null,
       basin: basins ? basinMaterial() : null,
+      floor: floorMap ? new MeshLambertMaterial({ map: floorMap }) : null,
     }
-    return { ground, groundMap, cover, piecesGeo, fence, hills, sea, sets, basins, quays, mats }
+    return { ground, groundMap, cover, piecesGeo, fence, hills, sea, sets, basins, quays, floor, floorMap, mats }
   }, [map, terrain, maxTexture, viewDistance])
 
   // The sea and basins roll (MEDIUM and HIGH; on LOW they hold still).
@@ -1013,6 +1112,8 @@ export default function MapView({ map, focus }) {
       for (const g of Object.values(world.sets || {})) g?.dispose()
       world.basins?.dispose()
       world.quays?.dispose()
+      world.floor?.dispose()
+      world.floorMap?.dispose()
       for (const m of Object.values(world.mats)) m?.dispose()
     },
     [world],
@@ -1036,6 +1137,7 @@ export default function MapView({ map, focus }) {
       {world.hills && <mesh geometry={world.hills} material={mats.hills} />}
       {world.sea && <mesh geometry={world.sea} material={mats.sea} />}
       {world.basins && <mesh geometry={world.basins} material={mats.basin} />}
+      {world.floor && <mesh geometry={world.floor} material={mats.floor} receiveShadow={shadows} />}
       {world.quays && <mesh geometry={world.quays} material={mats.concrete} receiveShadow={shadows} />}
       {world.sets?.plain && <mesh geometry={world.sets.plain} material={mats.plain} castShadow={shadows} receiveShadow={shadows} />}
       {world.sets?.concrete && world.sets.concrete.index?.count > 0 && <mesh geometry={world.sets.concrete} material={mats.concrete} castShadow={shadows} receiveShadow={shadows} />}
@@ -1054,7 +1156,7 @@ export default function MapView({ map, focus }) {
       {world.fence && <mesh geometry={world.fence} material={mats.plain} />}
       {trees.trunks.count > 0 && <primitive object={trees.trunks} castShadow={shadows} />}
       {trees.crowns.count > 0 && <primitive object={trees.crowns} castShadow={shadows} />}
-      {terrain && <Scatter map={map} />}
+      {terrain && theme.scatter !== 'none' && <Scatter map={map} />}
       {terrain && <Rampart map={map} />}
       {terrain && <Mist map={map} />}
     </group>

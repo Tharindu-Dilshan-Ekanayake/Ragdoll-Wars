@@ -4,6 +4,13 @@
  */
 export const MAPS = [
   {
+    id: 'warehouse',
+    name: 'Steelbay Warehouse',
+    blurb: 'Close quarters inside a distribution warehouse: a tiled floor, long aisles of pallet racking between two loading bays, forklifts and crates round a glass office in the middle.',
+    size: '120 × 80 m',
+    load: () => import('./steelbayWarehouse.js'),
+  },
+  {
     id: 'training',
     name: 'Training Grounds',
     blurb: 'An army training base: barracks round a parade ground, Nissen huts, a motor pool, an assault course, a rifle range and a walled killhouse in the middle.',

@@ -210,7 +210,7 @@ function MultiplayerPanel() {
   const { identity } = useBloxity()
   const status = useNet((s) => s.status)
   const message = useNet((s) => s.message)
-  const [mapId, setMapId] = useState('training')
+  const [mapId, setMapId] = useState(MAPS[0].id)
   const [mode, setMode] = useState('sandbox')
   const [code, setCode] = useState('')
   const name = identity?.displayName || identity?.username || 'Commander'

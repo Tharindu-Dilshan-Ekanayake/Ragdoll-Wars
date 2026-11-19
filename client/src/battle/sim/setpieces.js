@@ -116,6 +116,11 @@ const KINDS = {
   },
   church: () => [B(0, -2, 10, 16, 7), B(0, 8, 4.4, 4.4, 14)],
   bus: () => [B(0, 0, 11, 2.6, 3)],
+  // Warehouse interiors.
+  shedwall: (o) => [B(0, 0, o.len || 20, 0.6, o.h || 8)],
+  truss: () => [],
+  rack: (o) => [B(0, 0, o.len || 12, 1.1, 4.6)],
+  forklift: () => [B(0, 0, 2.7, 1.25, 2.2)],
 }
 
 export const SET_KINDS = Object.keys(KINDS)
