@@ -21,6 +21,25 @@ const params = new URLSearchParams(typeof window !== 'undefined' ? window.locati
 const MATCHMAKER_GIVE_UP_MS = 45_000
 const DEV_PORTS = [2567]
 
+/**
+ * The battle code in whatever a friend pasted: the bare code ("8PP2A") or an invite link
+ * (".../?join=8PP2A"). Upper-case, letters and digits only; '' if there's none.
+ */
+export function parseCode(text) {
+  const raw = String(text || '').trim()
+  const m = /[?&#]join=([^&#\s]+)/i.exec(raw)
+  return (m ? m[1] : raw).toUpperCase().replace(/[^A-Z0-9]/g, '')
+}
+
+/** A link that takes a friend straight into the battle with `code`. */
+export function inviteLink(code) {
+  const url = new URL(window.location.href)
+  url.search = ''
+  url.hash = ''
+  url.searchParams.set('join', code)
+  return url.toString()
+}
+
 /** The live connection's pieces the battle uses. */
 export const net = {
   room: null,
@@ -142,7 +161,7 @@ export async function joinBattle(how, name) {
     const { equipped, proportions } = getBloxityState()
     const options = { name, token: joinToken(), gameSlug: GAME_SLUG, avatar: { e: equipped || null, p: proportions } }
     let room
-    if (how.kind === 'code') room = await client.joinById(String(how.code || '').trim().toUpperCase(), options)
+    if (how.kind === 'code') room = await client.joinById(parseCode(how.code), options)
     else if (how.kind === 'private') room = await client.create('battle', { ...options, mode: how.mode, mapId: how.mapId, private: true })
     else room = await client.joinOrCreate('battle', { ...options, mode: how.mode, mapId: how.mapId || 'training' })
     attach(room)

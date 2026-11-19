@@ -13,7 +13,7 @@ import { MAPS } from '../maps'
 import { applySave, saveCounts, serialize } from '../sim/saveGame'
 import { battle } from '../state'
 import { deleteSelection, deselect, focusSelection, giveOrder, quickBattle, restartRun, selectAll, setSpeedCmd, setTeamCmd, startWaveNow, togglePauseCmd } from '../commands'
-import { net } from '../../net/battleNet'
+import { inviteLink, net } from '../../net/battleNet'
 import { me, useNet } from '../../store/net'
 import { PRICES } from '../sim/zombies'
 import TouchStick from '../../lobby/TouchStick'
@@ -738,7 +738,36 @@ function RoomPanel() {
   const players = useNet((s) => s.players)
   const code = useNet((s) => s.code)
   const sid = useNet((s) => s.sessionId)
+  const known = useRef(null)
+  // Tells you when someone joins or leaves.
+  useEffect(() => {
+    if (status !== 'online') {
+      known.current = null
+      return
+    }
+    const now = new Map(players.map((p) => [p.sid, p.name]))
+    if (known.current) {
+      for (const [id, name] of now) if (!known.current.has(id) && id !== sid) useHud.getState().showToast(`${name} joined the battle`, 'info')
+      for (const [id, name] of known.current) if (!now.has(id)) useHud.getState().showToast(`${name} left`, 'info')
+    }
+    known.current = now
+  }, [players, status, sid])
   if (status !== 'online') return null
+  // Sends the invite link: the phone's share sheet where there is one, else the clipboard.
+  const invite = async () => {
+    const link = inviteLink(code)
+    sfx.click()
+    try {
+      if (isTouch && navigator.share) {
+        await navigator.share({ title: 'Floppy Front', text: `Join my battle! Code ${code}`, url: link })
+        return
+      }
+      await navigator.clipboard.writeText(link)
+      useHud.getState().showToast('Invite link copied: send it to your friends', 'info')
+    } catch (err) {
+      if (err?.name !== 'AbortError') useHud.getState().showToast(`Send them this code: ${code}`, 'info')
+    }
+  }
   return (
     <div className="ff-room">
       <div className="ff-room__head">
@@ -749,6 +778,11 @@ function RoomPanel() {
           </span>
         )}
       </div>
+      {code && (
+        <button type="button" className="ff-btn ff-btn--small ff-room__invite" onClick={invite}>
+          {isTouch && navigator.share ? 'Invite friends' : 'Copy invite link'}
+        </button>
+      )}
       {players.map((p) => (
         <div key={p.sid} className="ff-room__player">
           <span className={`ff-room__dot ff-room__dot--${p.team}`} />

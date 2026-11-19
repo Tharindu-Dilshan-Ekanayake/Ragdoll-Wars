@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 
 import { sfx } from '../audio/sfx'
 import { useBloxity } from '../bloxity/BloxityContext'
@@ -7,9 +7,15 @@ import { STATIONS } from './seaFort'
 import { lobby, useLobby } from './lobbyState'
 import StationPanels from './StationPanels'
 import { cloudText, useCloud } from '../net/cloud'
+import { joinBattle, parseCode } from '../net/battleNet'
+import { useNet } from '../store/net'
 import TouchStick from './TouchStick'
 
 const isTouch = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches
+
+/** The battle code in this page's address (an invite link: ?join=CODE), read once. */
+const inviteCode = typeof window !== 'undefined' ? parseCode(new URLSearchParams(window.location.search).get('join')) : ''
+let inviteTaken = false
 
 /**
  * The lobby HUD: settings and help top-right under your name and
@@ -25,6 +31,26 @@ export default function LobbyHud() {
   const station = STATIONS.find((s) => s.id === zone)
   const name = identity?.displayName || identity?.username || 'Commander'
   const cloud = useCloud((s) => s.status)
+  const netStatus = useNet((s) => s.status)
+  const netMessage = useNet((s) => s.message)
+  // An invite link: join that battle as soon as we know who you are (or after a moment,
+  // for a guest on a build without a Boxity sign-in).
+  const [invited, setInvited] = useState(Boolean(inviteCode))
+  const [waited, setWaited] = useState(false)
+  useEffect(() => {
+    if (!inviteCode) return undefined
+    const id = setTimeout(() => setWaited(true), 2500)
+    return () => clearTimeout(id)
+  }, [])
+  useEffect(() => {
+    if (!inviteCode || inviteTaken || !(isReady || waited)) return
+    inviteTaken = true
+    // The link has done its job: a refresh shouldn't try to join again.
+    const url = new URL(window.location.href)
+    url.searchParams.delete('join')
+    window.history.replaceState(null, '', url.toString())
+    joinBattle({ kind: 'code', code: inviteCode }, name)
+  }, [isReady, waited, name])
 
   // E opens the station you're standing on; Esc closes a panel.
   useEffect(() => {
@@ -116,6 +142,16 @@ export default function LobbyHud() {
           {!isTouch && <span className="ff-prompt__key">E</span>}
           Open {station.title}
         </button>
+      )}
+      {invited && (netStatus === 'connecting' || netStatus === 'error') && (
+        <div className={`ff-invite ${netStatus === 'error' ? 'is-error' : ''}`}>
+          <span>{netStatus === 'error' ? netMessage : `Joining battle ${inviteCode}…`}</span>
+          {netStatus === 'error' && (
+            <button type="button" className="ff-btn ff-btn--small" onClick={() => setInvited(false)}>
+              OK
+            </button>
+          )}
+        </div>
       )}
       <TouchStick />
       <StationPanels />

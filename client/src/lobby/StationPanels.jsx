@@ -7,7 +7,7 @@ import { useProgress, ZOMBIE_BADGES } from '../store/progress'
 import { useEffect, useState } from 'react'
 
 import { useBloxity } from '../bloxity/BloxityContext'
-import { joinBattle } from '../net/battleNet'
+import { joinBattle, parseCode } from '../net/battleNet'
 import { cloudText, fetchBoards, useCloud } from '../net/cloud'
 import { LEADERBOARDS } from '../shared/profile'
 import { useNet } from '../store/net'
@@ -262,12 +262,12 @@ function MultiplayerPanel() {
           <input
             className="ff-input"
             value={code}
-            maxLength={8}
-            placeholder="Battle code"
-            onChange={(e) => setCode(e.target.value.toUpperCase())}
-            onKeyDown={(e) => e.key === 'Enter' && code.trim() && go({ kind: 'code', code })}
+            maxLength={200}
+            placeholder="Battle code or invite link"
+            onChange={(e) => setCode(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && parseCode(code) && go({ kind: 'code', code })}
           />
-          <button type="button" className="ff-btn" disabled={busy || !code.trim()} onClick={() => go({ kind: 'code', code })}>
+          <button type="button" className="ff-btn" disabled={busy || !parseCode(code)} onClick={() => go({ kind: 'code', code })}>
             Join
           </button>
         </div>

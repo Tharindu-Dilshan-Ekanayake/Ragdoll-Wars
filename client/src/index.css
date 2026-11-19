@@ -2147,3 +2147,36 @@ button {
     top: 262px;
   }
 }
+
+/* --- Invite links (multiplayer) ----------------------------------------------------- */
+.ff-room__invite {
+  margin: calc(var(--u) * 6) 0 calc(var(--u) * 4);
+  width: 100%;
+  justify-content: center;
+}
+.ff-invite {
+  position: absolute;
+  top: calc(var(--u) * 80);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u) * 12);
+  max-width: calc(100vw - 24px);
+  padding: calc(var(--u) * 10) calc(var(--u) * 18);
+  border-radius: 99px;
+  background: var(--ff-bg);
+  border: 1px solid var(--ff-line);
+  color: var(--ff-text);
+  font-family: var(--ff-display);
+  font-size: calc(var(--u) * 16);
+}
+.ff-invite.is-error {
+  border-color: rgba(255, 107, 90, 0.6);
+  color: #ffb4a8;
+}
+@media (orientation: portrait) {
+  .ff-invite {
+    top: 160px;
+  }
+}
