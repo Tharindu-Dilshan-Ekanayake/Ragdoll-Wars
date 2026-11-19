@@ -454,6 +454,16 @@ export function zombieStep(w, s, type, h) {
     s.goalZ = prey ? prey.z : s.z
     s.wallSeg = -1
     const r = w.rampart
+    // Through the wall and chasing someone it can't get at for a long while (round the
+    // camp, under the wall where the troops on top can't shoot it): on for the camp itself.
+    if (r && s.x < r.back && prey) {
+      if (!s.behindAt) s.behindAt = w.time
+      if (w.time - s.behindAt > 40) {
+        prey = null
+        s.goalX = -w.obs.limitX - 6
+        s.goalZ = s.z
+      }
+    } else s.behindAt = 0
     if (r && s.x > r.back - 0.5) {
       // Still out in front of the wall: only what's out here too can be reached.
       if (prey && prey.x < r.front + 0.5) prey = null

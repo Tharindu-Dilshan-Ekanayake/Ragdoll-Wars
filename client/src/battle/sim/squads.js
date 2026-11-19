@@ -8,12 +8,12 @@ import { UNIT_TYPES } from './units.js'
  *   and the leader waits for stragglers.
  * - In contact (someone in the squad can see the enemy) it bounds: one fire team dashes
  *   to the next cover while the other stays put and shoots (overwatch), then they swap.
- *   A machine gunner is always on overwatch.
  * - Pinned (most of the squad under heavy fire), nobody moves up: they get down and
  *   shoot back until the fire slackens.
  *
- * Who joins: riflemen, SMGs, shotguns, machine guns, rockets, flamers, pistols. Snipers,
- * mortar crews and medics work on their own, and so does anyone up on a rampart.
+ * Who joins: riflemen, SMGs, shotguns, rockets, flamers, pistols. Snipers and machine
+ * gunners set up on posts of their own (world.js postThink), mortar crews and medics work
+ * on their own, and so does anyone up on a rampart.
  * Soldiers join on landing (the nearest squad of their team within 14 m with room, or a
  * new one), and again after a revive or a loaded save. The thinking per soldier is in
  * world.js (squadThink); this keeps the squads' shared state, twice a second.
@@ -79,7 +79,7 @@ export function createSquads() {
 
 /** Whether soldier `s` of `type` fights in a squad (not support, not on a wall). */
 export function squadable(s, type) {
-  return !(type.indirect || type.crew || type.medic || type.unarmed || type.zombieAI || type.key === 'sniper' || s.loaderOf >= 0 || s.deck >= 0)
+  return !(type.indirect || type.crew || type.medic || type.unarmed || type.zombieAI || type.key === 'sniper' || type.key === 'mg' || s.loaderOf >= 0 || s.deck >= 0)
 }
 
 /** Takes `s` out of its squad (a slot reused, a soldier removed). */

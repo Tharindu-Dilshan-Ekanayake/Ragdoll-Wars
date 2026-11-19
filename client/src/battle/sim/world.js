@@ -360,7 +360,72 @@ function updateSoldier(w, s, h) {
   }
   combat(w, s, type, h)
   move(w, s, type, h)
+  if (s.dragging) dragPatient(w, s)
   animStep(s, h)
+}
+
+/**
+ * A medic reaching a downed soldier out in the open, with the enemy close and in sight
+ * of him: picks where to drag him - free cover nearby that shelters him from that enemy,
+ * else 8 m back towards their own side. False when he's safe enough where he is.
+ */
+function startDrag(w, s, q) {
+  const e = q.nearest
+  if (!e || !e.alive) return false
+  const ed = Math.hypot(e.x - q.x, e.z - q.z)
+  if (ed > 60) return false
+  // (Seen at a kneeling medic's height: that's who'd be working out there.)
+  if (q.suppress < 0.2 && segmentHit3D(w.obs, e.x, eyeH(e), e.z, q.x, q.fy + 1.0, q.z, 1.2) !== Infinity) return false
+  const spots = w.coverSpots
+  let best = -1
+  let bestD = 15
+  for (let i = 0; i < spots.length; i += 1) {
+    const sp = spots[i]
+    if (sp.taken >= 0 || Math.abs(sp.y - q.fy) > 0.8) continue
+    const d = Math.hypot(sp.x - q.x, sp.z - q.z)
+    if (d >= bestD || d < 1.5) continue
+    if ((e.x - sp.x) * sp.nx + (e.z - sp.z) * sp.nz > -1) continue
+    best = i
+    bestD = d
+  }
+  if (best >= 0) {
+    s.dragX = spots[best].x
+    s.dragZ = spots[best].z
+  } else {
+    const home = w.centroid[s.team]
+    let ax = q.x - e.x
+    let az = q.z - e.z
+    const al = Math.hypot(ax, az) || 1
+    ax = ax / al + (home.x - q.x) * 0.02
+    az = az / al + (home.z - q.z) * 0.02
+    const l = Math.hypot(ax, az) || 1
+    s.dragX = clamp(q.x + (ax / l) * 8, -w.obs.limitX + 1, w.obs.limitX - 1)
+    s.dragZ = clamp(q.z + (az / l) * 8, -w.obs.limitZ + 1, w.obs.limitZ - 1)
+  }
+  s.dragging = true
+  setGoal(s, s.dragX, s.dragZ)
+  emitSound(w.fx, 'heal', q.x, 1, q.z, 0)
+  return true
+}
+
+/** The patient a medic is dragging comes along behind him, head first, on his back. */
+function dragPatient(w, s) {
+  const q = s.patient
+  if (!q || !q.alive || !q.downed || q.id !== s.patientId) {
+    s.dragging = false
+    return
+  }
+  POS.x = s.x - Math.sin(s.yaw) * 0.95
+  POS.z = s.z - Math.cos(s.yaw) * 0.95
+  collideCircle(w.obs, POS, SOLDIER_RADIUS * 0.8)
+  q.x = POS.x
+  q.z = POS.z
+  q.fy = s.fy
+  q.vx = s.vx
+  q.vz = s.vz
+  q.yaw = s.yaw + Math.PI
+  q.goalMode = 0
+  q.dragT = w.time
 }
 
 /** Eye/muzzle/chest heights blend with stance. */
@@ -480,10 +545,24 @@ function think(w, s, type) {
       s.targetId = 0
       s.sees = false
       releaseCover(w, s)
+      // Hauling him into cover (he follows: dragPatient), then patching him up there.
+      if (s.dragging) {
+        if (!q.alive || !q.downed || Math.hypot(s.dragX - s.x, s.dragZ - s.z) < 0.7) {
+          s.dragging = false
+          s.goalMode = 0
+        } else setGoal(s, s.dragX, s.dragZ)
+        s.wantProne = false
+        s.wantCrouch = false
+        return
+      }
       patientPos(q, PPOS)
       const dx = PPOS.x - s.x
       const dz = PPOS.z - s.z
       const d = Math.hypot(dx, dz)
+      if (d < 1.4 && !s.dragDone && q.alive && q.downed) {
+        s.dragDone = true
+        if (startDrag(w, s, q)) return
+      }
       if (d > 0.95) setGoal(s, PPOS.x - (dx / (d || 1)) * 0.75, PPOS.z - (dz / (d || 1)) * 0.75)
       else s.goalMode = 0
       s.wantProne = false
@@ -519,8 +598,8 @@ function think(w, s, type) {
   if (type.crew && !s.downed && !hasLoader(w, s)) findLoader(w, s)
 
   if (s.downed) {
-    // Drag themselves back a little, then lie there.
-    s.goalMode = s.downT < 2.5 ? 1 : 0
+    // Drag themselves back a little, then lie there (or get dragged by a medic).
+    s.goalMode = s.downT < 2.5 && w.time - s.dragT > 0.5 ? 1 : 0
     s.wantCrouch = false
     s.wantProne = false
     return
@@ -572,10 +651,12 @@ function think(w, s, type) {
         flanking = true
       }
     }
-    // In a squad: the wedge out of contact, bounding in contact (squads.js).
+    // In a squad: the wedge out of contact, bounding in contact (squads.js). Snipers and
+    // machine gunners set up on a post instead: high ground covering the enemy.
     const q = flanking ? null : squadOf(w, s)
     const inSquad = q ? squadThink(w, s, type, q, target, nearest, tdist) : null
     if (inSquad !== null) stationary = inSquad
+    else if (!flanking && POST[type.key] && s.deck < 0 && !w.zmode && postThink(w, s, type, target)) stationary = false
     else if (!flanking) {
       if (target && tdist <= type.engage * s.engageK) {
         // Close enough: into cover near here - badly hurt, cover behind - or, with none,
@@ -608,9 +689,10 @@ function think(w, s, type) {
     stationary = true
     if (!s.coverAt) s.coverAt = w.time
   }
-  // Pinned down in the open: get flat.
+  // Pinned down in the open: get flat. (In cover - a window, sandbags - a sniper or a
+  // gunner kneels to see over it.)
   const pinned = stationary && !inCover && Boolean(target) && s.suppress > 0.6 && !type.flame && !type.medic
-  s.wantProne = crawling || pinned || (type.prone && stationary && (Boolean(target) || s.order === 'hold'))
+  s.wantProne = crawling || pinned || (type.prone && stationary && !inCover && (Boolean(target) || s.order === 'hold'))
   s.wantCrouch = !s.wantProne && stationary && (inCover || Boolean(target) || s.hurtT < 3 || s.suppress > 0.35)
 }
 
@@ -668,6 +750,104 @@ function nextCover(w, s, type, target, tdist) {
     if (td > tdist - 4) continue
     if (tx * sp.nx + tz * sp.nz > -1) continue
     const score = d + td * 0.35 + crowding(sp) * 5 - highGround(sp, type)
+    if (score < bestScore) {
+      bestScore = score
+      best = i
+    }
+  }
+  return best
+}
+
+/**
+ * Posts: how far from the enemy a sniper or machine gunner likes to set up, as shares of
+ * his range (`near`-`far`, best at `ideal`), and whether he keeps behind his own front.
+ */
+const POST = {
+  sniper: { near: 0.28, far: 0.92, ideal: 0.55, back: true },
+  mg: { near: 0.22, far: 0.8, ideal: 0.48, back: false },
+}
+/** A post with nothing to shoot at for this long: move on to a better one. */
+const POST_IDLE = 15
+/** Nothing seen at all for this long: leave posts be and go and find the enemy. */
+const POST_HUNT = 30
+
+/**
+ * A sniper or machine gunner on an attack order: sets up on a post - a free cover spot,
+ * high ground first (upper floors, roofs, platforms), facing the enemy, at a good distance
+ * - and stays there while it's any use. Returns true while heading for or holding a post,
+ * false to fight as before (he's engaged where he stands, or there's no post to be had).
+ */
+function postThink(w, s, type, target) {
+  const spots = w.coverSpots
+  // Nobody seen for a long while (the end of a battle, a post with no view): go hunting.
+  if (s.seenT < 0 || target) s.seenT = w.time
+  if (w.time - s.seenT > POST_HUNT) {
+    if (s.post >= 0) releaseCover(w, s)
+    s.post = -1
+    return false
+  }
+  if (s.post >= 0 && s.cover === s.post) {
+    const sp = spots[s.post]
+    const foe = target || w.centroid[1 - s.team]
+    if (target) s.postIdle = w.time
+    const faces = (foe.x - sp.x) * sp.nx + (foe.z - sp.z) * sp.nz < -0.5
+    if (faces && w.time - s.postIdle < POST_IDLE) {
+      if (Math.hypot(sp.x - s.x, sp.z - s.z) > 0.4 || Math.abs(sp.y - s.fy) > 0.8) setGoal(s, sp.x, sp.z, sp.y)
+      else s.goalMode = 0
+      return true
+    }
+    // No use: not this one again for a while.
+    releaseCover(w, s)
+    s.postBan = s.post
+    s.postBanT = w.time + 40
+    s.post = -1
+  } else s.post = -1
+  // Shooting already from where he is (and not under heavy fire): carry on.
+  if (target && s.suppress < 0.5) return false
+  if (w.time < s.postNext) return false
+  s.postNext = w.time + 3
+  const best = findPost(w, s, type)
+  if (best < 0) return false
+  releaseCover(w, s)
+  const sp = spots[best]
+  sp.taken = s.slot
+  s.cover = best
+  s.coverAt = 0
+  s.post = best
+  s.postIdle = w.time
+  setGoal(s, sp.x, sp.z, sp.y)
+  return true
+}
+
+/** The best free post for `s` (see POST), or -1. */
+function findPost(w, s, type) {
+  const P = POST[type.key]
+  const foe = w.centroid[1 - s.team]
+  const mine = w.centroid[s.team]
+  let fx = foe.x - mine.x
+  let fz = foe.z - mine.z
+  const fl = Math.hypot(fx, fz) || 1
+  fx /= fl
+  fz /= fl
+  const spots = w.coverSpots
+  gatherTaken(spots, s.x, s.z, 85)
+  let best = -1
+  let bestScore = Infinity
+  for (let i = 0; i < spots.length; i += 1) {
+    const sp = spots[i]
+    if (sp.taken >= 0 || (i === s.postBan && w.time < s.postBanT)) continue
+    const dx = foe.x - sp.x
+    const dz = foe.z - sp.z
+    if (dx * sp.nx + dz * sp.nz > -1) continue
+    const df = Math.hypot(dx, dz)
+    if (df < type.range * P.near || df > type.range * P.far) continue
+    const dself = Math.hypot(sp.x - s.x, sp.z - s.z)
+    if (dself > 80) continue
+    let score = dself * 0.4 + Math.abs(df - type.range * P.ideal) * 0.25 + crowding(sp) * 4 - (sp.up ? 14 : 0) - sp.y * 1.5
+    // A sniper keeps back of his own front line.
+    const ahead = (sp.x - mine.x) * fx + (sp.z - mine.z) * fz
+    if (P.back && ahead > 0) score += ahead * 0.8
+    else if (!P.back && ahead > 15) score += (ahead - 15) * 0.6
     if (score < bestScore) {
       bestScore = score
       best = i
@@ -942,7 +1122,7 @@ function combat(w, s, type, h) {
       s.aimYaw += wrapAngle(Math.atan2(dx, dz) - s.aimYaw) * Math.min(1, h * 6)
       s.aimPitch *= 1 - Math.min(1, h * 3)
       s.ready = Math.max(0, s.ready - h * 3)
-      if (Math.hypot(dx, dz) < 1.4) {
+      if (Math.hypot(dx, dz) < 1.4 && !s.dragging) {
         s.healT += h
         if (s.healT >= (p.alive ? type.medic.time : type.medic.revive)) {
           if (p.alive) healPatient(w, p, type.medic)
@@ -1072,10 +1252,10 @@ const HIT = { soldier: null, dist: 0, part: 0 }
 /** How much a weapon's fire keeps heads down (per bullet; 1 = a rifle). */
 const SUPPRESSION = { mg: 2.6, sniper: 1.6, smg: 1.2, pistol: 0.7 }
 /** Small-arms spread in battle, times each weapon's own. */
-const BATTLE_SPREAD = 1.6
+const BATTLE_SPREAD = 1.8
 /** Small-arms damage in battle, times each weapon's own: more wounded, fewer dropped
  * outright, time for the medics; a firefight lasts. */
-const BATTLE_DAMAGE = 0.65
+const BATTLE_DAMAGE = 0.55
 /** A bullet this close (m) going past keeps a soldier's head down. */
 const NEAR_MISS = 2.5
 
@@ -1671,6 +1851,8 @@ function move(w, s, type, h) {
         if (s.wProne > 0.3 || s.wDown > 0.3) speed = 0
         if (s.staggerT > 0) speed *= 0.4
         if (s.target && type.runAndGun) speed *= 0.8
+        // Hauling a wounded man.
+        if (s.dragging) speed *= 0.42
       }
       speed *= Math.min(1, dist / 1.2)
       // Hand over hand up (or down) a ladder.

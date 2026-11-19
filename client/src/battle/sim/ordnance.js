@@ -605,6 +605,8 @@ export function assignPatient(s, p) {
   s.patient = p
   s.patientId = p.id
   s.healT = 0
+  s.dragging = false
+  s.dragDone = false
   p.medicId = s.id
   p.medicSlot = s.slot
 }
@@ -618,6 +620,7 @@ export function clearPatient(s) {
   s.patient = null
   s.patientId = 0
   s.healT = 0
+  s.dragging = false
 }
 
 /** Patches `p` up: health back, bleeding and fire out, back on their feet. */

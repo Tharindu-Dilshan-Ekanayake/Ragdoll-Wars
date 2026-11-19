@@ -53,6 +53,22 @@ export function makeSoldier(slot) {
     legX: 0,
     legZ: 0,
     legY: null,
+    /** A sniper's or gunner's post (cover spot index), when he last had a target there, next search. */
+    post: -1,
+    postIdle: 0,
+    postNext: 0,
+    postBan: -1,
+    postBanT: 0,
+    seenT: -1,
+    /** A medic hauling a downed man into cover: where to, and whether he has for this one. */
+    dragging: false,
+    dragDone: false,
+    dragX: 0,
+    dragZ: 0,
+    /** Last time a medic dragged this soldier (he lies still meanwhile). */
+    dragT: -99,
+    /** Zombie Horde: when this zombie got through the wall (0: it hasn't). */
+    behindAt: 0,
     flankDone: false,
     goalX: 0,
     goalZ: 0,
@@ -188,6 +204,16 @@ export function resetSoldier(s, type, team, x, z, yaw, order) {
   s.squadId = 0
   s.legDone = 0
   s.legOf = 0
+  s.post = -1
+  s.postIdle = 0
+  s.postNext = 0
+  s.postBan = -1
+  s.postBanT = 0
+  s.seenT = -1
+  s.dragging = false
+  s.dragDone = false
+  s.dragT = -99
+  s.behindAt = 0
   s.flankDone = false
   s.goalMode = 0
   s.goalY = null
