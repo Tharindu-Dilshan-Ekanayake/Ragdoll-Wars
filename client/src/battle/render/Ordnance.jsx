@@ -24,6 +24,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 
 import { useQuality } from '../../store/quality'
 import { drain } from '../sim/fx'
+import { groundAt } from '../sim/terrain'
 import { MAX_MINES, MAX_PROJECTILES } from '../sim/ordnance'
 import { J_PELVIS } from '../sim/rig'
 import { addFrameHook, battle, PHASE } from '../state'
@@ -255,7 +256,7 @@ export default function Ordnance() {
         if (age < 0.45) {
           const t = age / 0.45
           const r = e.radius * (0.4 + 1.3 * t)
-          put(M.rings, nR, e.x, 0.06, e.z, qFlat.identity(), r, 1, r)
+          put(M.rings, nR, e.x, groundAt(w.terrain, e.x, e.z) + 0.06, e.z, qFlat.identity(), r, 1, r)
           const k = (1 - t) * 0.8
           color(M.rings, nR, k, k * 0.85, k * 0.6)
           nR += 1
@@ -406,7 +407,7 @@ export default function Ordnance() {
         if (s.alive && s.patient && s.healT > 0 && nC < MAX_HEALS) {
           const p = s.patient
           q4.setFromAxisAngle(yAxis, time * 2.5)
-          put(M.crosses, nC, p.x, 2.15 + Math.sin(time * 4) * 0.06, p.z, q4, 1, 1, 1)
+          put(M.crosses, nC, p.x, groundAt(w.terrain, p.x, p.z) + 2.15 + Math.sin(time * 4) * 0.06, p.z, q4, 1, 1, 1)
           nC += 1
         }
       }
@@ -419,7 +420,7 @@ export default function Ordnance() {
       for (let i = 0; i < mines.length; i += 1) {
         const m = mines[i]
         if (!m.active) continue
-        put(M.mines, nM, m.x, 0.05, m.z, qFlat.identity(), 1, 1, 1)
+        put(M.mines, nM, m.x, groundAt(w.terrain, m.x, m.z) + 0.05, m.z, qFlat.identity(), 1, 1, 1)
         put(M.lights, nM, m.x, 0.13, m.z, qFlat.identity(), 1, 1, 1)
         const c = TEAM_LIGHT[m.team]
         const on = m.armT <= 0 ? (Math.sin(time * 5 + m.seed) > 0.4 ? 1 : DIM) : 0.5

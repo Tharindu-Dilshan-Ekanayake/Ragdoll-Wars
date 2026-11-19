@@ -1,5 +1,6 @@
 import { emitExplosion, emitFlame, emitFlash, emitImpact, emitSound } from './fx.js'
 import { collideCircle, segmentHit3D } from './obstacles.js'
+import { groundAt } from './terrain.js'
 import { startRagdoll } from './ragdoll.js'
 import { J_PELVIS, wrapAngle } from './rig.js'
 import { UNIT_TYPES } from './units.js'
@@ -203,7 +204,8 @@ export function updateProjectiles(w, h) {
     p.age += h
     // First thing hit along this step: cover, the ground, or (rockets) an enemy.
     let tHit = segmentHit3D(w.obs, ox, oy, oz, p.x, p.y, p.z, 0)
-    if (p.y <= 0) {
+    // (On a map with terrain the ground is already in segmentHit3D.)
+    if (!w.terrain && p.y <= 0) {
       const tg = oy / (oy - p.y)
       if (tg < tHit) tHit = tg
     }
@@ -259,7 +261,11 @@ export function updateProjectiles(w, h) {
 export function explode(w, x, y, z, radius, damage, attacker, anti = 1) {
   emitExplosion(w.fx, x, y, z, radius, w.time)
   emitSound(w.fx, 'boom', x, y, z, radius)
-  for (let k = 0; k < 6; k += 1) emitImpact(w.fx, x + gauss() * radius * 0.25, 0.05, z + gauss() * radius * 0.25, 0, w.time)
+  for (let k = 0; k < 6; k += 1) {
+    const ix = x + gauss() * radius * 0.25
+    const iz = z + gauss() * radius * 0.25
+    emitImpact(w.fx, ix, groundAt(w.terrain, ix, iz) + 0.05, iz, 0, w.time)
+  }
   emitImpact(w.fx, x, 0.4, z, 3, w.time)
 
   const living = w.living
@@ -345,7 +351,7 @@ export function placeMines(w, team, x, z, count) {
     m.armT = MINE_ARM
     m.trip = false
     m.seed = rand() * 10
-    emitImpact(w.fx, m.x, 0.05, m.z, 3, w.time)
+    emitImpact(w.fx, m.x, groundAt(w.terrain, m.x, m.z) + 0.05, m.z, 3, w.time)
     spawned += 1
   }
   if (spawned) emitSound(w.fx, 'reload', x, 0.2, z, 'mine')
@@ -392,7 +398,7 @@ export function updateMines(w, h) {
     }
     if (go) {
       m.active = false
-      explode(w, m.x, 0.15, m.z, blast.radius, blast.damage, null, 4)
+      explode(w, m.x, groundAt(w.terrain, m.x, m.z) + 0.15, m.z, blast.radius, blast.damage, null, 4)
     }
   }
 }

@@ -2,6 +2,7 @@ import { GRAVITY } from './constants.js'
 import { emitImpact, emitSound } from './fx.js'
 import { collideCircle, segmentClear2D, segmentHit3D } from './obstacles.js'
 import { explode, fireProjectile } from './ordnance.js'
+import { groundAt, slopeAt } from './terrain.js'
 import { crushStructures } from './structures.js'
 import { wrapAngle } from './rig.js'
 import { UNIT_TYPES } from './units.js'
@@ -327,10 +328,10 @@ function becomeWreck(w, v) {
   v.crashing = false
   v.wreckT = 0
   v.speed = 0
-  v.y = 0
+  v.y = groundAt(w.terrain, v.x, v.z)
   v.pitch = 0
   v.roll = 0
-  explode(w, v.x, 1, v.z, 3.5 + v.spec.radius, 110, null, 1)
+  explode(w, v.x, v.y + 1, v.z, 3.5 + v.spec.radius, 110, null, 1)
   bailOut(w, v)
 }
 
@@ -554,6 +555,7 @@ function gunStep(w, v, gun, h, timerKey, burstKey, t, mx, my, mz, aimed) {
 // --- Updating ----------------------------------------------------------------------------
 
 const FLOW = { x: 0, z: 0 }
+const SLOPE = { x: 0, z: 0 }
 
 export function updateVehicles(w, h) {
   const veh = w.veh
@@ -657,9 +659,20 @@ function groundStep(w, v, h) {
   collideCircle(w.obs, POS, spec.radius, true)
   v.x = clamp(POS.x, -w.obs.limitX + spec.radius, w.obs.limitX - spec.radius)
   v.z = clamp(POS.z, -w.obs.limitZ + spec.radius, w.obs.limitZ - spec.radius)
-  // A little body roll and pitch from speed and turning.
-  v.pitch += (-(dv / Math.max(1, spec.accel)) * 0.03 - v.pitch) * Math.min(1, h * 5)
-  v.roll += (clamp(wrapAngle(wantYaw - v.yaw), -0.6, 0.6) * Math.abs(v.speed) * 0.006 - v.roll) * Math.min(1, h * 5)
+  // A little body roll and pitch from speed and turning, and over hills the ground's
+  // own slope (nose up climbing, leaning across a bank).
+  let slopeP = 0
+  let slopeR = 0
+  if (w.terrain) {
+    v.y = groundAt(w.terrain, v.x, v.z)
+    slopeAt(w.terrain, v.x, v.z, SLOPE)
+    const fx = Math.sin(v.yaw)
+    const fz = Math.cos(v.yaw)
+    slopeP = -Math.atan(SLOPE.x * fx + SLOPE.z * fz)
+    slopeR = Math.atan(SLOPE.x * fz - SLOPE.z * fx)
+  }
+  v.pitch += (-(dv / Math.max(1, spec.accel)) * 0.03 + slopeP - v.pitch) * Math.min(1, h * 5)
+  v.roll += (clamp(wrapAngle(wantYaw - v.yaw), -0.6, 0.6) * Math.abs(v.speed) * 0.006 + slopeR - v.roll) * Math.min(1, h * 5)
 
   crowd(w, v)
 
@@ -803,8 +816,9 @@ function crashStep(w, v, h) {
   v.yaw += v.spinV * h
   v.roll += h * 0.6
   v.pitch += h * 0.3
-  if (v.y <= 0.3) {
-    v.y = 0
+  const ground = groundAt(w.terrain, v.x, v.z)
+  if (v.y <= ground + 0.3) {
+    v.y = ground
     emitImpact(w.fx, v.x, 0.5, v.z, 3, w.time)
     becomeWreck(w, v)
   }

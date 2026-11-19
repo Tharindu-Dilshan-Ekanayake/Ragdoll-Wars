@@ -8,6 +8,7 @@ import ErrorBoundary from '../../ui/ErrorBoundary'
 import { getTextures } from '../render/textures'
 import { drain } from '../sim/fx'
 import { segmentHit3D } from '../sim/obstacles'
+import { groundAt } from '../sim/terrain'
 import { addFrameHook, battle, PHASE } from '../state'
 import { arrivalCamera, stepArrival } from './arrivalFlight'
 import { blastWalker, stepWalker, WALK } from './walkMode'
@@ -210,7 +211,9 @@ export default function Walker() {
       } else sweepFrom.set = false
       _target.set(wk.x, wk.y + WALK.eye, wk.z)
       const h = Math.cos(c.pitch) * c.dist
-      _desired.set(_target.x + Math.sin(c.yaw) * h, Math.max(_target.y + Math.sin(c.pitch) * c.dist, 0.4), _target.z + Math.cos(c.yaw) * h)
+      const cx = _target.x + Math.sin(c.yaw) * h
+      const cz = _target.z + Math.cos(c.yaw) * h
+      _desired.set(cx, Math.max(_target.y + Math.sin(c.pitch) * c.dist, groundAt(w.terrain, cx, cz) + 0.4), cz)
       // Don't let a wall come between you and the camera: pull in in front of it.
       const hit = segmentHit3D(w.obs, _target.x, _target.y, _target.z, _desired.x, _desired.y, _desired.z)
       if (hit < 1) _desired.lerp(_target, 1 - Math.max(0.12, hit - 0.08))

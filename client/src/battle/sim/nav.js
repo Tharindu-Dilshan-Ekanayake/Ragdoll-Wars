@@ -1,4 +1,5 @@
-import { floorAt, ladderAt } from './levels.js'
+import { floorAt, ladderAt, levelFloorAt } from './levels.js'
+import { groundAt } from './terrain.js'
 
 /**
  * Ground navigation: a walkability grid over the map and cached flow fields on it.
@@ -53,27 +54,69 @@ export function createNavGrid(map, obstacles, L = null) {
   }
   let floor = null
   let ladder = null
+  let vblock = null
   if (L) {
     floor = new Float32Array(cols * rows)
     ladder = new Uint8Array(cols * rows)
+    vblock = new Uint8Array(cols * rows)
     for (let r = 0; r < rows; r += 1) {
       for (let c = 0; c < cols; c += 1) {
         const x = -halfW + (c + 0.5) * CELL
         const z = -halfD + (r + 0.5) * CELL
-        floor[r * cols + c] = floorAt(L, x, z)
-        ladder[r * cols + c] = ladderAt(L, x, z)
+        const i = r * cols + c
+        floor[i] = floorAt(L, x, z)
+        ladder[i] = ladderAt(L, x, z)
+        // Vehicles keep off raised floors and out of trenches.
+        vblock[i] = levelFloorAt(L, x, z) > 0.05 || groundAt(L.terrain, x, z) < -0.5 ? 1 : 0
       }
     }
   }
-  return { cols, rows, halfW, halfD, cell: CELL, blocked, floor, ladder, levels: L }
+  const grid = { cols, rows, halfW, halfD, cell: CELL, blocked, floor, ladder, vblock, levels: L, links: null }
+  grid.links = linkMask(grid)
+  return grid
+}
+
+/**
+ * Per cell, a bit for each of the 8 neighbours you can step to (NEIGHBOURS order): open,
+ * on a floor a step away or up a ladder, no corner cut past a wall or a drop. Worked out
+ * once so flow-field searches only test a bit.
+ */
+function linkMask(g) {
+  const { cols, rows, blocked, floor, ladder } = g
+  const links = new Uint8Array(cols * rows)
+  for (let r = 0; r < rows; r += 1) {
+    for (let c = 0; c < cols; c += 1) {
+      const cur = r * cols + c
+      if (blocked[cur]) continue
+      let m = 0
+      for (let k = 0; k < 8; k += 1) {
+        const nb = NEIGHBOURS[k]
+        const nc = c + nb[0]
+        const nr = r + nb[1]
+        if (nc < 0 || nr < 0 || nc >= cols || nr >= rows) continue
+        const ni = nr * cols + nc
+        if (blocked[ni] || !(joined(floor, cur, ni) || climbs(ladder, cur, ni, k))) continue
+        if (k >= 4) {
+          const a = r * cols + nc
+          const b = nr * cols + c
+          if (blocked[a] || blocked[b] || !joined(floor, cur, a) || !joined(floor, cur, b)) continue
+        }
+        m |= 1 << k
+      }
+      links[cur] = m
+    }
+  }
+  return links
 }
 
 /** The grid for ground vehicles: ramps and platforms blocked (null on a flat map). */
 export function vehicleGrid(grid) {
-  if (!grid.floor) return null
+  if (!grid.vblock) return null
   const blocked = grid.blocked.slice()
-  for (let i = 0; i < blocked.length; i += 1) if (grid.floor[i] > 0.05) blocked[i] = 1
-  return { ...grid, blocked, floor: null, ladder: null, levels: null }
+  for (let i = 0; i < blocked.length; i += 1) if (grid.vblock[i]) blocked[i] = 1
+  const v = { ...grid, blocked, floor: null, ladder: null, vblock: null, levels: null, links: null }
+  v.links = linkMask(v)
+  return v
 }
 
 /** Whether cells a and b (neighbours) are on floors a step apart or less. */
@@ -191,8 +234,13 @@ export class FlowFields {
     const g = this.grid
     const c = Math.floor((x + g.halfW) / (g.cell * 4))
     const r = Math.floor((z + g.halfD) / (g.cell * 4))
-    // Up on a platform is a different goal from the ground beside it.
-    const up = g.levels ? Math.round(floorAt(g.levels, x, z) * 2) : 0
+    // Up on a platform (or down in a trench) is a different goal from the ground beside
+    // it; over open hills it isn't.
+    let up = 0
+    if (g.levels) {
+      const lev = levelFloorAt(g.levels, x, z)
+      up = lev > 0.05 ? Math.round(lev * 2) : groundAt(g.levels.terrain, x, z) < -0.5 ? -1 : 0
+    }
     return up * 1e8 + r * 10000 + c
   }
 
@@ -225,21 +273,16 @@ export class FlowFields {
     heap.size = 0
     cost[goal] = 0
     heap.push(0, goal)
-    const { cols, rows, blocked, floor, ladder } = g
+    const { cols, ladder, links } = g
     while (heap.size > 0) {
       const cur = heap.pop()
       const cc = cost[cur]
-      const c = cur % cols
-      const r = (cur - c) / cols
+      const m = links[cur]
+      if (!m) continue
       for (let k = 0; k < 8; k += 1) {
+        if (!(m & (1 << k))) continue
         const nb = NEIGHBOURS[k]
-        const nc = c + nb[0]
-        const nr = r + nb[1]
-        if (nc < 0 || nr < 0 || nc >= cols || nr >= rows) continue
-        const ni = nr * cols + nc
-        if (blocked[ni] || !(joined(floor, cur, ni) || climbs(ladder, cur, ni, k))) continue
-        // No cutting corners past a wall (or a drop).
-        if (k >= 4 && (blocked[r * cols + nc] || blocked[nr * cols + c] || !joined(floor, cur, r * cols + nc) || !joined(floor, cur, nr * cols + c))) continue
+        const ni = cur + nb[1] * cols + nb[0]
         // Climbing is slow: a ladder cell costs three.
         const nextCost = cc + (ladder !== null && (ladder[ni] || ladder[cur]) ? nb[2] * 3 : nb[2])
         if (nextCost < cost[ni]) {

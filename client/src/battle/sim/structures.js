@@ -1,4 +1,6 @@
 import { emitImpact, emitSound } from './fx.js'
+import { levelFloorAt } from './levels.js'
+import { groundAt } from './terrain.js'
 import { explode } from './ordnance.js'
 import { BUILD_TYPES, pieceBoxes, piecePositions } from './pieces.js'
 import { rebuildStatic } from './world.js'
@@ -33,8 +35,14 @@ export function placeStructures(w, key, x, z, count, rot) {
   const lx = w.obs.limitX
   const lz = w.obs.limitZ
   let spawned = 0
+  let steep = false
   for (const p of piecePositions(key, x, z, n, rot)) {
     if (Math.abs(p.x) > lx || Math.abs(p.z) > lz) continue
+    // Pieces stand on level ground: not on a hillside, in a trench or up on a roof.
+    if (!levelGround(w, p.x, p.z)) {
+      steep = true
+      continue
+    }
     const st = {
       id: w.build.nextId++,
       key,
@@ -55,7 +63,26 @@ export function placeStructures(w, key, x, z, count, rot) {
     emitSound(w.fx, 'build', x, 0.3, z, 0)
     rebuildStatic(w)
   }
-  return { spawned, limited: n < count ? `Build limit reached (${w.caps.structures} pieces)` : null }
+  return { spawned, limited: n < count ? `Build limit reached (${w.caps.structures} pieces)` : steep ? 'Build on flat ground' : null }
+}
+
+/** Whether a piece at (x, z) would stand on level ground at ground level. */
+function levelGround(w, x, z) {
+  const L = w.levels
+  if (!L) return true
+  if (levelFloorAt(L, x, z) > 0.05) return false
+  const T = L.terrain
+  if (!T) return true
+  for (const [dx, dz] of [
+    [0, 0],
+    [1.2, 0],
+    [-1.2, 0],
+    [0, 1.2],
+    [0, -1.2],
+  ]) {
+    if (Math.abs(groundAt(T, x + dx, z + dz)) > 0.25) return false
+  }
+  return true
 }
 
 function removeStructureAt(w, x, z) {

@@ -35,7 +35,9 @@ import { BODIES_PER_RAGDOLL, startRagdoll, stepRagdoll } from './ragdoll.js'
 import { animate, J_PELVIS, wrapAngle } from './rig.js'
 import { makeSoldier, resetSoldier } from './soldier.js'
 import { createSpatial, rebuildSpatial } from './spatial.js'
+import { mapTerrain } from './ground.js'
 import { mapLevels } from './pieces.js'
+import { rayTerrain } from './terrain.js'
 import { BUILD_TYPES, clearStructures, createBuild, inWire, mapObstacles, placeStructures, settleStructures, wireZones } from './structures.js'
 import { initZombieMode, onZombieKilled, updateZombieMode, zombieStep } from './zombies.js'
 import { HEAVY_SHARE, UNIT_TYPES } from './units.js'
@@ -99,7 +101,10 @@ export function createWorld(map, caps, mode = 'sandbox') {
   const baseObstacles = mapObstacles(map)
   const obsMap = { ...map, obstacles: baseObstacles.slice() }
   const obs = buildObstacles(obsMap)
-  const levels = buildLevels(mapLevels(map))
+  // Hills and trenches (terrain.js): in the line of fire, and under everyone's feet.
+  const terrain = mapTerrain(map)
+  obs.terrain = terrain
+  const levels = buildLevels(mapLevels(map), terrain)
   const grid = createNavGrid(obsMap, obs, levels)
   const vgrid = vehicleGrid(grid)
   const slots = Array.from({ length: MAX_SLOTS }, (_, i) => makeSoldier(i))
@@ -115,6 +120,8 @@ export function createWorld(map, caps, mode = 'sandbox') {
     vflow: vgrid ? new FlowFields(vgrid, { budget: 1 }) : null,
     /** Platforms and ramps (levels.js), or null. */
     levels,
+    /** The ground's heightfield (terrain.js), or null on a flat map. */
+    terrain,
     coverSpots: coverSpotsFor(obs, levels),
     build: createBuild(),
     /** 'sandbox' or 'zombies' (Zombie Horde: zombies.js keeps its state in `zmode`). */
@@ -164,6 +171,7 @@ export function rebuildStatic(w) {
   for (const st of w.build.list) for (const o of st.boxes) obstacles.push(o)
   w.obsMap.obstacles = obstacles
   w.obs = buildObstacles(w.obsMap)
+  w.obs.terrain = w.terrain
   w.grid = createNavGrid(w.obsMap, w.obs, w.levels)
   w.flow = new FlowFields(w.grid, { budget: 1 })
   const vgrid = vehicleGrid(w.grid)
@@ -966,7 +974,14 @@ const VHIT = { vehicle: null, dist: 0 }
 export function castBullet(w, team, shooter, mx, my, mz, dx, dy, dz, len, damage, tracer, heavy) {
   let tEnd = segmentHit3D(w.obs, mx, my, mz, mx + dx * len, my + dy * len, mz + dz * len, 1.0)
   let kind = 2 // concrete/obstacle
-  if (dy < 0) {
+  if (w.terrain) {
+    // Into a hillside or a trench wall: dirt.
+    const tg = rayTerrain(w.terrain, mx, my, mz, mx + dx * len, my + dy * len, mz + dz * len)
+    if (tg <= tEnd) {
+      tEnd = tg
+      kind = 0
+    }
+  } else if (dy < 0) {
     const tg = -my / (dy * len)
     if (tg < tEnd) {
       tEnd = tg

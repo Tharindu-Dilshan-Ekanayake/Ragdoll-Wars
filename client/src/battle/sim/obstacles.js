@@ -1,3 +1,5 @@
+import { groundAt, rayTerrain } from './terrain.js'
+
 /**
  * Static battlefield geometry: the obstacle boxes, packed for fast queries.
  *
@@ -5,6 +7,9 @@
  * - `segmentClear2D`: can a soldier walk straight there (boxes grown by the body radius).
  * - `collideCircle`: pushes a soldier out of any box it walked into.
  * - `pushOutSphere`: the same for ragdoll joints, including standing on top of a box.
+ *
+ * On a map with terrain, `obs.terrain` (set by the world) adds the ground to the line of
+ * fire and to the walker's floor.
  *
  * Collision queries go through an 8 m bucket grid so each looks at a handful of boxes.
  * Line-of-fire queries test every box with a cheap 2D bounding-box reject first: a map
@@ -152,6 +157,11 @@ export function segmentHit3D(obs, ax, ay, az, bx, by, bz, lipSkip = 0) {
     if (tmin <= 0) continue // started inside this box
     if (lipSkip > 0 && h < LOW_COVER && tmin * len < lipSkip) continue
     if (tmin < best) best = tmin
+  }
+  // The ground itself, on maps with hills and trenches (terrain.js).
+  if (obs.terrain) {
+    const t = rayTerrain(obs.terrain, ax, ay, az, bx, by, bz)
+    if (t < best) best = t
   }
   return best
 }
@@ -348,10 +358,11 @@ export function collideWalker(obs, p, r, stepTop) {
  * `maxTop` that it overlaps, or 0 on open ground.
  */
 export function floorUnder(obs, x, z, r, maxTop) {
+  const ground = groundAt(obs.terrain, x, z)
   const list = bucketAt(obs, x, z)
-  if (!list) return 0
+  if (!list) return ground
   const d = obs.data
-  let h = 0
+  let h = ground
   const m = r * 0.5
   for (let k = 0; k < list.length; k += 1) {
     const o = list[k] * 5

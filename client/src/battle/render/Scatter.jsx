@@ -15,7 +15,9 @@ import {
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
 import { useQuality } from '../../store/quality'
+import { mapTerrain } from '../sim/ground'
 import { helipadsOf, PAD_SIZE } from '../sim/helipads'
+import { groundAt } from '../sim/terrain'
 import { mapObstacles } from '../sim/pieces'
 import { addFrameHook, PHASE } from '../state'
 import { hash } from './coverGeometry'
@@ -236,6 +238,7 @@ function groundTest(map) {
   // The helipads stay bare.
   for (const p of helipadsOf(map)) boxes.push({ x: p.x, z: p.z, w: PAD_SIZE, d: PAD_SIZE })
   const roads = map.roads || []
+  const trenches = map.terrain?.trenches || []
   const ice = map.ice || []
   const mud = map.mud || []
   const seaZ = map.sea ? map.sea.z + 1.5 : -Infinity
@@ -243,6 +246,7 @@ function groundTest(map) {
     if (z < seaZ) return false
     for (const o of boxes) if (Math.abs(x - o.x) < o.w / 2 + pad && Math.abs(z - o.z) < o.d / 2 + pad) return false
     for (const road of roads) if (distToPolyline(x, z, road.points) < road.width + 0.6) return false
+    for (const tr of trenches) if (distToPolyline(x, z, tr.points) < tr.w / 2 + 0.6) return false
     for (const c of ice) if (distToPolyline(x, z, c.points) < c.width + 0.8) return false
     // Trampled mud: bare in the middle, thinning in.
     for (const [mx, mz, mr] of mud) {
@@ -282,12 +286,14 @@ const s3 = new Vector3()
 const e3 = new Vector3()
 const tint = new Color()
 
-function instanced(geometry, material, points, place) {
+/** `terrain`: the ground the scatter stands on (sim/terrain.js), or null. */
+function instanced(terrain, geometry, material, points, place) {
   const mesh = new InstancedMesh(geometry, material, Math.max(1, points.length))
   mesh.count = points.length
   mesh.instanceColor = new InstancedBufferAttribute(new Float32Array(Math.max(1, points.length) * 3), 3)
   points.forEach((pt, i) => {
     place(pt)
+    if (terrain) p3.y += groundAt(terrain, p3.x, p3.z)
     m4.compose(p3, q4, s3)
     mesh.setMatrixAt(i, m4)
     mesh.setColorAt(i, tint)
@@ -309,6 +315,7 @@ export default function Scatter({ map }) {
 
   const set = useMemo(() => {
     const style = STYLES[map.theme?.scatter] || STYLES.meadow
+    const terrain = mapTerrain(map)
     const canGrow = groundTest(map)
     const area = ((map.width + 12) * (map.depth + 12)) / (182 * 122)
     const n = (k) => Math.round(k * area)
@@ -316,7 +323,7 @@ export default function Scatter({ map }) {
     const bladesPts = scatterPoints(map, n(counts.blades * (style.bladeShare ?? 1)), 11, canGrow, 0.25)
     const bladeGeo = tuftGeometry()
     const bladeMat = windy(new MeshLambertMaterial({ vertexColors: true }), wind, windClock)
-    const blades = instanced(bladeGeo, bladeMat, bladesPts, ([x, z, a, b, c]) => {
+    const blades = instanced(terrain, bladeGeo, bladeMat, bladesPts, ([x, z, a, b, c]) => {
       const [h0, h1] = style.blades.height
       const h = h0 + (h1 - h0) * a
       p3.set(x, 0, z)
@@ -329,7 +336,7 @@ export default function Scatter({ map }) {
     const propGeo = propGeometry()
     const propMat = new MeshLambertMaterial({ vertexColors: true, flatShading: true })
     const totalShare = style.props.reduce((s, k) => s + k.share, 0)
-    const props = instanced(propGeo, propMat, propPts, ([x, z, a, b, c]) => {
+    const props = instanced(terrain, propGeo, propMat, propPts, ([x, z, a, b, c]) => {
       let t = a * totalShare
       let kind = style.props[0]
       for (const k of style.props) {
@@ -353,7 +360,7 @@ export default function Scatter({ map }) {
       const flowerPts = scatterPoints(map, n(counts.flowers), 37, canGrow, 0.3)
       flowerGeo = flowerGeometry()
       flowerMat = windy(new MeshLambertMaterial({ vertexColors: true }), wind, windClock)
-      flowers = instanced(flowerGeo, flowerMat, flowerPts, ([x, z, a, b, c]) => {
+      flowers = instanced(terrain, flowerGeo, flowerMat, flowerPts, ([x, z, a, b, c]) => {
         const h = 0.28 + a * 0.22
         p3.set(x, 0, z)
         q4.setFromAxisAngle(e3.set(0, 1, 0), b * Math.PI * 2)

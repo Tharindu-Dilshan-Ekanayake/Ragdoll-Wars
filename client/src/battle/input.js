@@ -66,8 +66,11 @@ export function groundAt(cx, cy, out) {
       out.y = seg.h
     }
   }
-  // Platforms and ramps likewise.
-  if (rayLevels(battle.world?.levels, v1.x, v1.y, v1.z, v2.x - v1.x, dy, v2.z - v1.z, t, HIT)) {
+  // Platforms, ramps and the ground's hills and trenches likewise (looking on down past
+  // y = 0 for a trench floor).
+  const L = battle.world?.levels
+  const tFar = L?.terrain ? Math.max(t, (-3 - v1.y) / dy) : t
+  if (rayLevels(L, v1.x, v1.y, v1.z, v2.x - v1.x, dy, v2.z - v1.z, tFar, HIT)) {
     t = HIT.t
     out.y = HIT.y
   }

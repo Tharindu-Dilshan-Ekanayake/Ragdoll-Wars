@@ -1,3 +1,5 @@
+import { groundAt, rayTerrain, steepAlong } from './terrain.js'
+
 /**
  * Raised floors: platforms troops stand on and ramps up to them. Plain data and lookups
  * only, so the sim, the renderer and the input layer can all use them.
@@ -38,9 +40,14 @@ export function mirrorLevel(l) {
 /** Lookup buckets (m): each holds the levels overlapping it. */
 const BUCKET = 8
 
-/** A level list (mapLevels) prepared for lookups, or null if it's empty. */
-export function buildLevels(list) {
-  if (!list || !list.length) return null
+/**
+ * A level list (mapLevels) prepared for lookups, with the map's terrain (terrain.js, or
+ * null) folded in: floorAt is then the higher of a level and the ground. Null when there's
+ * neither.
+ */
+export function buildLevels(list, terrain = null) {
+  if ((!list || !list.length) && !terrain) return null
+  list = list || []
   const items = list.map((l) => ({
     x0: l.x - l.w / 2,
     x1: l.x + l.w / 2,
@@ -60,6 +67,11 @@ export function buildLevels(list) {
     z0 = Math.min(z0, it.z0)
     z1 = Math.max(z1, it.z1)
   }
+  if (!items.length) {
+    // Terrain only: an empty box no lookup falls in.
+    x0 = z0 = 1
+    x1 = z1 = 0
+  }
   const cols = Math.max(1, Math.ceil((x1 - x0) / BUCKET))
   const rows = Math.max(1, Math.ceil((z1 - z0) / BUCKET))
   const buckets = Array.from({ length: cols * rows }, () => [])
@@ -70,7 +82,7 @@ export function buildLevels(list) {
     const r1 = Math.min(rows - 1, Math.floor((it.z1 - z0) / BUCKET))
     for (let r = r0; r <= r1; r += 1) for (let c = c0; c <= c1; c += 1) buckets[r * cols + c].push(it)
   }
-  return { items, x0, x1, z0, z1, cols, rows, buckets }
+  return { items, x0, x1, z0, z1, cols, rows, buckets, terrain }
 }
 
 /** The levels that might be at (x, z) (inside the overall bounds). */
@@ -85,10 +97,18 @@ function heightOf(it, x, z) {
   return (it.h * (it.z1 - z)) / (it.z1 - it.z0)
 }
 
-/** Height of the floor at (x, z): a platform's top, partway up a ramp, or 0. */
+/** Height of the floor at (x, z): a platform's top, partway up a ramp, else the ground. */
 export function floorAt(L, x, z) {
-  if (!L || x < L.x0 || x > L.x1 || z < L.z0 || z > L.z1) return 0
-  let f = 0
+  if (!L) return 0
+  const g = L.terrain ? groundAt(L.terrain, x, z) : 0
+  const f = levelFloorAt(L, x, z)
+  return f > g ? f : g
+}
+
+/** The raised floor at (x, z) (level heights are over level ground), or -Infinity if none. */
+export function levelFloorAt(L, x, z) {
+  if (!L || x < L.x0 || x > L.x1 || z < L.z0 || z > L.z1) return -Infinity
+  let f = -Infinity
   const items = bucketOf(L, x, z)
   for (let i = 0; i < items.length; i += 1) {
     const it = items[i]
@@ -123,6 +143,7 @@ export function ladderAt(L, x, z) {
  */
 export function touchesLevels(L, ax, az, bx, bz, pad) {
   if (!L) return false
+  if (L.terrain && steepAlong(L.terrain, ax, az, bx, bz, STEP)) return true
   const minX = Math.min(ax, bx) - pad
   const maxX = Math.max(ax, bx) + pad
   const minZ = Math.min(az, bz) - pad
@@ -302,6 +323,15 @@ export function rayLevels(L, ox, oy, oz, dx, dy, dz, tMax, out) {
     out.t = t
     out.y = oy + dy * t
     hit = true
+  }
+  // The ground (hills, trenches).
+  if (L.terrain) {
+    const f = rayTerrain(L.terrain, ox, oy, oz, ox + dx * best, oy + dy * best, oz + dz * best)
+    if (f <= 1) {
+      out.t = f * best
+      out.y = oy + dy * out.t
+      hit = true
+    }
   }
   return hit
 }

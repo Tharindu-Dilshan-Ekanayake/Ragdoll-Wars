@@ -16,6 +16,7 @@ import {
 } from 'three'
 
 import { useQuality } from '../../store/quality'
+import { groundAt } from '../sim/terrain'
 import { CREW, MAX_JETS, MAX_VEHICLES, jetPosition } from '../sim/vehicles'
 import { addFrameHook, battle, PHASE } from '../state'
 import { buildCrewGeometries, crewMaterial } from './crewModel'
@@ -268,13 +269,13 @@ export default function Vehicles() {
         if (!realtimeShadows || v.spec.air || !near) {
           const lift = Math.min(1, y / 40)
           const size = v.spec.radius * 2.6 * (1 + lift * 0.5) * sc
-          mPart.compose(p.set(v.x, 0.03 + i * 0.0005, v.z), q.identity(), s.set(size, 1, size * (v.spec.air ? 1.6 : 1.3)))
+          mPart.compose(p.set(v.x, groundAt(w.terrain, v.x, v.z) + 0.03 + i * 0.0005, v.z), q.identity(), s.set(size, 1, size * (v.spec.air ? 1.6 : 1.3)))
           mPart.toArray(rig.shadows.instanceMatrix.array, nShadow * 16)
           nShadow += 1
         }
         if (v.selected && v.alive) {
           const r = v.spec.radius * 1.35 * sc
-          mPart.compose(p.set(v.x, 0.05, v.z), q.identity(), s.set(r, 1, r))
+          mPart.compose(p.set(v.x, groundAt(w.terrain, v.x, v.z) + 0.05, v.z), q.identity(), s.set(r, 1, r))
           mPart.toArray(rig.rings.instanceMatrix.array, nRing * 16)
           const rc = RING_RGB[v.team]
           setColor(rig.rings, nRing, rc.r, rc.g, rc.b)

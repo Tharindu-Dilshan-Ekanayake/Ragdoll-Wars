@@ -27,7 +27,9 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 
 import { useQuality } from '../../store/quality'
 import { addFrameHook, PHASE } from '../state'
+import { mapTerrain } from '../sim/ground'
 import { mapLevels, mapObstacles, mapPieces } from '../sim/pieces'
+import { groundAt } from '../sim/terrain'
 import { BoxBatch, buildCover, col, hash } from './coverGeometry'
 import { buildPiecesGeometry, coverBoxesOf } from './structureModels'
 import Mist from './Mist'
@@ -189,6 +191,21 @@ function paintGround(map, S = 512) {
       ctx.strokeRect(x0, y0, pw, ph)
     }
   }
+  // Trenches (sim/terrain.js): bare dug earth, darker on the floor.
+  for (const tr of map.terrain?.trenches || []) {
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    for (const [wd, a] of [
+      [tr.w + 2.6, 0.45],
+      [tr.w, 0.8],
+    ]) {
+      ctx.strokeStyle = `rgba(${mr0 - 14},${mg0 - 14},${mb0 - 12},${a})`
+      ctx.lineWidth = wd * kx
+      ctx.beginPath()
+      tr.points.forEach(([x, z], i) => (i ? ctx.lineTo(toX(x), toY(z)) : ctx.moveTo(toX(x), toY(z))))
+      ctx.stroke()
+    }
+  }
   // Mud, then roads over it.
   for (const [mx, mz, mr] of map.mud) {
     const g = ctx.createRadialGradient(toX(mx), toY(mz), 0, toX(mx), toY(mz), mr * kx)
@@ -311,7 +328,78 @@ function paintGround(map, S = 512) {
   return t
 }
 
+/**
+ * The ground on a map with terrain (sim/terrain.js): the usual coarse grid, with each cell
+ * that isn't flat (a hill, a trench) split three ways each side to follow the heightfield.
+ * Shared vertices keep it smooth and crack-free (a flat cell's edge points are all at 0,
+ * like its split neighbour's). Same UVs as the flat plane, so the painted map lines up.
+ */
+function buildTerrainGround(map, T) {
+  const NX = 56
+  const NZ = 42
+  const cw = GROUND_W / NX
+  const cd = GROUND_D / NZ
+  const SUB = 3
+  const pos = []
+  const uv = []
+  const idx = []
+  const verts = new Map()
+  const heightAt = (x, z) => {
+    let y = groundAt(T, x, z)
+    const out = Math.max(Math.abs(x) - map.width / 2 - 7, Math.abs(z) - map.depth / 2 - 7, 0)
+    if (out > 0) y = Math.min(1, out / 25) * (fbm(x * 0.03, z * 0.03) * 7 - 1.5)
+    if (map.sea && z < map.sea.z) y = Math.max(-2.5, (z - map.sea.z) * 0.25)
+    return y
+  }
+  const vert = (ix, iz) => {
+    // (ix, iz) in sub-steps from the corner, so shared points get one vertex.
+    const key = iz * 100000 + ix
+    let v = verts.get(key)
+    if (v === undefined) {
+      const x = -GROUND_W / 2 + (ix / SUB) * cw
+      const z = -GROUND_D / 2 + (iz / SUB) * cd
+      v = pos.length / 3
+      pos.push(x, heightAt(x, z), z)
+      uv.push(0.5 + x / GROUND_W, 0.5 - z / GROUND_D)
+      verts.set(key, v)
+    }
+    return v
+  }
+  const quad = (ix, iz, step) => {
+    const a = vert(ix, iz)
+    const b = vert(ix + step, iz)
+    const d = vert(ix, iz + step)
+    const e = vert(ix + step, iz + step)
+    idx.push(a, d, b, b, d, e)
+  }
+  for (let r = 0; r < NZ; r += 1) {
+    for (let c = 0; c < NX; c += 1) {
+      const x0 = -GROUND_W / 2 + c * cw
+      const z0 = -GROUND_D / 2 + r * cd
+      // Split where the heightfield moves inside the battlefield (outside: as before).
+      let bumpy = false
+      const inside = Math.abs(x0 + cw / 2) < map.width / 2 + 10 && Math.abs(z0 + cd / 2) < map.depth / 2 + 10
+      if (inside) {
+        for (let k = 0; k <= SUB && !bumpy; k += 1) {
+          for (let m = 0; m <= SUB && !bumpy; m += 1) if (Math.abs(groundAt(T, x0 + (k / SUB) * cw, z0 + (m / SUB) * cd)) > 0.03) bumpy = true
+        }
+      }
+      if (bumpy) {
+        for (let m = 0; m < SUB; m += 1) for (let k = 0; k < SUB; k += 1) quad(c * SUB + k, r * SUB + m, 1)
+      } else quad(c * SUB, r * SUB, SUB)
+    }
+  }
+  const g = new BufferGeometry()
+  g.setAttribute('position', new Float32BufferAttribute(pos, 3))
+  g.setAttribute('uv', new Float32BufferAttribute(uv, 2))
+  g.setIndex(idx)
+  g.computeVertexNormals()
+  return g
+}
+
 function buildGround(map) {
+  const T = mapTerrain(map)
+  if (T) return buildTerrainGround(map, T)
   const g = new PlaneGeometry(GROUND_W, GROUND_D, 56, 42).rotateX(-Math.PI / 2)
   const p = g.attributes.position
   for (let i = 0; i < p.count; i += 1) {

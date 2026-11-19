@@ -15,6 +15,7 @@ import {
 
 import { useQuality } from '../../store/quality'
 import { MAX_SLOTS } from '../sim/constants'
+import { groundAt } from '../sim/terrain'
 import { animate, buildParts, J_PELVIS, PART_COUNT, P_WEAPON, TRS } from '../sim/rig'
 import { UNIT_TYPES, WEAPON_MODELS, weaponModelIndex } from '../sim/units'
 import { addFrameHook, PHASE } from '../state'
@@ -301,7 +302,7 @@ export default function Soldiers({ getWorld, capacity = MAX_SLOTS }) {
           if (!realtimeShadows) {
             const size = s.alive ? 0.95 - Math.min(0.5, s.dropY * 0.15) : 1.5
             // Under their feet: on the ground, or up on the rampart.
-            writeMatrix(shadowArr, nShadow * 16, px, (s.alive ? s.fy : 0) + 0.025 + (i % 7) * 0.001, pz, 0, 0, 0, 1, size)
+            writeMatrix(shadowArr, nShadow * 16, px, (s.alive ? s.fy : groundAt(w.terrain, px, pz)) + 0.025 + (i % 7) * 0.001, pz, 0, 0, 0, 1, size)
             nShadow += 1
           }
           if (s.selected && s.alive) {

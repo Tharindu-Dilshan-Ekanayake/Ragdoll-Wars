@@ -103,6 +103,27 @@ const CENTRE = [
 ]
 
 const { obstacles, pieces } = mirrored(WEST, WEST_PIECES, CENTRE, [])
+// Terrain (sim/terrain.js): a firing trench across each side's half (broken for the
+// road), grassy knolls, a low bank by the north fence and a gently rolling field.
+const WEST_HILLS = [
+  { x: -36, z: -30, r: 13, h: 3.2 },
+  { x: -24, z: 40, r: 10, h: 2.6 },
+  { x: -46, z: 22, r: 8, h: 1.8 },
+  { x: -7, z: -28, r: 7, h: 1.6 },
+]
+const WEST_TRENCHES = [
+  { points: [[-24, -24], [-22, -14], [-24, -5]], w: 2.8, d: 1.4, ramp: 4 },
+  { points: [[-24, 5], [-22, 14], [-24, 24]], w: 2.8, d: 1.4, ramp: 4 },
+]
+const WEST_RIDGES = [{ points: [[-44, -52], [-34, -51]], w: 6, h: 1.2 }]
+const mirrorPts = (pts) => pts.map(([x, z]) => [-x, z])
+const TERRAIN = {
+  hills: [...WEST_HILLS, ...WEST_HILLS.map((h) => ({ ...h, x: -h.x }))],
+  trenches: [...WEST_TRENCHES, ...WEST_TRENCHES.map((t) => ({ ...t, points: mirrorPts(t.points) }))],
+  ridges: [...WEST_RIDGES, ...WEST_RIDGES.map((r) => ({ ...r, points: mirrorPts(r.points) }))],
+  rough: 0.35,
+}
+
 const mirrorPad = (p) => ({ ...p, x: -p.x })
 const mirrorLine = (l) => ({ ...l, points: l.points.map(([x, z]) => [-x, z]) })
 
@@ -145,6 +166,7 @@ export const TRAINING_GROUNDS = {
   /** Playable area (the fence). */
   width: 170,
   depth: 110,
+  terrain: TERRAIN,
   /** Where each team's units tend to form up. */
   bases: [
     { x: -70, z: 0 },
