@@ -142,5 +142,5 @@ export function buildVehicleGeometries() {
 
 /** Team-coloured bits for a helicopter (tail fin flash and a stripe down each side). */
 export function helicopterTrim() {
-  return merge([place(box(0.2, 0.5, 0.7, TRIM), 0, 3.15, -7.4), place(box(0.04, 0.22, 1.4, TRIM), 1.24, 1.95, 0.3), place(box(0.04, 0.22, 1.4, TRIM), -1.24, 1.95, 0.3)])
+  return merge([place(box(0.18, 0.4, 0.5, TRIM), 0, 3.55, -7.6), place(box(0.04, 0.16, 1.6, TRIM), 0.3, 2.45, -4.2), place(box(0.04, 0.16, 1.6, TRIM), -0.3, 2.45, -4.2)])
 }

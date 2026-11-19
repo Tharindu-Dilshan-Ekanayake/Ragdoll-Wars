@@ -104,6 +104,10 @@ export default function Vehicles() {
   const rig = useMemo(() => {
     const geos = buildVehicleGeometries()
     const heli = buildHelicopterGeometry()
+    // The gunship carries stub wings and rocket pods.
+    const heliArmed = buildHelicopterGeometry({ armed: true })
+    heliArmed.mainRotor.dispose()
+    heliArmed.tailRotor.dispose()
     const heliTrim = helicopterTrim()
     const crewGeo = buildCrewGeometries()
     const tex = getTextures()
@@ -130,7 +134,7 @@ export default function Vehicles() {
     }
     for (const k of AIR) {
       kinds[k] = {
-        body: instanced(heli.body, mats.body, n, true),
+        body: instanced(k === 'gunship' ? heliArmed.body : heli.body, mats.body, n, true),
         top: instanced(heli.mainRotor, mats.body, n, true),
         tail: instanced(heli.tailRotor, mats.body, n, true),
         trim: instanced(heliTrim, mats.trim, n, true),
@@ -143,7 +147,7 @@ export default function Vehicles() {
     const rings = instanced(ringGeo, mats.ring, n, true)
     rings.renderOrder = 2
     const fires = instanced(card, mats.fire, n * 2, true)
-    const allGeos = [geos.jeep.body, geos.jeep.top, geos.jeep.trim, geos.apc.body, geos.apc.top, geos.apc.trim, geos.tank.body, geos.tank.top, geos.tank.trim, geos.jet, heli.body, heli.mainRotor, heli.tailRotor, heliTrim, crewGeo.seated, crewGeo.hatch, card, flat, ringGeo]
+    const allGeos = [geos.jeep.body, geos.jeep.top, geos.jeep.trim, geos.apc.body, geos.apc.top, geos.apc.trim, geos.tank.body, geos.tank.top, geos.tank.trim, geos.jet, heli.body, heliArmed.body, heli.mainRotor, heli.tailRotor, heliTrim, crewGeo.seated, crewGeo.hatch, card, flat, ringGeo]
     const counts = Object.fromEntries(ALL.map((k) => [k, 0]))
     return { kinds, crew, jets, shadows, rings, fires, mats, counts, geos: allGeos }
   }, [])

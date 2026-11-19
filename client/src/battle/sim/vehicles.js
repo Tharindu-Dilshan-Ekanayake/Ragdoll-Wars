@@ -61,12 +61,12 @@ export const CREW = {
     { frame: 'top', pose: 'hatch', x: 0.55, y: 0.45, z: -0.4, yaw: 0 },
   ],
   gunship: [
-    { frame: 'body', pose: 'seated', x: 1.02, y: 1.32, z: 0.4, yaw: Math.PI / 2 },
-    { frame: 'body', pose: 'seated', x: -1.02, y: 1.32, z: 0.4, yaw: -Math.PI / 2 },
+    { frame: 'body', pose: 'seated', x: 0.98, y: 1.56, z: 0.25, yaw: Math.PI / 2 },
+    { frame: 'body', pose: 'seated', x: -0.98, y: 1.56, z: 0.25, yaw: -Math.PI / 2 },
   ],
   scout: [
-    { frame: 'body', pose: 'seated', x: 1.02, y: 1.32, z: 0.4, yaw: Math.PI / 2 },
-    { frame: 'body', pose: 'seated', x: -1.02, y: 1.32, z: 0.4, yaw: -Math.PI / 2 },
+    { frame: 'body', pose: 'seated', x: 0.98, y: 1.56, z: 0.25, yaw: Math.PI / 2 },
+    { frame: 'body', pose: 'seated', x: -0.98, y: 1.56, z: 0.25, yaw: -Math.PI / 2 },
   ],
 }
 /** Chance each crewman of a destroyed ground vehicle gets out alive (aircraft: none). */
