@@ -237,6 +237,13 @@ function groundTest(map) {
   const boxes = mapObstacles(map).filter((o) => o.kind !== 'tree')
   // The helipads stay bare.
   for (const p of helipadsOf(map)) boxes.push({ x: p.x, z: p.z, w: PAD_SIZE, d: PAD_SIZE })
+  // Nothing grows on the floors of enterable buildings.
+  for (const [kind, x, z, rot = 0, o = {}] of map.sets || []) {
+    if (kind !== 'bldg') continue
+    const w = o.w || 12
+    const d = o.d || 8
+    boxes.push({ x, z, w: rot & 1 ? d : w, d: rot & 1 ? w : d })
+  }
   const roads = map.roads || []
   const trenches = map.terrain?.trenches || []
   const ice = map.ice || []

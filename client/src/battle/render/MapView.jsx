@@ -26,7 +26,7 @@ import {
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
 import { useQuality } from '../../store/quality'
-import { addFrameHook, PHASE } from '../state'
+import { addFrameHook, battle, PHASE } from '../state'
 import { mapTerrain } from '../sim/ground'
 import { mapLevels, mapObstacles, mapPieces } from '../sim/pieces'
 import { groundAt } from '../sim/terrain'
@@ -1149,6 +1149,30 @@ export default function MapView({ map, focus }) {
     return { ground, groundMap, cover, piecesGeo, fence, hills, sea, sets, basins, quays, floor, floorMap, mats }
   }, [map, terrain, maxTexture, viewDistance])
 
+  // Roofs over enterable buildings lift off to show who's inside: zoomed in from above,
+  // or on foot inside one.
+  const cutRef = useRef(null)
+  useEffect(() => {
+    const homes = (map.sets || [])
+      .filter((st) => st[0] === 'bldg')
+      .map(([, x, z, rot = 0, o = {}]) => {
+        const w = (rot & 1 ? o.d : o.w) || (rot & 1 ? 8 : 12)
+        const d = (rot & 1 ? o.w : o.d) || (rot & 1 ? 12 : 8)
+        return { x0: x - w / 2 - 0.3, x1: x + w / 2 + 0.3, z0: z - d / 2 - 0.3, z1: z + d / 2 + 0.3 }
+      })
+    if (!homes.length) return undefined
+    return addFrameHook(PHASE.DRAW, () => {
+      const mesh = cutRef.current
+      if (!mesh || !battle.world) return
+      const wk = battle.walk
+      let hide = false
+      if (wk.on) {
+        for (const hm of homes) if (wk.x > hm.x0 && wk.x < hm.x1 && wk.z > hm.z0 && wk.z < hm.z1) hide = true
+      } else hide = battle.view.dist < 42
+      mesh.visible = !hide
+    })
+  }, [map])
+
   // The sea and basins roll (MEDIUM and HIGH; on LOW they hold still).
   useEffect(() => {
     if ((!map.sea && !map.water) || !wind) return undefined
@@ -1233,6 +1257,7 @@ export default function MapView({ map, focus }) {
       {/* Trim and glass cast no shadow: too small to see in one, and it halves their cost. */}
       {world.sets?.detail && trim && <mesh geometry={world.sets.detail} material={mats.trim} receiveShadow={shadows} />}
       {world.sets?.glass && <mesh geometry={world.sets.glass} material={mats.glass} />}
+      {world.sets?.cut && <mesh ref={cutRef} geometry={world.sets.cut} material={mats.plain} castShadow={shadows} receiveShadow={shadows} />}
 
       {world.piecesGeo && <mesh geometry={world.piecesGeo} material={mats.plain} castShadow={shadows} receiveShadow={shadows} />}
       <mesh geometry={cover.concrete} material={mats.concrete} castShadow={shadows} receiveShadow={shadows} />

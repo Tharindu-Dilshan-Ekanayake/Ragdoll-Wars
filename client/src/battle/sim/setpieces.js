@@ -13,6 +13,85 @@
 
 const B = (x, z, w, d, h, extra) => ({ x, z, w, d, h, ...extra })
 
+/** Enterable buildings ('bldg'): wall thickness, doorway and window sizes (m). */
+export const BLDG = { t: 0.3, door: 2.2, doorH: 2.4, win: 1.3, sill: 1.0, winTop: 2.3 }
+
+/**
+ * An enterable building's plan in its own frame (x along w, z along d), shared by the
+ * collision (KINDS.bldg) and the looks (setPieceModels.js): wall runs, the openings in
+ * them, a partition with its own doorway, and furniture.
+ *   o.w, o.d, o.h      footprint and wall height (12 x 8, 3.2)
+ *   o.doors            [[side, offset], ...] on 'n' (-z), 's' (+z), 'w' (-x), 'e' (+x),
+ *                      offset along the side from its middle (default one in the front)
+ *   o.split            partition across x at this offset from the middle (null: none;
+ *                      default: one room a third of the way along when w >= 10)
+ *   o.windows          false for none (default: every ~2.8 m clear of doors and corners)
+ *   o.furnish          false for an empty shell
+ * Returns { walls: [{x, z, w, d, h, sill?, door?}], openings: [{side, x, z, along, kind}],
+ * furniture: [{x, z, w, d, h, kind}] } - walls include sill boxes under windows (sill:
+ * true, low cover you fire over) and lintel-less doorway gaps.
+ */
+export function bldgLayout(o) {
+  const w = o.w || 12
+  const d = o.d || 8
+  const h = o.h || 3.2
+  const { t, door, win, sill } = BLDG
+  const doors = o.doors || [['s', 0]]
+  const walls = []
+  const openings = []
+  const sides = [
+    ['n', -d / 2 + t / 2, true, w],
+    ['s', d / 2 - t / 2, true, w],
+    ['w', -w / 2 + t / 2, false, d - 2 * t],
+    ['e', w / 2 - t / 2, false, d - 2 * t],
+  ]
+  for (const [side, fixed, alongX, len] of sides) {
+    const holes = doors.filter((dr) => dr[0] === side).map(([, off]) => ({ c: off, half: door / 2, kind: 'door' }))
+    if (o.windows !== false) {
+      const n = Math.floor((len - 1.6) / 2.8)
+      for (let k = 0; k < n; k += 1) {
+        const c = -((n - 1) * 2.8) / 2 + k * 2.8
+        if (holes.some((hl) => Math.abs(hl.c - c) < hl.half + win / 2 + 0.5)) continue
+        holes.push({ c, half: win / 2, kind: 'win' })
+      }
+    }
+    holes.sort((a, b2) => a.c - b2.c)
+    let from = -len / 2
+    const run = (a0, a1, hh, extra) => {
+      if (a1 - a0 < 0.05) return
+      const mid = (a0 + a1) / 2
+      walls.push(alongX ? B(mid, fixed, a1 - a0, t, hh, extra) : B(fixed, mid, t, a1 - a0, hh, extra))
+    }
+    for (const hl of holes) {
+      run(from, hl.c - hl.half, h)
+      if (hl.kind === 'win') run(hl.c - hl.half, hl.c + hl.half, sill, { sill: true })
+      openings.push({ side, kind: hl.kind, x: alongX ? hl.c : fixed, z: alongX ? fixed : hl.c, along: hl.half * 2 })
+      from = hl.c + hl.half
+    }
+    run(from, len / 2, h)
+  }
+  // A partition across the building with a doorway in it.
+  const split = o.split !== undefined ? o.split : w >= 10 ? -w / 6 : null
+  if (split !== null) {
+    const span = d - 2 * t
+    const dz = o.splitDoor || 0
+    const lo = -span / 2
+    const hi = span / 2
+    if (dz - door / 2 - lo > 0.05) walls.push(B(split, (lo + dz - door / 2) / 2, t, dz - door / 2 - lo, h))
+    if (hi - (dz + door / 2) > 0.05) walls.push(B(split, (dz + door / 2 + hi) / 2, t, hi - (dz + door / 2), h))
+    openings.push({ side: 'in', kind: 'door', x: split, z: dz, along: door })
+  }
+  // Furniture: a table and shelves in the big room, crates in the small one (cover inside).
+  const furniture = []
+  if (o.furnish !== false) {
+    const big = split === null ? 0 : (split + w / 2) / 2
+    furniture.push({ kind: 'table', x: big, z: 0, w: 1.8, d: 0.9, h: 0.8 })
+    furniture.push({ kind: 'shelf', x: big + Math.min(2.2, w * 0.15), z: -d / 2 + t + 0.3, w: 1.8, d: 0.5, h: 1.9 })
+    if (split !== null) furniture.push({ kind: 'crate', x: (split - w / 2) / 2, z: d / 2 - t - 0.8, w: 1.1, d: 1.1, h: 1.1 })
+  }
+  return { walls, openings, furniture, w, d, h }
+}
+
 /** Collision boxes per kind, local frame. `o` = the set's options. */
 const KINDS = {
   crane: () => [B(-6, -5, 1.2, 1.2, 26), B(6, -5, 1.2, 1.2, 26), B(-6, 5, 1.2, 1.2, 26), B(6, 5, 1.2, 1.2, 26)],
@@ -121,6 +200,11 @@ const KINDS = {
   truss: () => [],
   rack: (o) => [B(0, 0, o.len || 12, 1.1, 4.6)],
   forklift: () => [B(0, 0, 2.7, 1.25, 2.2)],
+  // Enterable: walls with doorways and windows, a partition, furniture (bldgLayout).
+  bldg: (o) => {
+    const L = bldgLayout(o)
+    return [...L.walls, ...L.furniture.map((f) => B(f.x, f.z, f.w, f.d, f.h))]
+  },
 }
 
 export const SET_KINDS = Object.keys(KINDS)

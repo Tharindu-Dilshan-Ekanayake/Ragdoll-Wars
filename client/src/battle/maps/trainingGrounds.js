@@ -8,7 +8,8 @@ import { box, mirrored, mirrorPatch } from './mapKit.js'
  * HQ, Nissen huts, a motor pool of lorries under a shelter, a water tower and fuel. Out
  * in the muddy yard are the assault course (climbing walls, hurdles, tyres), the rifle
  * range with its earth berm and targets, sandbag nests, barrier lines and containers.
- * The middle is the "killhouse": a walled compound with gaps on every side.
+ * The middle is the killhouse: two buildings you go inside, rooms and windows to fight
+ * through.
  *
  * Every obstacle is an axis-aligned box `{ x, z, w, d, h, kind, tint }` (centre, size
  * along x and z, height). `kind` picks how it looks and how it counts as cover:
@@ -86,20 +87,18 @@ const WEST_SETS = [
   ['lamp', -26, 3.5, 2],
 ]
 
-/** The killhouse in the middle: walls with gaps on all four sides. */
-const CENTRE = [
-  box('wall', -7.25, 11, 7.5, 0.6),
-  box('wall', 7.25, 11, 7.5, 0.6),
-  box('wall', -7.25, -11, 7.5, 0.6),
-  box('wall', 7.25, -11, 7.5, 0.6),
-  box('wall', -11, 7.25, 0.6, 7.5),
-  box('wall', -11, -7.25, 0.6, 7.5),
-  box('wall', 11, 7.25, 0.6, 7.5),
-  box('wall', 11, -7.25, 0.6, 7.5),
-  box('lowwall', -4.5, 0, 0.6, 3.2),
-  box('lowwall', 4.5, 0, 0.6, 3.2),
-  box('crate', 0, 5.5, 1.25, 1.25),
-  box('crate', 0, -5.5, 1.25, 1.25),
+/** In the middle: a pair of crates in the yard between the two killhouse buildings. */
+const CENTRE = [box('crate', -2.5, 0, 1.25, 1.25), box('crate', 2.5, 0, 1.25, 1.25)]
+
+/**
+ * The killhouse: two enterable buildings either side of the crossroads (rooms, doorways,
+ * windows to fire from), facing each other across a yard.
+ */
+// A door into each room from the yard; the end walls keep their windows to fire from.
+const KILLHOUSE = { w: 14, d: 7, split: 0, doors: [['s', -4], ['s', 4]], color: '#cdc4ae' }
+const CENTRE_SETS = [
+  ['bldg', 0, -7.5, 0, KILLHOUSE],
+  ['bldg', 0, 7.5, 2, { ...KILLHOUSE, color: '#c4bba4' }],
 ]
 
 const { obstacles, pieces } = mirrored(WEST, WEST_PIECES, CENTRE, [])
@@ -162,7 +161,7 @@ function scatterTrees(count, seed = 7) {
 export const TRAINING_GROUNDS = {
   id: 'training',
   name: 'Training Grounds',
-  blurb: 'An army training base: barracks round a parade ground, an assault course, a rifle range and a walled killhouse in the middle.',
+  blurb: 'An army training base: barracks round a parade ground, an assault course, a rifle range and a two-building killhouse to fight through in the middle.',
   /** Playable area (the fence). */
   width: 170,
   depth: 110,
@@ -174,7 +173,7 @@ export const TRAINING_GROUNDS = {
   ],
   obstacles,
   pieces,
-  sets: [...WEST_SETS, ...WEST_SETS.map(mirrorSet)],
+  sets: [...WEST_SETS, ...WEST_SETS.map(mirrorSet), ...CENTRE_SETS],
   pads: [...WEST_PADS, ...WEST_PADS.map(mirrorPad), { x: 0, z: 0, w: 24, d: 24, color: '#9a968c', joints: 3 }],
   lines: [...WEST_LINES, ...WEST_LINES.map(mirrorLine)],
   /** Dirt roads painted on the ground: polylines of [x, z], with a half width. */

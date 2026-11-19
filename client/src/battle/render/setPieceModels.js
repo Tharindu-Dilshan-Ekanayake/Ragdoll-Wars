@@ -13,7 +13,7 @@ import {
 } from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
-import { rotLocal } from '../sim/setpieces'
+import { BLDG, bldgLayout, rotLocal } from '../sim/setpieces'
 import { BoxBatch, hash } from './coverGeometry'
 import { buildVehicleGeometries } from './vehicleModels'
 
@@ -34,7 +34,7 @@ const tmpS = new Vector3()
 const tmpC = new Color()
 
 const CONTAINERS = ['#a8462f', '#3f6b4a', '#2f5f8f', '#c08a2e', '#7d7f84', '#8a3f5e']
-const BATCH = { concrete: 'concrete', steel: 'steel', detail: 'detail', glass: 'glass', plain: 'plainBoxes' }
+const BATCH = { concrete: 'concrete', steel: 'steel', detail: 'detail', glass: 'glass', plain: 'plainBoxes', cut: 'cutBoxes' }
 
 /** Face bits in a set's frame -> world bits after `rot` quarter turns (y faces stay). */
 function worldSkip(skip, rot) {
@@ -62,6 +62,11 @@ class SetBuilder {
     this.detail = new BoxBatch()
     /** Window glass: its own material, which catches the sky. */
     this.glass = new BoxBatch()
+    /** Roofs over enterable buildings: their own mesh, hidden to look inside (MapView). */
+    this.cutBoxes = new BoxBatch()
+    this.cutExtra = []
+    /** While true, geo() goes to the roof mesh. */
+    this.toCut = false
     this.extra = []
     this.ox = 0
     this.oz = 0
@@ -132,7 +137,7 @@ class SetBuilder {
     tmpQ.setFromEuler(tmpE.set(0, (this.rot * Math.PI) / 2, 0))
     tmpM2.compose(tmpP.set(this.ox, 0, this.oz), tmpQ, tmpS.set(1, 1, 1))
     geom.applyMatrix4(tmpM2.multiply(tmpM))
-    this.extra.push(geom)
+    ;(this.toCut ? this.cutExtra : this.extra).push(geom)
   }
 
   cyl(lx, ly, lz, rTop, rBottom, h, color, seg = 12, rx = 0, rz = 0, open = false) {
@@ -172,7 +177,15 @@ class SetBuilder {
       g.dispose()
       return null
     }
-    return { plain, concrete: this.concrete.build(), steel: this.steel.build(), detail: nonEmpty(this.detail), glass: nonEmpty(this.glass) }
+    // The cutaway roofs, merged like the plain mesh.
+    const cutIdx = this.cutBoxes.build()
+    const cutBox = cutIdx.toNonIndexed()
+    cutIdx.dispose()
+    cutBox.deleteAttribute('uv')
+    const cutParts = [cutBox, ...this.cutExtra].filter((g) => g.attributes.position.count > 0)
+    const cut = cutParts.length ? mergeGeometries(cutParts) : null
+    for (const g of cutParts) g.dispose()
+    return { plain, concrete: this.concrete.build(), steel: this.steel.build(), detail: nonEmpty(this.detail), glass: nonEmpty(this.glass), cut }
   }
 }
 
@@ -1333,7 +1346,73 @@ function forklift(b, o) {
   wheelsAt(b, [-0.75, 0.55], 0.5, 0.3)
 }
 
+/**
+ * An enterable building (sim/setpieces.js bldgLayout): rendered walls with lintels over
+ * the doorways and windows (open, no glass: you shoot through them), a floor, the
+ * partition, furniture, and a flat roof with a parapet on the cutaway roof mesh.
+ */
+function bldg(b, o) {
+  const L = bldgLayout(o)
+  const { t, doorH, winTop } = BLDG
+  const c = o.color || ['#d6cfc0', '#cfc6b2', '#c9c2b6', '#d8d2c6'][((o.seed || 0) * 4) | 0]
+  const trim = shade(c, 0.78)
+  const h = L.h
+  // Floor inside, a plinth round the outside.
+  b.box(0, 0.035, 0, L.w - 2 * t, 0.07, L.d - 2 * t, o.floor || '#8b7d66', 'plain', 2, 8)
+  for (const [x, z, w, d] of [
+    [0, -L.d / 2 - 0.12, L.w + 0.48, 0.24],
+    [0, L.d / 2 + 0.12, L.w + 0.48, 0.24],
+    [-L.w / 2 - 0.12, 0, 0.24, L.d],
+    [L.w / 2 + 0.12, 0, 0.24, L.d],
+  ])
+    b.box(x, 0.12, z, w, 0.24, d, trim, 'concrete', 2, 8)
+  for (const wl of L.walls) b.box(wl.x, wl.h / 2, wl.z, wl.w, wl.h, wl.d, c, 'plain', 2, 8)
+  for (const op of L.openings) {
+    const alongX = op.side === 'n' || op.side === 's'
+    const top = op.kind === 'door' ? doorH : winTop
+    const lw = alongX ? op.along : t
+    const ld = alongX ? t : op.along
+    // The wall over the opening.
+    b.box(op.x, (top + h) / 2, op.z, lw, h - top, ld, c, 'plain', 2, 0)
+    // Frame: a head and two jambs, proud of the wall.
+    const fw = alongX ? op.along + 0.16 : t + 0.08
+    const fd = alongX ? t + 0.08 : op.along + 0.16
+    b.box(op.x, top + 0.06, op.z, fw, 0.12, fd, trim, 'detail')
+    for (const s of [-1, 1]) {
+      const jx = alongX ? op.x + s * (op.along / 2 + 0.04) : op.x
+      const jz = alongX ? op.z : op.z + s * (op.along / 2 + 0.04)
+      const base = op.kind === 'door' ? 0 : BLDG.sill
+      b.box(jx, (base + top) / 2, jz, alongX ? 0.08 : t + 0.08, top - base, alongX ? t + 0.08 : 0.08, trim, 'detail')
+    }
+    if (op.kind === 'win') b.box(op.x, BLDG.sill + 0.03, op.z, alongX ? op.along + 0.2 : t + 0.16, 0.06, alongX ? t + 0.16 : op.along + 0.2, trim, 'detail')
+  }
+  // Furniture.
+  for (const f of L.furniture) {
+    if (f.kind === 'table') {
+      b.box(f.x, f.h - 0.04, f.z, f.w, 0.08, f.d, '#6b4a2e')
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) b.box(f.x + sx * (f.w / 2 - 0.08), (f.h - 0.08) / 2, f.z + sz * (f.d / 2 - 0.08), 0.08, f.h - 0.08, 0.08, '#5a3e26', 'detail')
+    } else if (f.kind === 'shelf') {
+      for (const sx of [-1, 1]) b.box(f.x + sx * (f.w / 2 - 0.03), f.h / 2, f.z, 0.06, f.h, f.d, '#5a5e62')
+      for (let k = 0; k < 4; k += 1) b.box(f.x, 0.2 + k * 0.55, f.z, f.w, 0.04, f.d, '#7d8186')
+      for (let k = 0; k < 3; k += 1) b.box(f.x - 0.4 + k * 0.4, 0.42 + k * 0.55, f.z, 0.3, 0.3, f.d * 0.8, ['#8a6a46', '#3f6b4a', '#a8462f'][k], 'detail')
+    } else {
+      b.box(f.x, f.h / 2, f.z, f.w, f.h, f.d, '#9a7a4e')
+    }
+  }
+  // The roof: a slab with a parapet (the cutaway mesh).
+  const rc = o.roof || shade(c, 0.88)
+  b.box(0, h + 0.1, 0, L.w + 0.2, 0.2, L.d + 0.2, rc, 'cut', 2, 0)
+  for (const [x, z, w, d] of [
+    [0, -L.d / 2, L.w + 0.2, 0.2],
+    [0, L.d / 2, L.w + 0.2, 0.2],
+    [-L.w / 2, 0, 0.2, L.d],
+    [L.w / 2, 0, 0.2, L.d],
+  ])
+    b.box(x, h + 0.45, z, w, 0.5, d, c, 'cut', 2, 0)
+}
+
 const DRAW = {
+  bldg,
   shedwall,
   truss,
   rack,
