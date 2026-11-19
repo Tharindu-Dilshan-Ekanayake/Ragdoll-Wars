@@ -28,7 +28,7 @@ export const MAPS = [
     id: 'airbase',
     name: 'Kestrel Airfield',
     blurb: 'A military air base: a marked runway and taxiway, a transport plane under the control tower, hangars, fighters in hesco revetments, radar and fuel points.',
-    size: '170 × 110 m',
+    size: '220 × 140 m',
     load: () => import('./kestrelAirfield.js'),
   },
   {

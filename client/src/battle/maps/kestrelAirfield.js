@@ -1,5 +1,5 @@
 import { mirrorSet } from '../sim/setpieces.js'
-import { box, mirrored, scatterTrees } from './mapKit.js'
+import { box, mirrored, mirrorTerrain, scatterTrees } from './mapKit.js'
 
 /**
  * Kestrel Airfield - a military air base. A long runway crosses the south of the field
@@ -74,66 +74,114 @@ const CENTRE_SETS = [
   ['lamp', 0, 30, 2],
 ]
 
-const { obstacles, pieces } = mirrored(WEST, WEST_PIECES, [box('barrier', 0, 2, 2.6, 0.7)], [])
+// --- The bigger base (220 x 140) ---------------------------------------------------
+// Camp and revetments move 22 m back, the hangars and tower 10 m north, the runway 12 m
+// south. The ground opened up gets a squadron ops building and a guard house you can go
+// inside, a drainage ditch between taxiway and runway, and grassy humps.
+const fx = (x) => (x < -60 ? x - 22 : x)
+const fz = (z) => (z > 26 ? z + 10 : z < -20 ? z - 12 : z)
+const mv = (o) => ({ ...o, x: fx(o.x), z: fz(o.z) })
+const mvPiece = ([k, x, z, r]) => [k, fx(x), fz(z), r]
+const mvSet = ([k, x, z, r, o]) => [k, fx(x), fz(z), r, o]
+
+const NEW_WEST = [
+  box('sandbag', -58, -12, 0.9, 5),
+  box('sandbag', -59.9, -14.95, 4.7, 0.9),
+  box('barrier', -80, 2, 2.6, 0.7),
+  box('crate', -77, 40, 1.25, 1.25, 2.5),
+  box('crate', -78.35, 40, 1.25, 1.25),
+]
+const NEW_PIECES = [
+  ['ammocrate', -66, 24],
+  ['drum', -78, 22],
+  ['drum', -78.8, 22.6],
+]
+const NEW_SETS = [
+  ['bldg', -71, 31, 0, { w: 12, d: 8, doors: [['s', 3], ['e', 0]], color: '#c9c4b8' }],
+  ['bldg', -70, -14, 0, { w: 8, d: 6, doors: [['n', 0]], split: null, color: '#bdb6a6' }],
+  ['revetment', -94, 30, 2],
+  ['fighter', -94, 29, 1],
+]
+
+const WEST_ALL = [...WEST.map(mv), ...NEW_WEST]
+const WEST_PIECES_ALL = [...WEST_PIECES.map(mvPiece), ...NEW_PIECES]
+const WEST_SETS_ALL = [...WEST_SETS.map(mvSet), ...NEW_SETS]
+
+const TERRAIN = mirrorTerrain({
+  // A drainage ditch along the grass between taxiway and runway (broken by the link).
+  trenches: [
+    { points: [[-100, -22], [-48, -22]], w: 3, d: 1.1, ramp: 4 },
+    { points: [[-32, -22], [-6, -22]], w: 3, d: 1.1, ramp: 4 },
+  ],
+  hills: [
+    { x: -42, z: 60, r: 8, h: 2 },
+    { x: -96, z: -63, r: 7, h: 1.8 },
+    { x: -14, z: -63, r: 7, h: 1.6 },
+  ],
+  rough: 0.15,
+})
+
+const { obstacles, pieces } = mirrored(WEST_ALL, WEST_PIECES_ALL, [box('barrier', 0, 2, 2.6, 0.7)], [])
 
 // The runway, taxiway and apron with their markings.
-const RUNWAY_Z = -30
+const RUNWAY_Z = -42
 const runwayLines = []
 for (const end of [-1, 1]) {
   for (let k = 0; k < 8; k += 1) {
     const z = RUNWAY_Z - 8 + k * 2.3
-    runwayLines.push({ points: [[end * 80, z], [end * 72, z]], width: 1.1, color: 'rgba(238,238,232,0.92)' })
+    runwayLines.push({ points: [[end * 105, z], [end * 97, z]], width: 1.1, color: 'rgba(238,238,232,0.92)' })
   }
-  runwayLines.push({ points: [[end * 60, RUNWAY_Z - 4], [end * 52, RUNWAY_Z - 4]], width: 1.6, color: 'rgba(238,238,232,0.9)' })
-  runwayLines.push({ points: [[end * 60, RUNWAY_Z + 4], [end * 52, RUNWAY_Z + 4]], width: 1.6, color: 'rgba(238,238,232,0.9)' })
+  runwayLines.push({ points: [[end * 85, RUNWAY_Z - 4], [end * 77, RUNWAY_Z - 4]], width: 1.6, color: 'rgba(238,238,232,0.9)' })
+  runwayLines.push({ points: [[end * 85, RUNWAY_Z + 4], [end * 77, RUNWAY_Z + 4]], width: 1.6, color: 'rgba(238,238,232,0.9)' })
 }
 
 const WEST_PADS = [
-  { x: -55, z: 16, w: 50, d: 30, color: '#a8a49a', joints: 5 },
-  { x: -40, z: -16, w: 10, d: 12, color: '#45484b' },
+  { x: -64, z: 16, w: 68, d: 30, color: '#a8a49a', joints: 5 },
+  { x: -40, z: -22, w: 10, d: 24, color: '#45484b' },
 ]
 const WEST_LINES = [
   // Parking boxes on the apron.
   ...[-56, -44].map((x) => ({ points: [[x, 4], [x, 12]], width: 0.25, color: 'rgba(230,196,70,0.9)' })),
-  { points: [[-40, -10], [-40, -21]], width: 0.25, color: 'rgba(230,196,70,0.9)' },
+  { points: [[-40, -10], [-40, -33]], width: 0.25, color: 'rgba(230,196,70,0.9)' },
 ]
 
 export const KESTREL_AIRFIELD = {
   id: 'airbase',
   name: 'Kestrel Airfield',
-  width: 170,
-  depth: 110,
+  width: 220,
+  depth: 140,
+  terrain: TERRAIN,
   bases: [
-    { x: -74, z: -10 },
-    { x: 74, z: -10 },
+    { x: -96, z: -8 },
+    { x: 96, z: -8 },
   ],
   obstacles,
   pieces,
-  sets: [...WEST_SETS, ...WEST_SETS.map(mirrorSet), ...CENTRE_SETS],
+  sets: [...WEST_SETS_ALL, ...WEST_SETS_ALL.map(mirrorSet), ...CENTRE_SETS.map(mvSet)],
   pads: [
-    { x: 0, z: RUNWAY_Z, w: 170, d: 22, color: '#3d3f42' },
-    { x: 0, z: -8, w: 150, d: 10, color: '#45484b' },
+    { x: 0, z: RUNWAY_Z, w: 220, d: 22, color: '#3d3f42' },
+    { x: 0, z: -8, w: 200, d: 10, color: '#45484b' },
     { x: 0, z: 18, w: 60, d: 34, color: '#a8a49a', joints: 5 },
-    { x: 0, z: 44, w: 36, d: 14, color: '#a8a49a', joints: 4 },
+    { x: 0, z: 54, w: 36, d: 14, color: '#a8a49a', joints: 4 },
     ...WEST_PADS,
     ...WEST_PADS.map(mirrorPad),
   ],
   lines: [
-    { points: [[-52, RUNWAY_Z], [52, RUNWAY_Z]], width: 0.7, color: 'rgba(240,240,235,0.9)', dash: [7, 6] },
-    { points: [[-85, RUNWAY_Z - 10.3], [85, RUNWAY_Z - 10.3]], width: 0.4, color: 'rgba(240,240,235,0.85)' },
-    { points: [[-85, RUNWAY_Z + 10.3], [85, RUNWAY_Z + 10.3]], width: 0.4, color: 'rgba(240,240,235,0.85)' },
-    { points: [[-75, -8], [75, -8]], width: 0.3, color: 'rgba(230,196,70,0.9)' },
+    { points: [[-77, RUNWAY_Z], [77, RUNWAY_Z]], width: 0.7, color: 'rgba(240,240,235,0.9)', dash: [7, 6] },
+    { points: [[-110, RUNWAY_Z - 10.3], [110, RUNWAY_Z - 10.3]], width: 0.4, color: 'rgba(240,240,235,0.85)' },
+    { points: [[-110, RUNWAY_Z + 10.3], [110, RUNWAY_Z + 10.3]], width: 0.4, color: 'rgba(240,240,235,0.85)' },
+    { points: [[-100, -8], [100, -8]], width: 0.3, color: 'rgba(230,196,70,0.9)' },
     ...runwayLines,
     ...WEST_LINES,
     ...WEST_LINES.map(mirrorLine),
   ],
   texts: [
-    { x: -64, z: RUNWAY_Z, text: '09', size: 7, rot: 0 },
-    { x: 64, z: RUNWAY_Z, text: '27', size: 7, rot: 0 },
+    { x: -89, z: RUNWAY_Z, text: '09', size: 7, rot: 0 },
+    { x: 89, z: RUNWAY_Z, text: '27', size: 7, rot: 0 },
   ],
-  roads: [{ width: 3, points: [[0, 60], [0, 50]] }],
+  roads: [{ width: 3, points: [[0, 72], [0, 60]] }],
   mud: [],
-  trees: scatterTrees(60, 31, 85, 55),
+  trees: scatterTrees(70, 31, 110, 70),
   hills: [150, 250],
   hillScale: 1.1,
   theme: {
