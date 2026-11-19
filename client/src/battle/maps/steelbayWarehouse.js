@@ -1,95 +1,125 @@
 import { mirrorSet } from '../sim/setpieces.js'
-import { box, mirrored } from './mapKit.js'
+import { box, mirrorBox, mirrorPiece } from './mapKit.js'
 
 /**
- * Steelbay Warehouse - a fight inside a distribution warehouse. A tiled floor under tall
- * corrugated walls and open roof trusses; rows of pallet racking make long aisles between
- * the two loading bays, where each army comes in by the roller doors. The middle is the
- * staging area: forklifts, pallets and stacked crates round a glass site office. Close
- * quarters - the racks are cover you can't see through, the aisles are kill zones.
+ * Steelbay Warehouse - the warehouse cleared out into an indoor fighting arena. A bright
+ * tiled floor under tall corrugated walls and open roof trusses, and nothing on it but
+ * clean concrete cover: low walls and L-corners to crouch behind, tall slabs that block
+ * sight, square pillars, crate stacks. Each army holds a walled base in its own team
+ * colour at an end, with a helipad and a concrete bunker; the middle is a cross of low
+ * walls round a pillar block. Open lanes along both long walls for the armour.
  */
 
 const W = 150
 const D = 100
 const HX = W / 2 - 0.4
 const HZ = D / 2 - 0.4
-
-const RACK_ROWS = [-40, -30, -20, 20, 30, 40]
-const RACK_X = [-46, -28, -10]
 const DOORS = [-30, -15, 15, 30]
 
+const GREY = '#d9d8d3'
+const SLAB = '#c9c8c2'
+const BLUE = '#5d8bd0'
+const RED = '#cf6a63'
+
+const low = (x, z, w, d, color = GREY, h = 1.1) => box('lowwall', x, z, w, d, h, 0, { color })
+const slab = (x, z, w, d) => box('lowwall', x, z, w, d, 2.8, 0, { color: SLAB })
+const pillar = (x, z, s = 1.8, h = 4.5) => box('post', x, z, s, s, h, 0, { color: GREY })
+const cube = (x, z, s = 2.2, h = 1.4) => box('lowwall', x, z, s, s, h, 0, { color: SLAB })
+
+/** One team's base at the west end, in its colour (mirrored for the other team). */
+const base = (color) => [
+  // Front line with a gap in the middle, returns back towards the end wall.
+  low(-50, -9.5, 0.8, 9, color),
+  low(-50, 9.5, 0.8, 9, color),
+  low(-55.6, -14, 12, 0.8, color),
+  low(-55.6, 14, 12, 0.8, color),
+  // Firing step blocks inside.
+  low(-58, -5, 3, 0.8, color),
+  low(-58, 5, 3, 0.8, color),
+]
+
 const WEST = [
-  // Jersey barriers and crates at the bay; crate stacks through the staging area.
-  box('barrier', -56, -4, 0.7, 2.6),
-  box('barrier', -56, 4, 0.7, 2.6),
-  box('container', -61, 43, 6.1, 2.5, 2.6, 2),
-  box('crate', -24, 3, 1.25, 1.25, 2.5),
-  box('crate', -25.35, 3, 1.25, 1.25),
-  box('crate', -24.6, 4.35, 1.25, 1.25),
-  box('crate', -9, -7, 1.25, 1.25, 2.5),
-  box('crate', -9, -8.35, 1.25, 1.25),
-  box('crate', -32, -9, 1.25, 1.25),
-  box('crate', -36, 8, 1.25, 1.25, 2.5),
-  box('crate', -44, -2, 1.25, 1.25),
-  box('sandbag', -48, 11, 3, 0.9),
-  box('sandbag', -48, -11, 3, 0.9),
+  // The concrete bunker behind the base, door towards the middle.
+  box('shed', -63, 32, 10, 6, 3, 0, { color: '#bdbcb6', roof: '#7f8389' }),
+  // Forward of the base: corners and cubes.
+  low(-42, -22, 8, 0.8),
+  low(-38.4, -25.6, 0.8, 6.4),
+  low(-42, 22, 8, 0.8),
+  low(-38.4, 25.6, 0.8, 6.4),
+  cube(-44, 0),
+  cube(-41, -7),
+  cube(-41, 7),
+  // Tall slabs that cut the long sightlines.
+  slab(-30, -38, 14, 0.8),
+  slab(-30, 38, 14, 0.8),
+  slab(-28, 0, 0.8, 10),
+  // Pillars down each side of the field.
+  pillar(-34, -14),
+  pillar(-34, 14),
+  pillar(-18, -30),
+  pillar(-18, 30),
+  // Mid cover: L-corners, low runs, crate stacks.
+  low(-22, -12, 0.8, 7),
+  low(-19.2, -15.1, 6.4, 0.8),
+  low(-22, 12, 0.8, 7),
+  low(-19.2, 15.1, 6.4, 0.8),
+  low(-14, -42, 7, 0.8),
+  low(-14, 42, 7, 0.8),
+  low(-12, -4, 4.5, 0.8),
+  low(-12, 4, 4.5, 0.8),
+  cube(-24, -26),
+  cube(-24, 26),
+  box('crate', -46, -38, 1.25, 1.25, 2.5),
+  box('crate', -47.35, -38, 1.25, 1.25),
+  box('crate', -46, 38.6, 1.25, 1.25, 2.5),
+  box('crate', -9, -22, 1.25, 1.25, 2.5),
+  box('crate', -9, -23.35, 1.25, 1.25),
+  box('crate', -9, 22, 1.25, 1.25),
+]
+
+const CENTRE = [
+  // A pillar block in the middle and a cross of low walls round it.
+  box('post', 0, 0, 3.2, 3.2, 3.2, 0, { color: SLAB }),
+  low(0, -9, 9, 0.8),
+  low(0, 9, 9, 0.8),
+  low(-5, -20, 0.8, 8),
+  low(5, -20, 0.8, 8),
+  low(-5, 20, 0.8, 8),
+  low(5, 20, 0.8, 8),
+  slab(0, -34, 0.8, 9),
+  slab(0, 34, 0.8, 9),
 ]
 
 const WEST_PIECES = [
-  ['fuel', -54, -42],
-  ['fuel', -54.9, -41.4],
-  ['drum', -55, -43],
-  ['ammocrate', -61, 5],
-  ['drum', -16, 10],
+  ['ammocrate', -61, 0],
+  ['drum', -66, -12],
+  ['drum', -66.8, -11.4],
 ]
 
-const racks = []
-for (const z of RACK_ROWS) for (const x of RACK_X) racks.push(['rack', x, z, 0, { len: 12 }])
-
 const WEST_SETS = [
-  // The building: long walls, the west end wall with its four roller doors.
+  // The building: long walls, the end wall with its four roller doors.
   ['shedwall', -W / 4, -HZ, 0, { len: W / 2 }],
   ['shedwall', -W / 4, HZ, 2, { len: W / 2 }],
   ['shedwall', -HX, 0, 1, { len: D, doors: DOORS }],
-  ...[-65, -52, -39, -26, -13].map((x) => ['truss', x, 0, 1, { len: D }]),
-  ...racks,
-  // The loading bay: lorries backed in at the doors, pallets staged, forklifts, the bay
-  // office.
-  ['truck', -66, -30, 0, { color: '#3f6b9a', flip: true }],
-  ['truck', -66, 30, 0, { flip: true }],
-  ['pallets', -59, -22, 0],
-  ['pallets', -57.5, -22, 0],
-  ['pallets', -59, 23, 0],
-  ['forklift', -58, -15, 0, { flip: true }],
-  ['forklift', -59, 16, 0, { color: '#d8a22c', flip: true }],
-  ['cabin', -71.5, 9, 1, { color: '#d6d2c4' }],
-  // Staging area.
-  ['forklift', -17, 6, 0, { color: '#d8a22c', flip: true }],
-  ['pallets', -21, -5, 0],
-  ['pallets', -19.5, -5, 0],
-  ['pallets', -30, 0, 0],
-  ['pallets', -38, -6, 0],
+  ...[-60, -40, -20].map((x) => ['truss', x, 0, 1, { len: D }]),
 ]
 
-const CENTRE_SETS = [
-  ['truss', 0, 0, 1, { len: D }],
-  ['office', 0, 0, 0, { w: 10, d: 6, floors: 1, h: 3.4, color: '#c9c4b8' }],
+const CENTRE_SETS = [['truss', 0, 0, 1, { len: D }]]
+
+const mirrorAll = (list) => list.map(mirrorBox)
+const obstacles = [...base(BLUE), ...mirrorAll(base(RED)), ...WEST, ...mirrorAll(WEST), ...CENTRE]
+const pieces = [...WEST_PIECES, ...WEST_PIECES.map(mirrorPiece)]
+
+// Floor paint: each base outlined in its colour, a centre circle, the helipads, and a
+// walkway line along each long wall.
+const WEST_LINES = [
+  { points: [[-74, -16], [-48.5, -16], [-48.5, 16], [-74, 16]], width: 0.25, color: 'rgba(80,130,210,0.8)' },
+  { points: [[-73, -47.5], [-4, -47.5]], width: 0.15, color: 'rgba(230,190,40,0.9)' },
+  { points: [[-73, 47.5], [-4, 47.5]], width: 0.15, color: 'rgba(230,190,40,0.9)' },
 ]
-
-const { obstacles, pieces } = mirrored(WEST, WEST_PIECES, [], [])
-
-// Floor markings: yellow lines along the rack fronts and the staging area, hatched bays at
-// the doors, walkway lines by the walls.
-const Y = 'rgba(230,190,40,0.95)'
-const WEST_LINES = []
-for (const z of RACK_ROWS) for (const x of RACK_X) for (const dz of [-0.95, 0.95]) WEST_LINES.push({ points: [[x - 6.2, z + dz], [x + 6.2, z + dz]], width: 0.12, color: Y })
-WEST_LINES.push({ points: [[-71, -13], [0, -13]], width: 0.15, color: Y }, { points: [[-71, 13], [0, 13]], width: 0.15, color: Y })
-for (const zc of DOORS) {
-  WEST_LINES.push({ points: [[-74, zc - 2.4], [-68, zc - 2.4], [-68, zc + 2.4], [-74, zc + 2.4]], width: 0.15, color: Y })
-  for (let k = -2; k <= 2; k += 1) WEST_LINES.push({ points: [[-74, zc + k - 0.6], [-68.5, zc + k + 0.6]], width: 0.2, color: 'rgba(230,190,40,0.55)' })
-}
-WEST_LINES.push({ points: [[-73, -48.2], [0, -48.2]], width: 0.12, color: 'rgba(70,160,80,0.85)' }, { points: [[-73, 48.2], [0, 48.2]], width: 0.12, color: 'rgba(70,160,80,0.85)' })
-const mirrorLine = (l) => ({ ...l, points: l.points.map(([x, z]) => [-x, z]) })
+const mirrorLine = (l, color) => ({ ...l, points: l.points.map(([x, z]) => [-x, z]), color: color || l.color })
+const ring = []
+for (let k = 0; k <= 32; k += 1) ring.push([Math.cos((k / 32) * Math.PI * 2) * 14, Math.sin((k / 32) * Math.PI * 2) * 14])
 
 export const STEELBAY_WAREHOUSE = {
   id: 'warehouse',
@@ -103,14 +133,24 @@ export const STEELBAY_WAREHOUSE = {
   obstacles,
   pieces,
   sets: [...WEST_SETS, ...WEST_SETS.map(mirrorSet), ...CENTRE_SETS],
+  // Helipads beside each base.
+  pads: [
+    { x: -63, z: -32, w: 12, d: 12, color: '#b9bcc2' },
+    { x: 63, z: -32, w: 12, d: 12, color: '#b9bcc2' },
+  ],
   // A tiled floor wall to wall.
-  floor: { x: 0, z: 0, w: W, d: D, tile: 1.6, colors: ['#bdb9b0', '#ada99f'], grout: 'rgba(60,58,54,0.4)' },
-  lines: [...WEST_LINES, ...WEST_LINES.map(mirrorLine)],
+  floor: { x: 0, z: 0, w: W, d: D, tile: 2, colors: ['#cfd1d6', '#c6c8ce'], grout: 'rgba(70,74,86,0.45)' },
+  lines: [
+    ...WEST_LINES,
+    mirrorLine(WEST_LINES[0], 'rgba(205,90,80,0.8)'),
+    ...WEST_LINES.slice(1).map((l) => mirrorLine(l)),
+    { points: ring, width: 0.2, color: 'rgba(230,190,40,0.85)' },
+  ],
   texts: [
-    { x: -62, z: -40, text: 'BAY 1', size: 2.4, color: 'rgba(230,190,40,0.85)' },
-    { x: 62, z: -40, text: 'BAY 2', size: 2.4, color: 'rgba(230,190,40,0.85)' },
-    // Aisle letters at the cross aisles, in the aisle on the wall side of each row.
-    ...['A', 'B', 'C'].flatMap((text, i) => [-37, -19, 19, 37].map((x) => ({ x, z: RACK_ROWS[i] - 5, text, size: 1.8, color: 'rgba(40,40,40,0.55)' }))),
+    { x: -63, z: -32, text: 'H', size: 7, color: 'rgba(250,250,250,0.9)' },
+    { x: 63, z: -32, text: 'H', size: 7, color: 'rgba(250,250,250,0.9)' },
+    { x: -66, z: 22, text: 'BLUE', size: 2.6, color: 'rgba(80,130,210,0.85)' },
+    { x: 66, z: 22, text: 'RED', size: 2.6, color: 'rgba(205,90,80,0.85)' },
   ],
   roads: [],
   mud: [],

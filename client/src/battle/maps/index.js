@@ -6,7 +6,7 @@ export const MAPS = [
   {
     id: 'warehouse',
     name: 'Steelbay Warehouse',
-    blurb: 'Close quarters inside a distribution warehouse: a tiled floor, long aisles of pallet racking between two loading bays, forklifts and crates round a glass office in the middle.',
+    blurb: 'An indoor arena in a cleared-out warehouse: a bright tiled floor, clean concrete cover, pillars and tall slabs, and a walled base in each team colour with a helipad and bunker.',
     size: '150 × 100 m',
     load: () => import('./steelbayWarehouse.js'),
   },
