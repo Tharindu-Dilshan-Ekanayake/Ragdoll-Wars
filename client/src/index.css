@@ -1409,8 +1409,17 @@ button {
 }
 .ff-maps {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 14px;
+  /* Two rows of four: every battlefield at a glance. */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (max-width: 720px) {
+  .ff-maps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ff-mapcard__title h3 {
+    white-space: normal;
+  }
 }
 .ff-mapcard {
   border-radius: 14px;
@@ -1424,36 +1433,46 @@ button {
   border-radius: 0;
 }
 .ff-mapcard__body {
-  padding: 12px 14px 14px;
+  padding: 8px 10px 10px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   flex: 1;
 }
 .ff-mapcard__body p {
   margin: 0;
   color: #d8d3c9;
-  font-size: 14px;
-  line-height: 1.45;
+  font-size: 12px;
+  line-height: 1.35;
   flex: 1;
+  /* Two lines of the blurb; the rest in the tooltip. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .ff-mapcard__body .ff-btn {
-  align-self: flex-end;
+  width: 100%;
+  justify-content: center;
 }
 .ff-mapcard__title {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
+  flex-direction: column;
+  gap: 1px;
 }
 .ff-mapcard__title h3 {
   margin: 0;
   font-family: var(--ff-display);
   font-weight: 400;
-  font-size: 22px;
+  font-size: 16px;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .ff-mapcard__title span {
   color: var(--ff-dim);
-  font-size: 13px;
+  font-size: 11px;
 }
 .ff-mapcard--soon {
   opacity: 0.75;

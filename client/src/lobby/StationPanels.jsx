@@ -82,10 +82,10 @@ function SandboxPanel() {
               <h3>{m.name}</h3>
               <span>{m.size}</span>
             </div>
-            <p>{m.blurb}</p>
+            <p title={m.blurb}>{m.blurb}</p>
             <button
               type="button"
-              className="ff-btn ff-btn--accent ff-btn--big"
+              className="ff-btn ff-btn--accent"
               onClick={() => {
                 sfx.click()
                 startBattle(m.id)
