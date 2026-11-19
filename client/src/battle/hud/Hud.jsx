@@ -877,12 +877,41 @@ export default function Hud({ onExit }) {
   const walking = useHud((s) => s.walking)
   const zombies = useHud((s) => s.mode === 'zombies')
   const level = useQuality((s) => s.level)
+  const rootRef = useRef(null)
+  // Compact HUD: the status bar, the speed buttons and the menu buttons are stacked
+  // top-right; the side columns start just under them, however tall that stack is
+  // (the wave bar grows a Start wave button, a phone turned upright wraps it...).
+  useEffect(() => {
+    const root = rootRef.current
+    if (!root || typeof ResizeObserver === 'undefined') return undefined
+    const mq = window.matchMedia('(pointer: coarse), (max-width: 820px)')
+    const parts = () => ['.ff-top', '.ff-corner'].map((sel) => root.querySelector(sel)).filter(Boolean)
+    const update = () => {
+      if (!mq.matches) {
+        root.style.removeProperty('--side-top')
+        return
+      }
+      const base = root.getBoundingClientRect().top
+      let bottom = base
+      for (const el of parts()) bottom = Math.max(bottom, el.getBoundingClientRect().bottom)
+      root.style.setProperty('--side-top', `${Math.round(bottom - base + 8)}px`)
+    }
+    const ro = new ResizeObserver(update)
+    ro.observe(root)
+    for (const el of parts()) ro.observe(el)
+    mq.addEventListener?.('change', update)
+    update()
+    return () => {
+      ro.disconnect()
+      mq.removeEventListener?.('change', update)
+    }
+  }, [zombies])
   // Boxity's screen ads follow modal panels.
   useEffect(() => {
     useApp.getState().setPanel(Boolean(panel))
   }, [panel])
   return (
-    <div className={`ff-hud ${walking ? 'is-walking' : ''} ${zombies ? 'is-zombies' : ''}`} data-quality={level}>
+    <div ref={rootRef} className={`ff-hud ${walking ? 'is-walking' : ''} ${zombies ? 'is-zombies' : ''}`} data-quality={level}>
       <TopBar />
       <Corner onExit={onExit} />
       <Rail />

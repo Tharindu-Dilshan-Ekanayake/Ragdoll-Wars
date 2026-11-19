@@ -1694,9 +1694,9 @@ button {
   width: 1.3em;
   height: 1.3em;
 }
-/* On a phone the stick and jump button need the corners: the dock steps aside. */
+/* On a phone the stick and jump button need the corners: the side columns step aside
+   while you walk (the Units button stays: you can still drop troops on foot). */
 @media (pointer: coarse) {
-  .ff-hud.is-walking .ff-tray,
   .ff-hud.is-walking .ff-rail,
   .ff-hud.is-walking .ff-actions {
     display: none;
@@ -2419,4 +2419,126 @@ button {
 }
 .ff-mp__quick .ff-mp__row {
   margin-top: 0;
+}
+
+/* --- Phone HUD, top: the left 60% of the top stays clear ----------------------------
+   The status bar (score, or the wave bar) and the speed buttons stack on the right under
+   the menu buttons. Hud.jsx sets --side-top to just under that stack. */
+@media (pointer: coarse), (max-width: 820px) {
+  .ff-hud .ff-top {
+    top: calc(8px + max(34px, var(--u) * 44) + 8px);
+    left: auto;
+    right: 8px;
+    transform: none;
+    width: auto;
+    max-width: min(40vw, 440px);
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: stretch;
+    gap: 6px;
+  }
+  .ff-hud .ff-top > .ff-speed {
+    order: 2;
+  }
+  .ff-hud .ff-top > .ff-score {
+    order: 1;
+    padding: 4px 10px;
+    gap: 6px;
+  }
+  .ff-hud .ff-corner {
+    top: 8px;
+    right: 8px;
+  }
+  /* The wave bar, narrow: the numbers in a row (or two), Start wave across the bottom. */
+  .ff-hud .ff-top--zombies .ff-zbar {
+    flex-wrap: wrap;
+    width: 100%;
+    justify-content: flex-end;
+    gap: 4px;
+  }
+  .ff-hud .ff-top--zombies .ff-zbar__cell {
+    flex: 1 1 0;
+    min-width: 52px;
+    padding: 3px 4px;
+  }
+  .ff-hud .ff-top--zombies .ff-zbar__cell--wall {
+    display: none;
+  }
+  .ff-hud .ff-top--zombies .ff-zbar__label {
+    font-size: 9px;
+    letter-spacing: 0.04em;
+  }
+  .ff-hud .ff-top--zombies .ff-zbar__num {
+    font-size: 17px;
+  }
+  .ff-hud .ff-top--zombies .ff-zbar__go {
+    flex: 1 1 100%;
+    justify-content: center;
+    padding: 0.35em 1em;
+    font-size: 15px;
+  }
+  .ff-hud .ff-speed {
+    gap: 4px;
+    padding: 4px;
+  }
+  /* Drawn over the walking stick's touch zone, so the Units button always takes the tap. */
+  .ff-hud .ff-tray {
+    z-index: 3;
+  }
+}
+@media (pointer: coarse) and (orientation: landscape), (max-width: 820px) and (orientation: landscape) {
+  .ff-hud .ff-top {
+    max-width: calc(40vw - 12px);
+  }
+}
+/* Upright the screen is narrow: the menu buttons and the bar shrink to fit the right 40%. */
+@media (pointer: coarse) and (orientation: portrait), (max-width: 820px) and (orientation: portrait) {
+  .ff-hud .ff-top {
+    max-width: calc(42vw - 8px);
+  }
+  .ff-hud .ff-corner {
+    gap: 4px;
+  }
+  .ff-hud .ff-corner .ff-iconbtn {
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    min-height: 36px;
+  }
+  .ff-hud .ff-viewbtn {
+    min-width: 36px;
+    height: 36px;
+    padding: 0 9px;
+  }
+  .ff-hud .ff-viewbtn span {
+    display: none;
+  }
+  .ff-hud .ff-speed .ff-chip {
+    min-width: 32px;
+  }
+  .ff-hud .ff-top > .ff-score {
+    flex: 1 1 100%;
+    justify-content: flex-end;
+  }
+}
+/* A phone on its side is short: the side columns go two buttons wide. */
+@media (pointer: coarse) and (max-height: 520px), (max-width: 820px) and (max-height: 520px) {
+  .ff-hud .ff-rail,
+  .ff-hud .ff-actions {
+    display: grid;
+    grid-template-columns: repeat(2, 44px);
+    grid-auto-rows: minmax(38px, auto);
+    align-content: start;
+  }
+  .ff-hud .ff-rail > .ff-sidetab,
+  .ff-hud .ff-actions > .ff-sidetab {
+    grid-column: 1 / -1;
+  }
+  .ff-hud .ff-rail .ff-rail__group {
+    display: contents;
+  }
+  .ff-hud .ff-rail.is-collapsed,
+  .ff-hud .ff-actions.is-collapsed {
+    grid-template-columns: 44px;
+  }
 }
