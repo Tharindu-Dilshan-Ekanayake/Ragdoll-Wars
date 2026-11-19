@@ -12,8 +12,8 @@ import { box, mirrorBox, mirrorPiece } from './mapKit.js'
  * end, ringed by low walls. Open lanes along both long walls for the armour.
  */
 
-const W = 150
-const D = 100
+const W = 190
+const D = 120
 const HX = W / 2 - 0.4
 const HZ = D / 2 - 0.4
 const DOORS = [-30, -15, 15, 30]
@@ -118,21 +118,34 @@ const WEST_SETS = [
   ['shedwall', -W / 4, -HZ, 0, { len: W / 2 }],
   ['shedwall', -W / 4, HZ, 2, { len: W / 2 }],
   ['shedwall', -HX, 0, 1, { len: D, doors: DOORS }],
-  ...[-60, -40, -20].map((x) => ['truss', x, 0, 1, { len: D }]),
+  ...[-80, -60, -40, -20].map((x) => ['truss', x, 0, 1, { len: D }]),
+  // A site office you can go inside on each side of the field.
+  ['bldg', -30, 31, 0, { w: 9, d: 6, doors: [['n', 0]], split: null, color: '#d3d1cb', roof: '#b9b8b2', floor: '#9fa3a8' }],
+  ['bldg', -30, -31, 0, { w: 9, d: 6, doors: [['s', 0]], split: null, color: '#d3d1cb', roof: '#b9b8b2', floor: '#9fa3a8' }],
 ]
 
 const CENTRE_SETS = [['truss', 0, 0, 1, { len: D }]]
 
+// --- The bigger hall (190 x 120) ---------------------------------------------------
+// Bases and everything near them move 20 m back, the far rows 10 m out (whole cells of
+// the 1.25 m nav grid, so the platforms stay aligned); a site office you can go inside
+// stands on each side of the field.
+const fx = (x) => (x < -37 ? x - 20 : x)
+const fz = (z) => (Math.abs(z) > 30 ? z + Math.sign(z) * 10 : z)
+const mv = (o) => ({ ...o, x: fx(o.x), z: fz(o.z) })
+const mvLevel = (l) => ({ ...l, x: fx(l.x), z: fz(l.z), open: l.open && l.open.map(([side, c, wd]) => [side, side === 'w' || side === 'e' ? fz(c) : fx(c), wd]) })
+
 const mirrorAll = (list) => list.map(mirrorBox)
-const obstacles = [...base(BLUE), ...mirrorAll(base(RED)), ...WEST, ...mirrorAll(WEST), ...CENTRE]
-const pieces = [...WEST_PIECES, ...WEST_PIECES.map(mirrorPiece)]
+const WEST_MOVED = WEST.map(mv)
+const obstacles = [...base(BLUE).map(mv), ...mirrorAll(base(RED).map(mv)), ...WEST_MOVED, ...mirrorAll(WEST_MOVED), ...CENTRE.map(mv)]
+const pieces = [...WEST_PIECES.map(([k, x, z, r]) => [k, fx(x), fz(z), r]), ...WEST_PIECES.map(([k, x, z, r]) => [k, fx(x), fz(z), r]).map(mirrorPiece)]
 
 // Floor paint: each base outlined in its colour, a centre circle, the helipads, and a
 // walkway line along each long wall.
 const WEST_LINES = [
-  { points: [[-74, -16], [-48.5, -16], [-48.5, 16], [-74, 16]], width: 0.25, color: 'rgba(80,130,210,0.8)' },
-  { points: [[-73, -47.5], [-4, -47.5]], width: 0.15, color: 'rgba(230,190,40,0.9)' },
-  { points: [[-73, 47.5], [-4, 47.5]], width: 0.15, color: 'rgba(230,190,40,0.9)' },
+  { points: [[-94, -16], [-68.5, -16], [-68.5, 16], [-94, 16]], width: 0.25, color: 'rgba(80,130,210,0.8)' },
+  { points: [[-93, -57.5], [-4, -57.5]], width: 0.15, color: 'rgba(230,190,40,0.9)' },
+  { points: [[-93, 57.5], [-4, 57.5]], width: 0.15, color: 'rgba(230,190,40,0.9)' },
 ]
 const mirrorLine = (l, color) => ({ ...l, points: l.points.map(([x, z]) => [-x, z]), color: color || l.color })
 const ring = []
@@ -144,17 +157,17 @@ export const STEELBAY_WAREHOUSE = {
   width: W,
   depth: D,
   bases: [
-    { x: -62, z: 0 },
-    { x: 62, z: 0 },
+    { x: -82, z: 0 },
+    { x: 82, z: 0 },
   ],
   obstacles,
   pieces,
   sets: [...WEST_SETS, ...WEST_SETS.map(mirrorSet), ...CENTRE_SETS],
-  levels: [...WEST_LEVELS, ...WEST_LEVELS.map(mirrorLevel), ...CENTRE_LEVELS],
+  levels: [...WEST_LEVELS.map(mvLevel), ...WEST_LEVELS.map(mvLevel).map(mirrorLevel), ...CENTRE_LEVELS],
   // Helipads beside each base (you fly in to yours: walk/arrivalFlight.js).
   helipads: [
-    { x: -63, z: -32 },
-    { x: 63, z: -32 },
+    { x: -83, z: -42 },
+    { x: 83, z: -42 },
   ],
   // A tiled floor wall to wall.
   floor: { x: 0, z: 0, w: W, d: D, tile: 2, colors: ['#cfd1d6', '#c6c8ce'], grout: 'rgba(70,74,86,0.45)' },
@@ -165,8 +178,8 @@ export const STEELBAY_WAREHOUSE = {
     { points: ring, width: 0.2, color: 'rgba(230,190,40,0.85)' },
   ],
   texts: [
-    { x: -66, z: 22, text: 'BLUE', size: 2.6, color: 'rgba(80,130,210,0.85)' },
-    { x: 66, z: 22, text: 'RED', size: 2.6, color: 'rgba(205,90,80,0.85)' },
+    { x: -86, z: 22, text: 'BLUE', size: 2.6, color: 'rgba(80,130,210,0.85)' },
+    { x: 86, z: 22, text: 'RED', size: 2.6, color: 'rgba(205,90,80,0.85)' },
   ],
   roads: [],
   mud: [],
