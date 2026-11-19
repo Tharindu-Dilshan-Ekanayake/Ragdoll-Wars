@@ -129,6 +129,26 @@ function withPlayHost(endpoint) {
 }
 
 /**
+ * The pod a listed room runs on, from Boxity's directory: a bare joinById could land on
+ * another pod and not find it. { endpoint, mode } or null (not listed, or no directory).
+ */
+async function podOfRoom(target, roomId) {
+  const play = environment()?.playUrl
+  if (target.kind !== 'matchmaker' || !play) return null
+  try {
+    const res = await fetch(`${play}/v1/dir/${encodeURIComponent(target.gameId)}/list`, { signal: AbortSignal.timeout(4000) })
+    if (!res.ok) return null
+    const { rooms } = await res.json()
+    const found = (Array.isArray(rooms) ? rooms : []).find((r) => [r?.colyseusRoomId, r?.roomId, r?.id].includes(roomId))
+    if (!found?.joinUrl) return null
+    const mode = found.metadata?.modeName
+    return { endpoint: withPlayHost(String(found.joinUrl).replace(/^http/i, 'ws')), mode: mode === 'zombies' ? 'zombies' : 'sandbox' }
+  } catch {
+    return null
+  }
+}
+
+/**
  * The game server's endpoint for anything else that talks to it (cloud saves), or null
  * when this build has none. Throws if it can't be reached.
  */
@@ -143,7 +163,9 @@ export async function serverEndpoint() {
  *   { kind: 'quick', mode }                      any open room of that mode, else a new one
  *   (each also takes `team`: 0 Blue, 1 Red, the side to start on)
  *   { kind: 'private', mode, mapId }             a new private room (shows a code)
+ *   { kind: 'public', mode, mapId }              a new room listed on the game's Boxity page
  *   { kind: 'code', code }                       a friend's room by its code
+ *   { kind: 'room', roomId }                     a listed room by its id (Boxity's Join button)
  * `name` is shown to the other players (a signed-in player's Boxity name wins).
  */
 export async function joinBattle(how, name) {
@@ -156,7 +178,9 @@ export async function joinBattle(how, name) {
   useNet.setState({ status: 'connecting', message: 'Connecting…', players: [], code: null })
   try {
     const { Client } = await import('@colyseus/sdk')
-    const endpoint = withPlayHost(await endpointFor(target))
+    // A listed room: straight to the pod it runs on (else the usual way in).
+    const pod = how.kind === 'room' ? await podOfRoom(target, how.roomId) : null
+    const endpoint = pod?.endpoint || withPlayHost(await endpointFor(target))
     const client = new Client(endpoint)
     // What you wear, so the others can draw your avatar when you go walking.
     const { equipped, proportions } = getBloxityState()
@@ -165,12 +189,21 @@ export async function joinBattle(how, name) {
     let room
     if (how.kind === 'code') room = await client.joinById(parseCode(how.code), options)
     else if (how.kind === 'private') room = await client.create('battle', { ...options, mode: how.mode, mapId: how.mapId, private: true })
-    else room = await client.joinOrCreate('battle', { ...options, mode: how.mode, mapId: how.mapId || 'training' })
+    else if (how.kind === 'public') room = await client.create('battle', { ...options, mode: how.mode, mapId: how.mapId, listed: true })
+    else if (how.kind === 'room') {
+      try {
+        room = await client.joinById(how.roomId, options)
+      } catch {
+        // Gone or full by now: the usual matchmaking, in the room's mode if we know it.
+        const again = new Client(withPlayHost(await endpointFor(target)))
+        room = await again.joinOrCreate('battle', { ...options, mode: pod?.mode || 'sandbox', mapId: 'training' })
+      }
+    } else room = await client.joinOrCreate('battle', { ...options, mode: how.mode, mapId: how.mapId || 'training' })
     attach(room)
     return true
   } catch (err) {
     console.warn('[net] join failed', err)
-    const text = how.kind === 'code' ? 'No battle with that code (or it is full)' : err?.message || 'Could not join a battle'
+    const text = how.kind === 'code' || how.kind === 'room' ? 'No battle with that code (or it is full)' : err?.message || 'Could not join a battle'
     useNet.setState({ status: 'error', message: text })
     return false
   }

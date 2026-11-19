@@ -1,6 +1,16 @@
 import { matchMaker } from '@colyseus/core'
 
 /**
+ * The metadata Boxity gets for a room. Boxity reads `mode` as a catalogue number (rooms
+ * of one game page row), and ours is a word ('sandbox', 'zombies'), so it goes as
+ * `modeName` instead.
+ */
+export function reportedMetadata(metadata) {
+  const { mode, ...rest } = metadata ?? {}
+  return typeof mode === 'string' ? { ...rest, modeName: mode } : { ...rest, ...(mode === undefined ? {} : { mode }) }
+}
+
+/**
  * Tells Boxity which rooms this pod is running, so they show under "Open Rooms" on the
  * game's page (each with a Join button that opens the game with ?roomId=).
  *
@@ -34,7 +44,7 @@ export function installRoomReporter({ intervalMs = 2000, timeoutMs = 4000, query
         private: Boolean(room.private),
         // A lobby you can drop into at any time: there are no rounds to be "started".
         started: false,
-        metadata: room.metadata ?? {},
+        metadata: reportedMetadata(room.metadata),
       }))
       const players = rooms.reduce((sum, room) => sum + room.clients, 0)
       await fetch(url, {

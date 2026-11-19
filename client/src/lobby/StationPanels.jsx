@@ -338,6 +338,8 @@ function MultiplayerPanel() {
   const message = useNet((s) => s.message)
   const [mapId, setMapId] = useState(MAPS[0].id)
   const [mode, setMode] = useState('sandbox')
+  // Listed: shown under Open Rooms on the game's Boxity page, for anyone to join.
+  const [listed, setListed] = useState(false)
   const [code, setCode] = useState('')
   const name = identity?.displayName || identity?.username || 'Commander'
   const busy = status === 'connecting'
@@ -377,8 +379,18 @@ function MultiplayerPanel() {
             ))}
           </select>
         )}
+        <div className="ff-seg">
+          {[
+            [false, 'Friends (code)'],
+            [true, 'Open to all'],
+          ].map(([id, label]) => (
+            <button type="button" key={label} className={`ff-chip ${listed === id ? 'is-on' : ''}`} onClick={() => setListed(id)}>
+              {label}
+            </button>
+          ))}
+        </div>
         <div className="ff-mp__row">
-          <button type="button" className="ff-btn ff-btn--accent" disabled={busy} onClick={() => go({ kind: 'private', mode, mapId })}>
+          <button type="button" className="ff-btn ff-btn--accent" disabled={busy} onClick={() => go({ kind: listed ? 'public' : 'private', mode, mapId })}>
             Create room
           </button>
         </div>

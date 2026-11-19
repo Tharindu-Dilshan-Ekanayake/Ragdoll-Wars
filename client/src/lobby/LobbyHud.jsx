@@ -44,6 +44,20 @@ const inviteCode = typeof window !== 'undefined' ? parseCode(new URLSearchParams
 let inviteTaken = false
 
 /**
+ * Boxity's "Join" button on an Open Rooms entry (and a friend's invite) opens the game
+ * with ?roomId=ID: that room, read once. A battle code (?join=) wins if both are there.
+ */
+const launchRoomId = (() => {
+  try {
+    const id = new URLSearchParams(window.location.search).get('roomId') || ''
+    return /^[A-Za-z0-9_-]{4,64}$/.test(id) ? id : ''
+  } catch {
+    return ''
+  }
+})()
+const launchTarget = inviteCode ? { kind: 'code', code: inviteCode } : launchRoomId ? { kind: 'room', roomId: launchRoomId } : null
+
+/**
  * The lobby HUD: your picture and name top right with settings and help under them, the
  * "open" prompt while you stand on a pad, touch controls, and the station panels.
  */
@@ -59,25 +73,26 @@ export default function LobbyHud() {
   const netMessage = useNet((s) => s.message)
   // An invite link: join that battle as soon as we know who you are (or after a moment,
   // for a guest on a build without a Boxity sign-in).
-  const [invited, setInvited] = useState(Boolean(inviteCode))
+  const [invited, setInvited] = useState(Boolean(launchTarget))
   // Into a waiting room (made one, or joined by code or link): show it.
   useEffect(() => {
     if (netStatus === 'waiting') useLobby.getState().setPanel('multiplayer')
   }, [netStatus])
   const [waited, setWaited] = useState(false)
   useEffect(() => {
-    if (!inviteCode) return undefined
+    if (!launchTarget) return undefined
     const id = setTimeout(() => setWaited(true), 2500)
     return () => clearTimeout(id)
   }, [])
   useEffect(() => {
-    if (!inviteCode || inviteTaken || !(isReady || waited)) return
+    if (!launchTarget || inviteTaken || !(isReady || waited)) return
     inviteTaken = true
     // The link has done its job: a refresh shouldn't try to join again.
     const url = new URL(window.location.href)
     url.searchParams.delete('join')
+    url.searchParams.delete('roomId')
     window.history.replaceState(null, '', url.toString())
-    joinBattle({ kind: 'code', code: inviteCode }, name)
+    joinBattle(launchTarget, name)
   }, [isReady, waited, name])
 
   // E opens the station you're standing on; Esc closes a panel.
@@ -156,7 +171,7 @@ export default function LobbyHud() {
       )}
       {invited && (netStatus === 'connecting' || netStatus === 'error') && (
         <div className={`ff-invite ${netStatus === 'error' ? 'is-error' : ''}`}>
-          <span>{netStatus === 'error' ? netMessage : `Joining battle ${inviteCode}…`}</span>
+          <span>{netStatus === 'error' ? netMessage : `Joining battle ${inviteCode || launchRoomId}…`}</span>
           {netStatus === 'error' && (
             <button type="button" className="ff-btn ff-btn--small" onClick={() => setInvited(false)}>
               OK

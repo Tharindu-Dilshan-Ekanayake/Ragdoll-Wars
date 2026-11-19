@@ -1,6 +1,6 @@
 ---
 canDie: false
-hasScore: false
+hasScore: true
 ---
 
 # Floppy Front: Boxity integration
@@ -20,7 +20,7 @@ battles (sandbox and co-op Zombie Horde, up to four players) run on the game ser
 
 ## Identity
 
-`VITE_GAME_SLUG` (default `floppy-front`) is passed to `Legion.SDK.init()`. A signed-in
+`VITE_GAME_SLUG` (default `ragdoll-wars`) is passed to `Legion.SDK.init()`. A signed-in
 player's token goes with every server join and is verified there; their Boxity name is
 shown to other players and on the leaderboards.
 
@@ -60,6 +60,14 @@ Wave), `zombie_kills` (Zombies Dropped), `battles` (Battles Fought), `playtime`
 reports them (`/v1/leaderboards/hosted/{gameId}/report`, `BLOXITY_REPORT_TOKEN`) and
 the client also submits them through the SDK for signed-in players. The lobby's
 trophy button shows the game's own top-10 from the server's database.
+
+## Open Rooms
+
+The server reports its battle rooms every 2 s (`legionRoomReporter.js`), and Boxity lists
+them under Open Rooms on the game page. Rooms made with **Open to all** in the Multiplayer
+popup are listed; **Friends (code)** ones are private (the code is the way in). Boxity's
+Join button opens the game with `?roomId=`: the lobby reads it once and joins that room
+on its own pod (`net/battleNet.js`, `kind: 'room'`), else falls back to normal matchmaking.
 
 ## Not used yet
 
