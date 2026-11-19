@@ -1,5 +1,5 @@
 import { mirrorSet } from '../sim/setpieces.js'
-import { box, mirrored, mirrorPatch, scatterTrees } from './mapKit.js'
+import { box, mirrored, mirrorPatch, mirrorTerrain, scatterTrees } from './mapKit.js'
 
 /**
  * Sunscar Village - a desert town round a market square. Flat-roofed adobe houses line
@@ -38,7 +38,6 @@ const WEST_PIECES = [
   ['sandwall', -65, 16.5, 1],
   ['tower', -66, -24],
   ['tower', -66, 24],
-  ['helipad', -76, 32],
   ['floodlight', -70, -4],
   ['radiomast', -84, -40],
   ['carwreck', -26, 2, 0],
@@ -82,29 +81,75 @@ const CENTRE_SETS = [
   ['domehouse', 0, -22, 0, { dome: '#5f8fb8' }],
 ]
 
-const { obstacles, pieces } = mirrored(WEST, WEST_PIECES, [], [['palm', 0, 52], ['palm', 4, 47]])
+// --- The bigger town (220 x 140) ---------------------------------------------------
+// Each outpost moves 25 m out into the dunes, the back rows of houses, the walls, the
+// water tower and the oasis 12 m out from the street. On the town's edge, a police post
+// and a shop you can go inside; dunes, a dry wadi and wind-rippled sand around.
+const fx = (x) => (x < -55 ? x - 25 : x)
+const fz = (z) => (Math.abs(z) > 22 ? z + Math.sign(z) * 12 : z)
+const mv = (o) => ({ ...o, x: fx(o.x), z: fz(o.z) })
+const mvPiece = ([k, x, z, r]) => [k, fx(x), fz(z), r]
+const mvSet = ([k, x, z, r, o]) => [k, fx(x), fz(z), r, o]
+const ADOBE = '#c9a57a'
+
+const NEW_WEST = [
+  box('lowwall', -60, -21, 0.5, 8, 1.4, 0, { color: '#bfa077' }),
+  box('lowwall', -60, 22, 0.5, 8, 1.4, 0, { color: '#bfa077' }),
+  box('crate', -70, -3, 1.25, 1.25),
+  box('sandbag', -76, 0, 0.9, 5),
+]
+const NEW_PIECES = [
+  ['carwreck', -54, -30, 1],
+  ['drum', -72, 18],
+  ['drum', -72.8, 18.6],
+  ['cactus', -80, 34],
+]
+const NEW_SETS = [
+  ['bldg', -66, 12, 0, { w: 10, d: 7, doors: [['s', -2], ['e', 0]], color: ADOBE, roof: '#b9966a', floor: '#a88c66' }],
+  ['bldg', -66, -12, 0, { w: 9, d: 7, doors: [['n', 2]], split: null, color: '#c4a074', roof: '#b4916a', floor: '#a88c66' }],
+]
+
+const WEST_ALL = [...WEST.map(mv), ...NEW_WEST]
+const WEST_PIECES_ALL = [...WEST_PIECES.map(mvPiece), ...NEW_PIECES]
+const WEST_SETS_ALL = [...WEST_SETS.map(mvSet), ...NEW_SETS]
+
+const TERRAIN = mirrorTerrain({
+  hills: [
+    { x: -50, z: -52, r: 12, h: 3 },
+    { x: -46, z: 54, r: 10, h: 2.6 },
+    { x: -92, z: -46, r: 11, h: 3.4 },
+    { x: -94, z: 46, r: 9, h: 2.6 },
+    { x: -30, z: 60, r: 7, h: 1.6 },
+  ],
+  // A dry wadi winding across the south.
+  trenches: [{ points: [[-110, -38], [-88, -34], [-70, -40], [-56, -36]], w: 5, d: 0.9, ramp: 6 }],
+  rough: 0.45,
+})
+
+const { obstacles, pieces } = mirrored(WEST_ALL, WEST_PIECES_ALL, [], [['palm', 0, 64], ['palm', 8, 60]])
 
 export const SUNSCAR_VILLAGE = {
   id: 'desert',
   name: 'Sunscar Village',
-  width: 170,
-  depth: 110,
+  width: 220,
+  depth: 140,
+  terrain: TERRAIN,
   bases: [
-    { x: -74, z: 0 },
-    { x: 74, z: 0 },
+    { x: -99, z: 0 },
+    { x: 99, z: 0 },
   ],
   obstacles,
   pieces,
-  sets: [...WEST_SETS, ...WEST_SETS.map(mirrorSet), ...CENTRE_SETS],
-  water: [{ x: 0, z: 46, w: 12, d: 6 }],
+  sets: [...WEST_SETS_ALL, ...WEST_SETS_ALL.map(mirrorSet), ...CENTRE_SETS],
+  water: [{ x: 0, z: 58, w: 12, d: 6 }],
   pads: [
     // The square's flagstones and the street paving.
     { x: 0, z: 0, w: 20, d: 20, color: '#c7b291', joints: 2 },
     ...[{ x: -27, z: 0, w: 34, d: 6, color: '#cdb895', joints: 3 }].flatMap((p) => [p, mirrorPad(p)]),
   ],
-  roads: [{ width: 2.6, points: [[-92, 0], [-44, 0]] }, { width: 2.6, points: [[44, 0], [92, 0]] }, { width: 2.4, points: [[0, -60], [0, -10]] }],
-  mud: [[-30, 0, 6], [0, 46, 9], [-58, 0, 6]].flatMap((p) => [p, mirrorPatch(p)]),
-  trees: scatterTrees(40, 51, 85, 55),
+  roads: [{ width: 2.6, points: [[-118, 0], [-44, 0]] }, { width: 2.6, points: [[44, 0], [118, 0]] }, { width: 2.4, points: [[0, -76], [0, -10]] }],
+  mud: [[-30, 0, 6], [0, 58, 9], [-58, 0, 6], [-83, 0, 6]].flatMap((p) => [p, mirrorPatch(p)]),
+  trees: scatterTrees(46, 51, 110, 70),
   hills: [150, 250],
   hillScale: 1.2,
   theme: {

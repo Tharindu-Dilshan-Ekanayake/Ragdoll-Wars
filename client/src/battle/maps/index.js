@@ -35,7 +35,7 @@ export const MAPS = [
     id: 'desert',
     name: 'Sunscar Village',
     blurb: 'A desert town round a market square: adobe houses and walled yards, market stalls, a domed house, a water tower and a palm oasis, fortified outposts in the dunes.',
-    size: '170 × 110 m',
+    size: '220 × 140 m',
     load: () => import('./sunscarVillage.js'),
   },
   {
