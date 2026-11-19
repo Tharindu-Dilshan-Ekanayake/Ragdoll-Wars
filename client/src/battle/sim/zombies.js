@@ -364,6 +364,9 @@ export function onZombieKilled(w, s) {
  */
 function spit(w, s, sp, h) {
   s.spitT = (s.spitT || 0) - h
+  // Through the wall: no stopping under it to spit up at the troops on top (they can't
+  // shoot back down there); on for the camp.
+  if (w.rampart && s.x < w.rampart.back) return false
   let best = null
   let bestD = sp.range * sp.range
   const soldiers = w.teamLiving[0]

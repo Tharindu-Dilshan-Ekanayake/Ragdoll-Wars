@@ -35,6 +35,7 @@ import { BODIES_PER_RAGDOLL, startRagdoll, stepRagdoll } from './ragdoll.js'
 import { animate, J_PELVIS, wrapAngle } from './rig.js'
 import { makeSoldier, resetSoldier } from './soldier.js'
 import { createSpatial, rebuildSpatial } from './spatial.js'
+import { createSquads, squadOf, updateSquads } from './squads.js'
 import { mapTerrain } from './ground.js'
 import { mapLevels } from './pieces.js'
 import { rayTerrain } from './terrain.js'
@@ -163,6 +164,8 @@ export function createWorld(map, caps, mode = 'sandbox') {
       { x: map.bases[1].x, z: map.bases[1].z, n: 0 },
     ],
     centroidT: 0,
+    /** Squads (squads.js): who fights alongside whom, and how they move up. */
+    squads: createSquads(),
     /** Bumped when soldiers are added, removed or (de)selected: the HUD re-reads then. */
     version: 0,
   }
@@ -265,6 +268,7 @@ function tick(w, h) {
     }
   }
 
+  updateSquads(w, h)
   for (let i = 0; i < living.length; i += 1) updateSoldier(w, living[i], h)
   updateVehicles(w, h)
   updateBullets(w)
@@ -453,7 +457,7 @@ function think(w, s, type) {
   }
   if (target && target !== s.target) {
     // Reaction time on a new target.
-    s.fireT = Math.max(s.fireT, 0.35 + rand() * 0.5)
+    s.fireT = Math.max(s.fireT, 0.35 + rand() * 0.5 + (type.aim || 0))
   }
   s.target = target
   s.targetId = target ? target.id : 0
@@ -568,7 +572,11 @@ function think(w, s, type) {
         flanking = true
       }
     }
-    if (!flanking) {
+    // In a squad: the wedge out of contact, bounding in contact (squads.js).
+    const q = flanking ? null : squadOf(w, s)
+    const inSquad = q ? squadThink(w, s, type, q, target, nearest, tdist) : null
+    if (inSquad !== null) stationary = inSquad
+    else if (!flanking) {
       if (target && tdist <= type.engage * s.engageK) {
         // Close enough: into cover near here - badly hurt, cover behind - or, with none,
         // stay put but out of a teammate's way.
@@ -629,6 +637,21 @@ function bound(w, s, type, target) {
     }
     releaseCover(w, s)
   }
+  const best = nextCover(w, s, type, target, tdist)
+  if (best < 0) return false
+  spots[best].taken = s.slot
+  s.cover = best
+  s.coverAt = 0
+  setGoal(s, spots[best].x, spots[best].z, spots[best].y)
+  return true
+}
+
+/**
+ * The next free cover spot on the way to `target` (`tdist` away): nearer it, a dash of
+ * 2-18 m, facing it, not crowded, high ground preferred. -1 if there's none.
+ */
+function nextCover(w, s, type, target, tdist) {
+  const spots = w.coverSpots
   let best = -1
   let bestScore = Infinity
   gatherTaken(spots, s.x, s.z, 21)
@@ -650,12 +673,107 @@ function bound(w, s, type, target) {
       best = i
     }
   }
-  if (best < 0) return false
-  spots[best].taken = s.slot
-  s.cover = best
-  s.coverAt = 0
-  setGoal(s, spots[best].x, spots[best].z, spots[best].y)
+  return best
+}
+
+/** Where a squad thinks the enemy is, when the soldier himself can't see one. */
+const FOCUS = { x: 0, z: 0 }
+/** Spacing in the wedge (m). */
+const WEDGE_GAP = 3.6
+/** A dash with no cover on the way: this far towards the enemy, then down. */
+const DASH = 9
+
+/**
+ * A squad member on an attack order (squads.js). Returns true when he's staying put,
+ * false while he's moving (or settling into cover), or null to fight on his own: the
+ * enemy's within his engagement range, so it's every man into cover and shooting.
+ */
+function squadThink(w, s, type, q, target, nearest, tdist) {
+  if (target && tdist <= type.engage * s.engageK) return null
+  if (q.contact) {
+    FOCUS.x = target ? target.x : q.ex
+    FOCUS.z = target ? target.z : q.ez
+    // (A machine gunner holds the base of fire, unless there's nobody else to move.)
+    const mover = !q.pinned && (type.key === 'mg' ? q.riflemen === 0 : s.fireTeam === q.mover) && s.legDone !== q.legId
+    // Caught by murderous fire mid-dash: down where he is.
+    if (mover && s.suppress > 0.9) s.legDone = q.legId
+    else if (mover) return dash(w, s, type, q)
+    // Nothing to shoot at and fallen behind the rest: catch up.
+    if (!target && Math.hypot(q.cx - s.x, q.cz - s.z) > 12) {
+      releaseCover(w, s)
+      setGoal(s, q.cx, q.cz)
+      return false
+    }
+    return overwatch(w, s, type, target)
+  }
+  // Out of contact: a wedge behind the leader, who waits for stragglers.
+  releaseCover(w, s)
+  const leader = w.slots[q.leader]
+  if (s.slot === q.leader || !leader || !leader.alive) {
+    if (!nearest) {
+      s.goalMode = 0
+      return true
+    }
+    // (The wedge trails behind him: wait only if they're further back than that.)
+    const ahead = (s.x - q.cx) * q.hx + (s.z - q.cz) * q.hz
+    if (q.n > 1 && ahead > q.wedgeBack + 6) {
+      s.goalMode = 0
+      return true
+    }
+    setGoal(s, nearest.x, nearest.z)
+    return false
+  }
+  const idx = Math.max(1, Math.abs(s.rank - q.leaderRank))
+  const row = Math.ceil(idx / 2)
+  const side = idx % 2 ? 1 : -1
+  const back = row * WEDGE_GAP
+  const gx = clamp(leader.x - q.hx * back - q.hz * side * back, -w.obs.limitX + 1, w.obs.limitX - 1)
+  const gz = clamp(leader.z - q.hz * back + q.hx * side * back, -w.obs.limitZ + 1, w.obs.limitZ - 1)
+  if (leader.goalMode === 0 && Math.hypot(gx - s.x, gz - s.z) < 1.5) {
+    s.goalMode = 0
+    return true
+  }
+  setGoal(s, gx, gz)
+  return false
+}
+
+/** Overwatch: shoot from cover close by, or stay put out of a neighbour's way. */
+function overwatch(w, s, type, target) {
+  if (seekCover(w, s, type, target || FOCUS, s.x, s.z, 6, true)) return false
+  s.goalMode = 0
+  if (target) spreadOut(w, s, target)
   return true
+}
+
+/** A bounding dash: to the next cover towards FOCUS, or DASH metres on; then the leg's done. */
+function dash(w, s, type, q) {
+  if (s.legOf !== q.legId) {
+    s.legOf = q.legId
+    releaseCover(w, s)
+    const td = Math.hypot(FOCUS.x - s.x, FOCUS.z - s.z) || 1
+    const best = type.prone ? -1 : nextCover(w, s, type, FOCUS, td)
+    if (best >= 0) {
+      const sp = w.coverSpots[best]
+      sp.taken = s.slot
+      s.cover = best
+      s.coverAt = 0
+      s.legX = sp.x
+      s.legZ = sp.z
+      s.legY = sp.y
+    } else {
+      const k = Math.min(DASH, td * 0.5) / td
+      s.legX = clamp(s.x + (FOCUS.x - s.x) * k, -w.obs.limitX + 1, w.obs.limitX - 1)
+      s.legZ = clamp(s.z + (FOCUS.z - s.z) * k, -w.obs.limitZ + 1, w.obs.limitZ - 1)
+      s.legY = null
+    }
+  }
+  if (Math.hypot(s.legX - s.x, s.legZ - s.z) < 0.7) {
+    s.legDone = q.legId
+    s.goalMode = 0
+    return true
+  }
+  setGoal(s, s.legX, s.legZ, s.legY)
+  return false
 }
 
 /** Gathers the taken cover spots within `r` of (x, z) into TAKEN (for crowding()). */
@@ -937,9 +1055,9 @@ function combat(w, s, type, h) {
   if (s.burstLeft <= 0) {
     s.burstLeft = type.burst[0] + Math.floor(rand() * (type.burst[1] - type.burst[0] + 1))
     s.shotsInBurst = 0
-    s.fireT = type.interval + type.pause * (0.7 + rand() * 0.7)
+    s.fireT = (type.interval + type.pause * (0.7 + rand() * 0.7)) * (1 + s.suppress * 0.8)
   } else {
-    s.fireT = type.interval
+    s.fireT = type.interval * (1 + s.suppress * 0.4)
   }
   if (s.mag <= 0) startReload(w, s, type)
 }
@@ -951,6 +1069,15 @@ function startReload(w, s, type) {
 }
 
 const HIT = { soldier: null, dist: 0, part: 0 }
+/** How much a weapon's fire keeps heads down (per bullet; 1 = a rifle). */
+const SUPPRESSION = { mg: 2.6, sniper: 1.6, smg: 1.2, pistol: 0.7 }
+/** Small-arms spread in battle, times each weapon's own. */
+const BATTLE_SPREAD = 1.6
+/** Small-arms damage in battle, times each weapon's own: more wounded, fewer dropped
+ * outright, time for the medics; a firefight lasts. */
+const BATTLE_DAMAGE = 0.65
+/** A bullet this close (m) going past keeps a soldier's head down. */
+const NEAR_MISS = 2.5
 
 function fire(w, s, t, type, dist, moving) {
   const sy = Math.sin(s.aimYaw)
@@ -961,15 +1088,22 @@ function fire(w, s, t, type, dist, moving) {
   const mz = s.z + cy * 0.62 + sy * 0.1
   const aimHead = !t.isVehicle && type.headshots && rand() < type.headshots
   const ty = (aimHead ? headH(t) : aimY(t)) + gauss() * (t.isVehicle ? 0.25 : 0.05)
-  let spread = type.spread
+  // (BATTLE_SPREAD: soldiers in a fight miss a lot more than on the range; it's what
+  // makes a battle a long firefight rather than a two-minute massacre.)
+  // (Zombie Horde is tuned on the weapons' own numbers.)
+  const battle = w.zmode ? 0 : 1
+  let spread = type.spread * (battle ? BATTLE_SPREAD : 1)
   if (moving) spread *= 2.2
   spread *= 1 - 0.25 * s.wCrouch - 0.45 * s.wProne
   spread *= 1 + 0.6 * (s.armL + s.armR)
   spread *= 1 + Math.min(10, s.shotsInBurst) * 0.05
   if (s.staggerT > 0 || s.hurtT < 0.5) spread *= 1.8
-  spread *= 1 + s.suppress * 1.2
-  // Being shot at keeps heads down.
-  t.suppress = Math.min(1, t.suppress + 0.07 * Math.min(2, type.pellets))
+  // Heads down under fire, and past his engagement range it's mostly keeping theirs down.
+  spread *= 1 + s.suppress * 2
+  spread *= 1 + (Math.max(0, dist - type.engage) / type.engage) * 0.9
+  // Being shot at keeps heads down (near misses too: castBullet).
+  const supp = SUPPRESSION[type.key] || 1
+  if (t.suppress !== undefined) t.suppress = Math.min(1, t.suppress + 0.03 * supp)
   const baseYaw = Math.atan2(t.x - mx, t.z - mz)
   const basePitch = Math.atan2(ty - my, Math.max(0.5, Math.hypot(t.x - mx, t.z - mz)))
   const len = type.range * 1.25
@@ -978,7 +1112,7 @@ function fire(w, s, t, type, dist, moving) {
     const yaw = baseYaw + gauss() * spread
     const pitch = basePitch + gauss() * spread * 0.7
     const cp = Math.cos(pitch)
-    castBullet(w, s.team, s, mx, my, mz, Math.sin(yaw) * cp, Math.sin(pitch), Math.cos(yaw) * cp, len, type.damage, p < 3, type.key === 'mg' || type.key === 'sniper')
+    castBullet(w, s.team, s, mx, my, mz, Math.sin(yaw) * cp, Math.sin(pitch), Math.cos(yaw) * cp, len, type.damage * (battle ? BATTLE_DAMAGE : 1), p < 3, type.key === 'mg' || type.key === 'sniper', supp / type.pellets)
   }
   emitFlash(w.fx, mx, my, mz, Math.sin(s.aimYaw) * Math.cos(s.aimPitch), Math.sin(s.aimPitch), Math.cos(s.aimYaw) * Math.cos(s.aimPitch), w.time, type.pellets > 1 ? 1.4 : type.key === 'pistol' ? 0.7 : 1)
   emitSound(w.fx, 'shot', mx, my, mz, type.key)
@@ -993,7 +1127,7 @@ const VHIT = { vehicle: null, dist: 0 }
  * cover, the ground, an enemy soldier (with the hit zone) or an enemy vehicle, and lands
  * after its flight time. Used by soldiers and vehicle machine guns alike.
  */
-export function castBullet(w, team, shooter, mx, my, mz, dx, dy, dz, len, damage, tracer, heavy) {
+export function castBullet(w, team, shooter, mx, my, mz, dx, dy, dz, len, damage, tracer, heavy, supp = 1) {
   let tEnd = segmentHit3D(w.obs, mx, my, mz, mx + dx * len, my + dy * len, mz + dz * len, 1.0)
   let kind = 2 // concrete/obstacle
   if (w.terrain) {
@@ -1014,7 +1148,7 @@ export function castBullet(w, team, shooter, mx, my, mz, dx, dy, dz, len, damage
     tEnd = 1
     kind = -1
   }
-  const hit = traceSoldiers(w, team, mx, my, mz, dx, dy, dz, len * tEnd)
+  const hit = traceSoldiers(w, team, mx, my, mz, dx, dy, dz, len * tEnd, supp)
   let hitDist = hit ? HIT.dist : len * tEnd
   const vhit = traceVehicles(w, team, mx, my, mz, dx, dy, dz, hitDist, VHIT)
   if (vhit) hitDist = VHIT.dist
@@ -1041,8 +1175,9 @@ export function castBullet(w, team, shooter, mx, my, mz, dx, dy, dz, len, damage
   if (tracer) emitTracer(w.fx, mx, my, mz, ix, iy, iz, w.time, heavy)
 }
 
-// Closest approach between the bullet segment and each enemy's body capsule.
-function traceSoldiers(w, team, ox, oy, oz, dx, dy, dz, maxDist) {
+// Closest approach between the bullet segment and each enemy's body capsule; those it
+// passes close to (before it stops) get their heads down (`supp`: the weapon's share).
+function traceSoldiers(w, team, ox, oy, oz, dx, dy, dz, maxDist, supp = 1) {
   const enemies = w.teamLiving[1 - team]
   let best = maxDist
   let found = null
@@ -1059,7 +1194,11 @@ function traceSoldiers(w, team, ox, oy, oz, dx, dy, dz, maxDist) {
     if (tProj < -1 || tProj * Math.sqrt(hd2) > best + 1.2) continue
     const px = ex - dx * tProj
     const pz = ez - dz * tProj
-    if (px * px + pz * pz > 1.6) continue
+    const side2 = px * px + pz * pz
+    if (supp > 0 && tProj > 0 && tProj * Math.sqrt(hd2) < maxDist && side2 < NEAR_MISS * NEAR_MISS) {
+      e.suppress = Math.min(1, e.suppress + 0.05 * supp * (1 - side2 / (NEAR_MISS * NEAR_MISS * 2)))
+    }
+    if (side2 > 1.6) continue
 
     // Body capsule: upright (feet to shoulders) or lying along the body.
     const lying = e.wProne > 0.5 || e.wDown > 0.5

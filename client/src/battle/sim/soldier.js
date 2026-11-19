@@ -43,6 +43,16 @@ export function makeSoldier(slot) {
     /** The move order's floor height (upstairs or down; null: wherever). */
     moveY: null,
     flankSide: 1,
+    /** Squad (squads.js): its index and id, rank in it, fire team, and the bounding leg. */
+    squad: -1,
+    squadId: 0,
+    rank: 0,
+    fireTeam: 0,
+    legDone: 0,
+    legOf: 0,
+    legX: 0,
+    legZ: 0,
+    legY: null,
     flankDone: false,
     goalX: 0,
     goalZ: 0,
@@ -174,6 +184,10 @@ export function resetSoldier(s, type, team, x, z, yaw, order) {
   s.holdX = x
   s.holdZ = z
   s.flankSide = z >= 0 ? 1 : -1
+  s.squad = -1
+  s.squadId = 0
+  s.legDone = 0
+  s.legOf = 0
   s.flankDone = false
   s.goalMode = 0
   s.goalY = null
