@@ -1,3 +1,5 @@
+import { buildLevels, floorAt } from './levels.js'
+
 /**
  * Ground navigation: a walkability grid over the map and cached flow fields on it.
  *
@@ -14,6 +16,14 @@ const ORTHO = 10
 const DIAG = 14
 const UNREACHED = 0xffffffff
 
+/** Neighbouring cells further apart in floor height than this aren't connected. */
+const STEP = 0.6
+
+/**
+ * The walkability grid. On maps with raised floors (levels.js) each cell also has its
+ * floor height, and cells whose floors differ by more than a step aren't neighbours:
+ * the way onto a platform is up its ramp.
+ */
 export function createNavGrid(map, obstacles) {
   const halfW = map.width / 2
   const halfD = map.depth / 2
@@ -22,6 +32,7 @@ export function createNavGrid(map, obstacles) {
   const blocked = new Uint8Array(cols * rows)
   const d = obstacles.data
   for (let i = 0; i < obstacles.count; i += 1) {
+    if (obstacles.level[i]) continue
     const o = i * 5
     const x0 = d[o] - INFLATE
     const z0 = d[o + 1] - INFLATE
@@ -40,8 +51,27 @@ export function createNavGrid(map, obstacles) {
       }
     }
   }
-  return { cols, rows, halfW, halfD, cell: CELL, blocked }
+  const L = buildLevels(map)
+  let floor = null
+  if (L) {
+    floor = new Float32Array(cols * rows)
+    for (let r = 0; r < rows; r += 1) {
+      for (let c = 0; c < cols; c += 1) floor[r * cols + c] = floorAt(L, -halfW + (c + 0.5) * CELL, -halfD + (r + 0.5) * CELL)
+    }
+  }
+  return { cols, rows, halfW, halfD, cell: CELL, blocked, floor }
 }
+
+/** The grid for ground vehicles: ramps and platforms blocked (null on a flat map). */
+export function vehicleGrid(grid) {
+  if (!grid.floor) return null
+  const blocked = grid.blocked.slice()
+  for (let i = 0; i < blocked.length; i += 1) if (grid.floor[i] > 0.05) blocked[i] = 1
+  return { ...grid, blocked, floor: null }
+}
+
+/** Whether cells a and b (neighbours) are on floors a step apart or less. */
+const joined = (floor, a, b) => !floor || Math.abs(floor[a] - floor[b]) <= STEP
 
 export const cellIndex = (grid, x, z) => {
   const c = Math.min(grid.cols - 1, Math.max(0, Math.floor((x + grid.halfW) / grid.cell)))
@@ -52,9 +82,11 @@ export const cellIndex = (grid, x, z) => {
 const cellX = (grid, i) => -grid.halfW + ((i % grid.cols) + 0.5) * grid.cell
 const cellZ = (grid, i) => -grid.halfD + (Math.floor(i / grid.cols) + 0.5) * grid.cell
 
-/** Nearest walkable cell to `start` (spiral search), or -1. */
+/** Nearest walkable cell to `start` (spiral search) on the same floor as it, or -1. */
 function nearestOpen(grid, start) {
   if (!grid.blocked[start]) return start
+  const floor = grid.floor
+  const f = floor ? floor[start] : 0
   const sc = start % grid.cols
   const sr = Math.floor(start / grid.cols)
   for (let rad = 1; rad < 12; rad += 1) {
@@ -65,7 +97,7 @@ function nearestOpen(grid, start) {
         const c = sc + dc
         if (r < 0 || c < 0 || r >= grid.rows || c >= grid.cols) continue
         const i = r * grid.cols + c
-        if (!grid.blocked[i]) return i
+        if (!grid.blocked[i] && (!floor || Math.abs(floor[i] - f) <= STEP)) return i
       }
     }
   }
@@ -145,7 +177,9 @@ export class FlowFields {
     const g = this.grid
     const c = Math.floor((x + g.halfW) / (g.cell * 4))
     const r = Math.floor((z + g.halfD) / (g.cell * 4))
-    return r * 10000 + c
+    // Up on a platform is a different goal from the ground beside it.
+    const up = g.floor ? Math.round(g.floor[cellIndex(g, x, z)] * 2) : 0
+    return up * 1e8 + r * 10000 + c
   }
 
   /** The field leading to (x, z), or null if it isn't built yet and the budget is spent. */
@@ -177,7 +211,7 @@ export class FlowFields {
     heap.size = 0
     cost[goal] = 0
     heap.push(0, goal)
-    const { cols, rows, blocked } = g
+    const { cols, rows, blocked, floor } = g
     while (heap.size > 0) {
       const cur = heap.pop()
       const cc = cost[cur]
@@ -189,9 +223,9 @@ export class FlowFields {
         const nr = r + nb[1]
         if (nc < 0 || nr < 0 || nc >= cols || nr >= rows) continue
         const ni = nr * cols + nc
-        if (blocked[ni]) continue
-        // No cutting corners past a wall.
-        if (k >= 4 && (blocked[r * cols + nc] || blocked[nr * cols + c])) continue
+        if (blocked[ni] || !joined(floor, cur, ni)) continue
+        // No cutting corners past a wall (or a drop).
+        if (k >= 4 && (blocked[r * cols + nc] || blocked[nr * cols + c] || !joined(floor, cur, r * cols + nc) || !joined(floor, cur, nr * cols + c))) continue
         const nextCost = cc + nb[2]
         if (nextCost < cost[ni]) {
           cost[ni] = nextCost
@@ -208,7 +242,7 @@ export class FlowFields {
    */
   direction(field, x, z, out) {
     const g = this.grid
-    const { cols, rows, blocked } = g
+    const { cols, rows, blocked, floor } = g
     const i = cellIndex(g, x, z)
     const here = field.cost[i]
     if (here === 0) return false
@@ -222,8 +256,8 @@ export class FlowFields {
       const nr = r + nb[1]
       if (nc < 0 || nr < 0 || nc >= cols || nr >= rows) continue
       const ni = nr * cols + nc
-      if (blocked[ni]) continue
-      if (k >= 4 && (blocked[r * cols + nc] || blocked[nr * cols + c])) continue
+      if (blocked[ni] || !joined(floor, i, ni)) continue
+      if (k >= 4 && (blocked[r * cols + nc] || blocked[nr * cols + c] || !joined(floor, i, r * cols + nc) || !joined(floor, i, nr * cols + c))) continue
       if (field.cost[ni] < best) {
         best = field.cost[ni]
         bestI = ni

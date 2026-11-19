@@ -1028,7 +1028,7 @@ export default function MapView({ map, focus }) {
     // renderer, the rest as one merged mesh).
     const pieces = mapPieces(map)
     // (The rampart draws itself: Rampart.jsx.)
-    const cover = buildCover({ obstacles: [...map.obstacles.filter((o) => !o.rampart), ...coverBoxesOf(pieces)] })
+    const cover = buildCover({ obstacles: [...map.obstacles.filter((o) => !o.rampart), ...coverBoxesOf(pieces)], levels: map.levels })
     const piecesGeo = pieces.length ? buildPiecesGeometry(pieces) : null
     const fence = terrain ? buildFence(map) : null
     const hills = terrain ? buildHills(...(map.hills || [165, 260]), map.hillScale ?? 1, themeOf(map), map.sea ? map.sea.z : null, map.fog, viewDistance) : null

@@ -337,7 +337,7 @@ export function placeMines(w, team, x, z, count) {
     const r = 1.7 * Math.sqrt(i)
     POS.x = Math.max(-w.obs.limitX, Math.min(w.obs.limitX, x + Math.sin(a) * r))
     POS.z = Math.max(-w.obs.limitZ, Math.min(w.obs.limitZ, z + Math.cos(a) * r))
-    collideCircle(w.obs, POS, 0.3)
+    collideCircle(w.obs, POS, 0.3, true)
     m.active = true
     m.team = team
     m.x = POS.x

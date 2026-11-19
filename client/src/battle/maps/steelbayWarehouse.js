@@ -1,3 +1,4 @@
+import { mirrorLevel } from '../sim/levels.js'
 import { mirrorSet } from '../sim/setpieces.js'
 import { box, mirrorBox, mirrorPiece } from './mapKit.js'
 
@@ -6,8 +7,9 @@ import { box, mirrorBox, mirrorPiece } from './mapKit.js'
  * tiled floor under tall corrugated walls and open roof trusses, and nothing on it but
  * clean concrete cover: low walls and L-corners to crouch behind, tall slabs that block
  * sight, square pillars, crate stacks. Each army holds a walled base in its own team
- * colour at an end, with a helipad and a concrete bunker; the middle is a cross of low
- * walls round a pillar block. Open lanes along both long walls for the armour.
+ * colour at an end, with a helipad and a concrete bunker, and two railed overwatch
+ * platforms up ramps in front of it; the middle is a raised deck with a ramp from each
+ * end, ringed by low walls. Open lanes along both long walls for the armour.
  */
 
 const W = 150
@@ -78,8 +80,7 @@ const WEST = [
 ]
 
 const CENTRE = [
-  // A pillar block in the middle and a cross of low walls round it.
-  box('post', 0, 0, 3.2, 3.2, 3.2, 0, { color: SLAB }),
+  // A cross of low walls round the centre deck.
   low(0, -9, 9, 0.8),
   low(0, 9, 9, 0.8),
   low(-5, -20, 0.8, 8),
@@ -88,6 +89,22 @@ const CENTRE = [
   low(5, 20, 0.8, 8),
   slab(0, -34, 0.8, 9),
   slab(0, 34, 0.8, 9),
+]
+
+// Raised floors (levels.js). Edges sit on the 1.25 m navigation grid so the ramps line up
+// with whole cells. Each side has two railed overwatch platforms forward of its base, up
+// a ramp from the base side; the centre deck has a ramp from each end.
+const PLAT = '#c3c2bc'
+const WEST_LEVELS = [
+  { x: -43.75, z: -32.5, w: 7.5, d: 7.5, h: 2.5, color: PLAT, open: [['w', -32.5, 2.5]] },
+  { ramp: 'x+', x: -51.25, z: -32.5, w: 7.5, d: 2.5, h: 2.5, color: PLAT },
+  { x: -43.75, z: 32.5, w: 7.5, d: 7.5, h: 2.5, color: PLAT, open: [['w', 32.5, 2.5]] },
+  { ramp: 'x+', x: -51.25, z: 32.5, w: 7.5, d: 2.5, h: 2.5, color: PLAT },
+]
+const CENTRE_LEVELS = [
+  { x: 0, z: 0, w: 10, d: 10, h: 2.5, color: PLAT, open: [['w', 0, 2.5], ['e', 0, 2.5]] },
+  { ramp: 'x+', x: -8.75, z: 0, w: 7.5, d: 2.5, h: 2.5, color: PLAT },
+  { ramp: 'x-', x: 8.75, z: 0, w: 7.5, d: 2.5, h: 2.5, color: PLAT },
 ]
 
 const WEST_PIECES = [
@@ -133,6 +150,7 @@ export const STEELBAY_WAREHOUSE = {
   obstacles,
   pieces,
   sets: [...WEST_SETS, ...WEST_SETS.map(mirrorSet), ...CENTRE_SETS],
+  levels: [...WEST_LEVELS, ...WEST_LEVELS.map(mirrorLevel), ...CENTRE_LEVELS],
   // Helipads beside each base.
   pads: [
     { x: -63, z: -32, w: 12, d: 12, color: '#b9bcc2' },

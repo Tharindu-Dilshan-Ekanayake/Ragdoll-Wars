@@ -2,6 +2,7 @@ import { Vector3 } from 'three'
 
 import { sfx } from '../audio/sfx'
 import { getBloxityState } from '../bloxity/store'
+import { rayLevels } from './sim/levels'
 import { UNIT_ORDER } from './sim/units'
 import { anySelected } from './sim/world'
 import { deleteSelection, deselect, focusSelection, giveOrder, moveTo, placeUnits, select, selectAll, setTeamCmd, togglePauseCmd } from './commands'
@@ -30,10 +31,12 @@ const CLICK_MOVE = 8
 const v1 = new Vector3()
 const v2 = new Vector3()
 const proj = new Vector3()
+const HIT = { t: 0, y: 0 }
 
 /**
- * The point under client pixel (cx, cy) - on the ground, or on top of a rampart section
- * when the pointer is over one - written to out ({ x, y, z }); false if none.
+ * The point under client pixel (cx, cy) - on the ground, or on top of a rampart section,
+ * platform or ramp when the pointer is over one - written to out ({ x, y, z }); false if
+ * none.
  */
 export function groundAt(cx, cy, out) {
   const cam = battle.camera
@@ -63,6 +66,11 @@ export function groundAt(cx, cy, out) {
       out.y = seg.h
     }
   }
+  // Platforms and ramps likewise.
+  if (rayLevels(battle.world?.levels, v1.x, v1.y, v1.z, v2.x - v1.x, dy, v2.z - v1.z, t, HIT)) {
+    t = HIT.t
+    out.y = HIT.y
+  }
   out.x = v1.x + (v2.x - v1.x) * t
   out.z = v1.z + (v2.z - v1.z) * t
   return true
@@ -84,7 +92,7 @@ function pickSoldier(cx, cy, radius) {
   let bestD = radius * radius
   for (const s of w.slots) {
     if (!s.used || !s.alive) continue
-    const p = toScreen(s.x, (s.wProne > 0.5 || s.downed ? 0.3 : 1.0) + s.dropY, s.z, rect)
+    const p = toScreen(s.x, (s.wProne > 0.5 || s.downed ? 0.3 : 1.0) + s.dropY + s.fy, s.z, rect)
     if (!p) continue
     const d = (p.x - cx) ** 2 + (p.y - cy) ** 2
     if (d < bestD) {

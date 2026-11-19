@@ -1,3 +1,4 @@
+import { levelObstacles } from './levels.js'
 import { setObstacles } from './setpieces.js'
 
 /**
@@ -102,6 +103,7 @@ export function mapObstacles(map) {
   const out = map.obstacles.slice()
   for (const p of mapPieces(map)) for (const o of p.boxes) out.push(o)
   for (const o of setObstacles(map)) out.push(o)
+  for (const o of levelObstacles(map)) out.push(o)
   return out
 }
 

@@ -1,5 +1,6 @@
 import { BufferGeometry, Color, Float32BufferAttribute, MeshLambertMaterial } from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { RAIL_H, railRuns } from '../sim/levels.js'
 
 /**
  * Cover-box geometry shared by the battlefield (MapView) and build mode (Structures):
@@ -83,6 +84,34 @@ export class BoxBatch {
     }
   }
 
+  /**
+   * A flat polygon (3 or 4 corners, [x, y, z] each), facing whichever way `hint` points;
+   * texture laid along its first edge, `uvScale` metres per repeat.
+   */
+  poly(pts, hint, color, uvScale = 2) {
+    const [a, b, c] = pts
+    const e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]]
+    const e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]]
+    let n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]]
+    const nl = Math.hypot(...n) || 1
+    n = n.map((v) => v / nl)
+    const flip = n[0] * hint[0] + n[1] * hint[1] + n[2] * hint[2] < 0
+    if (flip) n = n.map((v) => -v)
+    const el = Math.hypot(...e1) || 1
+    const u = e1.map((v) => v / el)
+    const v = [n[1] * u[2] - n[2] * u[1], n[2] * u[0] - n[0] * u[2], n[0] * u[1] - n[1] * u[0]]
+    const base = this.pos.length / 3
+    for (const p of pts) {
+      this.pos.push(p[0], p[1], p[2])
+      this.nor.push(n[0], n[1], n[2])
+      this.uv.push((p[0] * u[0] + p[1] * u[1] + p[2] * u[2]) / uvScale, (p[0] * v[0] + p[1] * v[1] + p[2] * v[2]) / uvScale)
+      this.col.push(color.r, color.g, color.b)
+    }
+    const tri = (i, j, k) => (flip ? this.idx.push(base + i, base + k, base + j) : this.idx.push(base + i, base + j, base + k))
+    tri(0, 1, 2)
+    if (pts.length === 4) tri(0, 2, 3)
+  }
+
   build() {
     const g = new BufferGeometry()
     g.setAttribute('position', new Float32BufferAttribute(this.pos, 3))
@@ -144,6 +173,56 @@ export function buildCover(map) {
   const steel = new BoxBatch()
   const wood = new BoxBatch()
   const roofs = []
+  // Raised floors (levels.js): platforms with their railings, and ramps up to them.
+  for (const l of map.levels || []) {
+    const c = col(l.color || '#c9c8c2')
+    if (!l.ramp) {
+      concrete.box(l.x, l.h / 2, l.z, l.w, l.h, l.d, c, 2, 8)
+      // A darker band round the top edge reads as a slab.
+      concrete.box(l.x, l.h - 0.12, l.z, l.w + 0.06, 0.24, l.d + 0.06, c.clone().multiplyScalar(0.82), 2, 8 | 4)
+      const rc = c.clone().multiplyScalar(1.06)
+      for (const [x, z, w, d] of railRuns(l)) concrete.box(x, l.h + RAIL_H / 2, z, w, RAIL_H, d, rc, 2, 8)
+    } else {
+      const x0 = l.x - l.w / 2
+      const x1 = l.x + l.w / 2
+      const z0 = l.z - l.d / 2
+      const z1 = l.z + l.d / 2
+      const alongX = l.ramp[0] === 'x'
+      const up = l.ramp[1] === '+'
+      // Height at each footprint corner.
+      const hAt = (x, z) => (alongX ? ((up ? x - x0 : x1 - x) / l.w) * l.h : ((up ? z - z0 : z1 - z) / l.d) * l.h)
+      const P = (x, z, top) => [x, top ? hAt(x, z) : 0, z]
+      const slope = [P(x0, z0, 1), P(x1, z0, 1), P(x1, z1, 1), P(x0, z1, 1)]
+      concrete.poly(slope, [alongX ? (up ? -1 : 1) : 0, 1, alongX ? 0 : up ? -1 : 1], c, 2)
+      const side = c.clone().multiplyScalar(0.86)
+      // The two side faces (triangles) and the tall end.
+      if (alongX) {
+        const hx = up ? x1 : x0
+        const lx = up ? x0 : x1
+        concrete.poly([[lx, 0, z0], [hx, l.h, z0], [hx, 0, z0]], [0, 0, -1], side, 2)
+        concrete.poly([[lx, 0, z1], [hx, l.h, z1], [hx, 0, z1]], [0, 0, 1], side, 2)
+        concrete.poly([[hx, 0, z0], [hx, l.h, z0], [hx, l.h, z1], [hx, 0, z1]], [up ? 1 : -1, 0, 0], side, 2)
+      } else {
+        const hz = up ? z1 : z0
+        const lz = up ? z0 : z1
+        concrete.poly([[x0, 0, lz], [x0, l.h, hz], [x0, 0, hz]], [-1, 0, 0], side, 2)
+        concrete.poly([[x1, 0, lz], [x1, l.h, hz], [x1, 0, hz]], [1, 0, 0], side, 2)
+        concrete.poly([[x0, 0, hz], [x0, l.h, hz], [x1, l.h, hz], [x1, 0, hz]], [0, 0, up ? 1 : -1], side, 2)
+      }
+      // Yellow edge strips down both sides of the slope.
+      const y = col('#d9a63a')
+      const strip = 0.18
+      if (alongX) {
+        for (const zz of [z0 + strip / 2, z1 - strip / 2]) {
+          concrete.poly([[x0, hAt(x0, 0) + 0.03, zz - strip / 2], [x1, hAt(x1, 0) + 0.03, zz - strip / 2], [x1, hAt(x1, 0) + 0.03, zz + strip / 2], [x0, hAt(x0, 0) + 0.03, zz + strip / 2]], [0, 1, 0], y, 0.5)
+        }
+      } else {
+        for (const xx of [x0 + strip / 2, x1 - strip / 2]) {
+          concrete.poly([[xx - strip / 2, hAt(0, z0) + 0.03, z0], [xx - strip / 2, hAt(0, z1) + 0.03, z1], [xx + strip / 2, hAt(0, z1) + 0.03, z1], [xx + strip / 2, hAt(0, z0) + 0.03, z0]], [0, 1, 0], y, 0.5)
+        }
+      }
+    }
+  }
   for (const o of map.obstacles) {
     const v = 0.92 + hash(o.x, o.z) * 0.16
     if (o.kind === 'barrier') {

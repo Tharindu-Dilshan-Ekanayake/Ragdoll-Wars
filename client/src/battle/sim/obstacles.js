@@ -24,10 +24,13 @@ export function buildObstacles(map) {
   const deck = new Uint8Array(n)
   /** Water basins (setpieces.js): flat, but nobody walks on them. */
   const water = new Uint8Array(n)
+  /** Platforms and ramp steps (levels.js): soldiers walk on them, not into them. */
+  const level = new Uint8Array(n)
   for (let i = 0; i < n; i += 1) {
     const o = list[i]
     if (o.deck) deck[i] = 1
     if (o.water) water[i] = 1
+    if (o.level) level[i] = 1
     data[i * 5] = o.x - o.w / 2
     data[i * 5 + 1] = o.z - o.d / 2
     data[i * 5 + 2] = o.x + o.w / 2
@@ -54,6 +57,7 @@ export function buildObstacles(map) {
     data,
     deck,
     water,
+    level,
     buckets,
     cols,
     rows,
@@ -153,7 +157,7 @@ export function segmentHit3D(obs, ax, ay, az, bx, by, bz, lipSkip = 0) {
 }
 
 /** True when nothing (boxes grown by `inflate`) lies between A and B on the ground. */
-export function segmentClear2D(obs, ax, az, bx, bz, inflate) {
+export function segmentClear2D(obs, ax, az, bx, bz, inflate, solidLevels = false) {
   const dx = bx - ax
   const dz = bz - az
   const minX = Math.min(ax, bx) - inflate
@@ -162,6 +166,7 @@ export function segmentClear2D(obs, ax, az, bx, bz, inflate) {
   const maxZ = Math.max(az, bz) + inflate
   const d = obs.data
   for (let i = 0, o = 0; i < obs.count; i += 1, o += 5) {
+    if (obs.level[i] && !solidLevels) continue
     const x0 = d[o] - inflate
     const z0 = d[o + 1] - inflate
     const x1 = d[o + 2] + inflate
@@ -206,12 +211,13 @@ export function segmentClear2D(obs, ax, az, bx, bz, inflate) {
  * Pushes the circle at `p` ({x, z}) out of every box it overlaps and keeps it inside
  * the fence. Returns true if it was pushed (the soldier bumped into something).
  */
-export function collideCircle(obs, p, r) {
+export function collideCircle(obs, p, r, solidLevels = false) {
   let pushed = false
   const list = bucketAt(obs, p.x, p.z)
   if (list) {
     const d = obs.data
     for (let k = 0; k < list.length; k += 1) {
+      if (obs.level[list[k]] && !solidLevels) continue
       const o = list[k] * 5
       const cx = Math.max(d[o], Math.min(p.x, d[o + 2]))
       const cz = Math.max(d[o + 1], Math.min(p.z, d[o + 3]))
@@ -378,8 +384,11 @@ export function buildCoverSpots(obs) {
   const spots = []
   const d = obs.data
   for (let i = 0; i < obs.count; i += 1) {
+    if (obs.level[i]) continue
     const o = i * 5
-    const h = d[o + 4]
+    // A railing counts from the platform it stands on, and only shelters that side.
+    const src = obs.list[i]
+    const h = d[o + 4] - (src.base || 0)
     if (h < 0.7 || h >= LOW_COVER) continue
     const x0 = d[o]
     const z0 = d[o + 1]
@@ -399,13 +408,14 @@ export function buildCoverSpots(obs) {
         spots.push({ x, z, nx, nz, box: i, taken: -1 })
       }
     }
+    const rail = src.base > 0
     if (w >= dep) {
-      along(x0, x1, z0 - off, 'x', 0, -1)
-      along(x0, x1, z1 + off, 'x', 0, 1)
+      if (!rail || src.inZ < 0) along(x0, x1, z0 - off, 'x', 0, -1)
+      if (!rail || src.inZ > 0) along(x0, x1, z1 + off, 'x', 0, 1)
     }
     if (dep >= w) {
-      along(z0, z1, x0 - off, 'z', -1, 0)
-      along(z0, z1, x1 + off, 'z', 1, 0)
+      if (!rail || src.inX < 0) along(z0, z1, x0 - off, 'z', -1, 0)
+      if (!rail || src.inX > 0) along(z0, z1, x1 + off, 'z', 1, 0)
     }
   }
   return spots

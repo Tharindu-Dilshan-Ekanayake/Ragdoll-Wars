@@ -3,6 +3,7 @@ import { BoxGeometry, Color, DynamicDrawUsage, InstancedBufferAttribute, Instanc
 
 import { useHud } from '../hud/hudStore'
 import { segmentClear2D } from '../sim/obstacles'
+import { floorAt } from '../sim/levels'
 import { deckAt } from '../sim/rampart'
 import { BUILD_TYPES } from '../sim/structures'
 import { addFrameHook, battle, PHASE } from '../state'
@@ -146,7 +147,7 @@ export default function Markers({ map }) {
           if (age < 0.8) {
             const r = battle.world?.rampart
             const deck = r ? deckAt(r, mk.x, mk.z) : -1
-            mesh.position.set(mk.x, (deck >= 0 ? r.segs[deck].h : 0) + 0.06, mk.z)
+            mesh.position.set(mk.x, (deck >= 0 ? r.segs[deck].h : floorAt(battle.world?.levels, mk.x, mk.z)) + 0.06, mk.z)
             mesh.scale.setScalar(1.6 - age * 1.2)
             parts.moveMat.opacity = 1 - age / 0.8
             mesh.visible = true

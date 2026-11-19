@@ -11,7 +11,8 @@ import {
   SOLDIER_RADIUS,
 } from './constants.js'
 import { createFx, emitDecal, emitFlash, emitImpact, emitSound, emitTracer } from './fx.js'
-import { createNavGrid, FlowFields } from './nav.js'
+import { buildLevels, floorAt, stepOnLevels, touchesLevels } from './levels.js'
+import { createNavGrid, FlowFields, vehicleGrid } from './nav.js'
 import {
   assignPatient,
   canRevive,
@@ -78,14 +79,20 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v)
  * @param {{ units: number, corpses: number, ragdolls: number }} caps per-preset limits
  */
 /** Cover spots that don't sit inside another box. */
-function coverSpotsFor(obs) {
+function coverSpotsFor(obs, map) {
   const probe = { x: 0, z: 0 }
+  const L = buildLevels(map)
   return buildCoverSpots(obs).filter((sp) => {
     probe.x = sp.x
     probe.z = sp.z
+    // Behind a platform's railing: high ground (the AI likes it).
+    sp.up = L ? floorAt(L, sp.x, sp.z) > 1 : false
     return !collideCircle(obs, probe, SOLDIER_RADIUS * 0.9)
   })
 }
+
+/** How much a cover spot's high ground is worth to `type`, in metres of extra walk. */
+const highGround = (sp, type) => (sp.up ? (type.heavy ? 9 : 6) : 0)
 
 export function createWorld(map, caps, mode = 'sandbox') {
   // The map's own obstacles plus whatever gets built (structures.js) live here.
@@ -93,6 +100,7 @@ export function createWorld(map, caps, mode = 'sandbox') {
   const obsMap = { ...map, obstacles: baseObstacles.slice() }
   const obs = buildObstacles(obsMap)
   const grid = createNavGrid(obsMap, obs)
+  const vgrid = vehicleGrid(grid)
   const slots = Array.from({ length: MAX_SLOTS }, (_, i) => makeSoldier(i))
   return {
     map,
@@ -102,7 +110,11 @@ export function createWorld(map, caps, mode = 'sandbox') {
     obs,
     grid,
     flow: new FlowFields(grid, { budget: 1 }),
-    coverSpots: coverSpotsFor(obs),
+    /** Ground vehicles' flow fields, on maps with ramps and platforms (else null). */
+    vflow: vgrid ? new FlowFields(vgrid, { budget: 1 }) : null,
+    /** Platforms and ramps (levels.js), or null. */
+    levels: buildLevels(map),
+    coverSpots: coverSpotsFor(obs, map),
     build: createBuild(),
     /** 'sandbox' or 'zombies' (Zombie Horde: zombies.js keeps its state in `zmode`). */
     mode,
@@ -153,7 +165,9 @@ export function rebuildStatic(w) {
   w.obs = buildObstacles(w.obsMap)
   w.grid = createNavGrid(w.obsMap, w.obs)
   w.flow = new FlowFields(w.grid, { budget: 1 })
-  w.coverSpots = coverSpotsFor(w.obs)
+  const vgrid = vehicleGrid(w.grid)
+  w.vflow = vgrid ? new FlowFields(vgrid, { budget: 1 }) : null
+  w.coverSpots = coverSpotsFor(w.obs, w.map)
   w.build.wire = wireZones(w)
   for (const s of w.slots) s.cover = -1
   w.build.version += 1
@@ -170,6 +184,7 @@ export function stepWorld(w, realDt) {
   const h = dt / steps
   // Flow-field budget per frame, not per sub-step: fast-forward mustn't spike.
   w.flow.tick()
+  if (w.vflow) w.vflow.tick()
   for (let i = 0; i < steps; i += 1) tick(w, h)
 }
 
@@ -605,7 +620,7 @@ function bound(w, s, type, target) {
     const td = Math.hypot(tx, tz)
     if (td > tdist - 4) continue
     if (tx * sp.nx + tz * sp.nz > -1) continue
-    const score = d + td * 0.35 + crowding(sp) * 5
+    const score = d + td * 0.35 + crowding(sp) * 5 - highGround(sp, type)
     if (score < bestScore) {
       bestScore = score
       best = i
@@ -753,8 +768,8 @@ function seekCover(w, s, type, target, cx, cz, radius, always = false) {
     const tz = target.z - sp.z
     if (tx * sp.nx + tz * sp.nz > -1) continue
     if (Math.hypot(tx, tz) > type.range * 0.95) continue
-    // Nearest first, but not bunched up with the others.
-    const score = d + crowding(sp) * 4
+    // Nearest first, but not bunched up with the others; high ground's worth a walk.
+    const score = d + crowding(sp) * 4 - highGround(sp, type)
     if (score < bestScore) {
       best = i
       bestScore = score
@@ -1428,7 +1443,8 @@ function move(w, s, type, h) {
     } else {
       // Straight there when the way is clear (always, up on the rampart), else follow
       // the flow field.
-      if (s.deck >= 0 || (dist < 30 && segmentClear2D(w.obs, s.x, s.z, s.goalX, s.goalZ, 0.35))) {
+      // (Over raised floors the field knows where the ramps are.)
+      if (s.deck >= 0 || (dist < 30 && segmentClear2D(w.obs, s.x, s.z, s.goalX, s.goalZ, 0.35) && !touchesLevels(w.levels, s.x, s.z, s.goalX, s.goalZ, 0.6))) {
         dirX = gx / dist
         dirZ = gz / dist
       } else {
@@ -1520,9 +1536,14 @@ function move(w, s, type, h) {
   // On the rampart: anywhere on your section's top, never over the edge.
   if (s.deck >= 0) {
     clampToDeck(w.rampart, s.deck, POS)
-  } else collideCircle(w.obs, POS, SOLDIER_RADIUS)
+  } else {
+    collideCircle(w.obs, POS, SOLDIER_RADIUS)
+    // Up and down ramps, about on platforms; never off an edge or up a sheer side.
+    if (w.levels) stepOnLevels(w.levels, ox, oz, POS, s.fy)
+  }
   s.x = POS.x
   s.z = POS.z
+  if (w.levels && s.deck < 0) s.fy = floorAt(w.levels, s.x, s.z)
   const moved = Math.hypot(s.x - ox, s.z - oz)
   const realSpeed = moved / h
 
@@ -1625,7 +1646,7 @@ export function spawnUnits(w, typeKey, team, x, z, count, order, rot = 0) {
     if (deck >= 0) {
       s.deck = deck
       s.fy = w.rampart.segs[deck].h
-    }
+    } else if (w.levels) s.fy = floorAt(w.levels, s.x, s.z)
     s.dropY = 2.2 + rand() * 0.8 + row * 0.15
     s.dropV = 0
     s.scale = 0.2
@@ -1642,6 +1663,12 @@ export function spawnUnits(w, typeKey, team, x, z, count, order, rot = 0) {
         if (deck >= 0) {
           l.deck = deck
           l.fy = s.fy
+        } else if (w.levels) {
+          // Beside his gunner, on the same floor (a railing or edge between: next to him).
+          stepOnLevels(w.levels, s.x, s.z, POS)
+          l.x = POS.x
+          l.z = POS.z
+          l.fy = floorAt(w.levels, l.x, l.z)
         }
         l.dropY = s.dropY + 0.3
         l.dropV = 0
@@ -1797,6 +1824,15 @@ export function orderSelected(w, order) {
   }
 }
 
+/** Pulls p towards (x, z) until it's on the same floor (levels.js) as that point. */
+function sameFloor(L, x, z, p) {
+  const f = floorAt(L, x, z)
+  for (let k = 0; k < 12 && Math.abs(floorAt(L, p.x, p.z) - f) > 0.3; k += 1) {
+    p.x += (x - p.x) * 0.3
+    p.z += (z - p.z) * 0.3
+  }
+}
+
 /** Sends the selected soldiers to (x, z) in a block, nearest soldier to nearest spot. */
 export function moveSelected(w, x, z) {
   const vehicles = moveVehicles(w, x, z)
@@ -1827,6 +1863,8 @@ export function moveSelected(w, x, z) {
     POS.z = z - fx * ox + fz * oz
     if (toDeck >= 0) clampToDeck(w.rampart, toDeck, POS)
     else collideCircle(w.obs, POS, SOLDIER_RADIUS + 0.1)
+    // Sent up onto a platform (or down beside one): every spot on that same floor.
+    if (w.levels) sameFloor(w.levels, x, z, POS)
     spots.push({ x: POS.x, z: POS.z, used: false })
   }
   for (const s of units) {

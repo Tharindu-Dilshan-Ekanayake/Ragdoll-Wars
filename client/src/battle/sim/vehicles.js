@@ -202,7 +202,7 @@ export function spawnVehicles(w, typeKey, team, x, z, count, order) {
     const off = (i - (n - 1) / 2) * gap
     POS.x = clamp(x + sideX * off, -w.obs.limitX + spec.radius, w.obs.limitX - spec.radius)
     POS.z = clamp(z + sideZ * off, -w.obs.limitZ + spec.radius, w.obs.limitZ - spec.radius)
-    if (!spec.air) collideCircle(w.obs, POS, spec.radius)
+    if (!spec.air) collideCircle(w.obs, POS, spec.radius, true)
     resetVehicle(v, typeKey, team, POS.x, POS.z, face, order)
     spawned += 1
   }
@@ -618,9 +618,11 @@ function groundStep(w, v, h) {
     const dist = Math.hypot(gx, gz)
     let dx = gx / (dist || 1)
     let dz = gz / (dist || 1)
-    if (!(dist < 45 && segmentClear2D(w.obs, v.x, v.z, v.goalX, v.goalZ, spec.radius * 0.7))) {
-      const field = w.flow.get(v.goalX, v.goalZ)
-      if (field && w.flow.direction(field, v.x, v.z, FLOW)) {
+    if (!(dist < 45 && segmentClear2D(w.obs, v.x, v.z, v.goalX, v.goalZ, spec.radius * 0.7, true))) {
+      // Ground vehicles keep off ramps and platforms: their own field where those exist.
+      const flow = w.vflow || w.flow
+      const field = flow.get(v.goalX, v.goalZ)
+      if (field && flow.direction(field, v.x, v.z, FLOW)) {
         dx = FLOW.x
         dz = FLOW.z
       }
@@ -652,7 +654,7 @@ function groundStep(w, v, h) {
   v.vz = Math.cos(v.yaw) * v.speed
   POS.x = v.x + v.vx * h
   POS.z = v.z + v.vz * h
-  collideCircle(w.obs, POS, spec.radius)
+  collideCircle(w.obs, POS, spec.radius, true)
   v.x = clamp(POS.x, -w.obs.limitX + spec.radius, w.obs.limitX - spec.radius)
   v.z = clamp(POS.z, -w.obs.limitZ + spec.radius, w.obs.limitZ - spec.radius)
   // A little body roll and pitch from speed and turning.
