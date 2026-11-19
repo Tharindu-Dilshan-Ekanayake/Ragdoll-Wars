@@ -35,7 +35,7 @@ function LobbyLoader({ done }) {
   return (
     <div className={`ff-loader ${done ? 'ff-loader--out' : ''}`}>
       <div className="ff-loader__card">
-        <div className="ff-loader__title">Floppy Front</div>
+        <div className="ff-loader__title">Ragdoll Wars</div>
         <div className="ff-loader__bar">
           <span style={{ width: `${done ? 100 : active ? Math.max(25, progress) : 60}%` }} />
         </div>
