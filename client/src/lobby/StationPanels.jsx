@@ -172,16 +172,11 @@ function ZombiePanel() {
         </div>
         <div className="ff-zpanel__title">Keep the bastion standing.</div>
       </div>
-      <p>
-        Mirefall Bastion: a stone rampart across a drowned marsh, and the dead coming out of the mist. Put your troops up on the wall to shoot down into the horde - they
-        can't climb it or get past it, but they'll pound it section by section, and spitters lob acid up at your troops from out in the marsh. Every zombie you drop pays a
-        bounty, every wave cleared pays a bonus and patches the wall. Bring the whole wall down and they win.
-      </p>
+      <p>Mirefall Bastion: the dead can't climb the wall or get past it, but they'll batter it down section by section. Kills and cleared waves pay for more troops.</p>
       <ul>
-        <li>Click the top of the rampart to place troops on it, or the ground up to 20 m out in front of it (the red line); walk up the stairs yourself</li>
-        <li>Spread your troops along the whole wall: the horde batters wherever nobody's shooting</li>
-        <li>Walkers, fast Runners, hulking Brutes - and a giant Behemoth on waves 10 and 15</li>
-        <li>Start with $500; machine guns, rockets and mortars on the wall are your friends</li>
+        <li>Place troops on the wall, or on the ground up to 20 m out in front (the red line)</li>
+        <li>Spread them along the whole wall: the horde batters wherever nobody's shooting</li>
+        <li>Spitters lob acid, Brutes hit hard, Behemoths lead waves 10 and 15 · start with $500</li>
       </ul>
       <div className="ff-badges">
         {ZOMBIE_BADGES.map((b) => (
@@ -534,7 +529,7 @@ export default function StationPanels() {
     )
   if (panel === 'zombies')
     return (
-      <Modal title="Zombie Horde" kicker="Wave survival" onClose={close} wide>
+      <Modal title="Zombie Horde" kicker="Wave survival" onClose={close}>
         <ZombiePanel />
       </Modal>
     )
