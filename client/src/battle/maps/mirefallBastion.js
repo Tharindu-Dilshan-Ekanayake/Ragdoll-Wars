@@ -183,7 +183,7 @@ export const MIREFALL_BASTION = {
   hills: [165, 260],
   hillScale: 1.4,
   /** Mist banks drifting over the marsh (Mist.jsx): the x range they fill. */
-  mist: { x0: -100, x1: 130, density: 1.5, dark: 0.38 },
+  mist: { x0: -100, x1: 130, density: 1.2, dark: 0.38 },
   /** Bog out in the marsh: it heaves and sinks (terrain.js); level by the wall to build on. */
   terrain: {
     hills: [
@@ -230,7 +230,8 @@ export const MIREFALL_BASTION = {
   },
   sky: { top: '#262f3a', horizon: '#56625f', ground: '#363e38' },
   fog: '#5a6663',
-  fogRange: [28, 170],
+  // (The horde is out in the valley a hundred metres off: the fog thins enough to see it come.)
+  fogRange: [45, 285],
 }
 
 export default MIREFALL_BASTION

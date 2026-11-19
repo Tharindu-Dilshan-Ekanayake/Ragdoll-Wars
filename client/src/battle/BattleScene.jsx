@@ -3,6 +3,8 @@ import { useEffect, useRef } from 'react'
 import { worldSound } from '../audio/sfx'
 import CameraRig from './render/CameraRig'
 import Effects from './render/Effects'
+import Bats from './render/Bats'
+import Callouts from './render/Callouts'
 import Ordnance from './render/Ordnance'
 import GameCanvas from './render/GameCanvas'
 import MapView from './render/MapView'
@@ -13,7 +15,7 @@ import Vehicles from './render/Vehicles'
 import { drain } from './sim/fx'
 import { netStep } from './net/netWorld'
 import { stepWorld } from './sim/world'
-import { addFrameHook, battle, PHASE } from './state'
+import { addFrameHook, addShake, battle, PHASE } from './state'
 import HeliArrival from './walk/HeliArrival'
 import RemoteWalkers from './walk/RemoteWalkers'
 import Walker from './walk/Walker'
@@ -52,7 +54,15 @@ function SimAndSound() {
         listener.rx = Math.cos(v.yaw)
         listener.rz = -Math.sin(v.yaw)
       }
-      cursor.current = drain(w.fx.sounds, cursor.current, (s) => worldSound(s.kind, s.x, s.y, s.z, s.meta, listener))
+      cursor.current = drain(w.fx.sounds, cursor.current, (s) => {
+        worldSound(s.kind, s.x, s.y, s.z, s.meta, listener)
+        // Blasts, a tank's gun and bullets cracking by your head shake the camera.
+        if (s.kind === 'boom' || (s.kind === 'shot' && s.meta === 'cannon') || (s.kind === 'whiz' && s.meta === 1 && wk.on)) {
+          const d = Math.hypot(s.x - listener.x, s.z - listener.z)
+          const k = s.kind === 'boom' ? (s.meta || 4) / 4 : s.kind === 'whiz' ? 0.12 : 0.35
+          if (d < 90) addShake(Math.min(0.85, (k * 1.1) / (1 + d / 9)))
+        }
+      })
     })
     return () => {
       offSim()
@@ -86,6 +96,8 @@ export default function BattleScene({ map, onReady }) {
       <MapView map={map} focus={battleFocus} />
       <Soldiers getWorld={getBattleWorld} />
       <Effects />
+      <Callouts />
+      <Bats />
       <Structures />
       <Ordnance />
       <Vehicles />

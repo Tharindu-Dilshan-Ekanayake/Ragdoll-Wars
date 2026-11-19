@@ -371,11 +371,14 @@ export const UNIT_TYPES = {
   // Zombie Horde (zombies.js): no guns - they shamble at you with arms out and hit
   // what they reach. `zombieAI`: { damage, interval, reach, reward, anti (vs vehicles),
   // bash (vs structures) }; `size` scales the whole body.
-  zombie: zombieType('zombie', 'Walker', 'Shambles', { hp: 80, speed: 2.5 }, { damage: 12, interval: 1.0, reach: 1.15, reward: 10, anti: 0.15, bash: 1 }),
-  runner: zombieType('runner', 'Runner', 'Fast', { hp: 55, speed: 5.2 }, { damage: 9, interval: 0.75, reach: 1.15, reward: 15, anti: 0.1, bash: 0.7 }),
-  brute: zombieType('brute', 'Brute', 'Big and angry', { hp: 420, speed: 2.0, size: 1.35 }, { damage: 32, interval: 1.4, reach: 1.5, reward: 60, anti: 0.6, bash: 3 }),
-  behemoth: zombieType('behemoth', 'Behemoth', 'Boss', { hp: 2600, speed: 1.6, size: 2.1 }, { damage: 85, interval: 1.8, reach: 2.4, reward: 500, anti: 1.5, bash: 7 }),
+  zombie: zombieType('zombie', 'Walker', 'Shambles', { hp: 80, speed: 2.5 }, { damage: 12, interval: 1.0, reach: 1.15, reward: 10, anti: 0.15, bash: 1, climb: 0.5 }),
+  runner: zombieType('runner', 'Runner', 'Fast', { hp: 55, speed: 5.2 }, { damage: 9, interval: 0.75, reach: 1.15, reward: 15, anti: 0.1, bash: 0.7, climb: 0.7 }),
+  brute: zombieType('brute', 'Brute', 'Big and angry', { hp: 420, speed: 2.0, size: 1.35 }, { damage: 32, interval: 1.4, reach: 1.5, reward: 60, anti: 0.6, bash: 3, climb: 0.2 }),
+  behemoth: zombieType('behemoth', 'Behemoth', 'Boss', { hp: 3600, speed: 1.6, size: 2.1 }, { damage: 85, interval: 1.8, reach: 2.4, reward: 500, anti: 1.5, bash: 7 }),
   // Spits gobs of green acid from range - up onto the wall too (zombies.js, ordnance.js fireAcid).
+  // Flies over the wall and goes for the troops on top (zombies.js batStep): small, fast
+  // and hard to hit; rendered by render/Bats.jsx, not as a soldier.
+  bat: zombieType('bat', 'Bat', 'Flies', { hp: 40, speed: 7.5, size: 0.5 }, { damage: 7, interval: 0.75, reach: 1.3, reward: 20, anti: 0, bash: 0, flying: true }),
   spitter: zombieType('spitter', 'Spitter', 'Spits acid', { hp: 110, speed: 2.3, size: 1.05 }, { damage: 8, interval: 1.2, reach: 1.15, reward: 30, anti: 0.1, bash: 0.6, spit: { range: 30, interval: 2.8, damage: 14, radius: 1.8 } }),
   mine: {
     key: 'mine',

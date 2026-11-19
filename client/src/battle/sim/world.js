@@ -37,11 +37,12 @@ import { makeSoldier, resetSoldier } from './soldier.js'
 import { createSpatial, rebuildSpatial } from './spatial.js'
 import { createSquads, squadOf, updateSquads } from './squads.js'
 import { createCommand, updateCommand } from './commander.js'
+import { bark } from './barks.js'
 import { mapTerrain } from './ground.js'
 import { mapLevels } from './pieces.js'
 import { rayTerrain } from './terrain.js'
 import { BUILD_TYPES, clearStructures, createBuild, inWire, mapObstacles, placeStructures, settleStructures, wireZones } from './structures.js'
-import { initZombieMode, onZombieKilled, updateZombieMode, zombieStep } from './zombies.js'
+import { BAT_LIFT, batStep, initZombieMode, onZombieKilled, updateZombieMode, zombieStep } from './zombies.js'
 import { HEAVY_SHARE, UNIT_TYPES } from './units.js'
 import {
   callStrike,
@@ -165,6 +166,9 @@ export function createWorld(map, caps, mode = 'sandbox') {
       { x: map.bases[1].x, z: map.bases[1].z, n: 0 },
     ],
     centroidT: 0,
+    /** Callouts (barks.js) and bullet whizzes: the earliest the next one may be heard. */
+    barkNext: 0,
+    whizNext: 0,
     /** Squads (squads.js): who fights alongside whom, and how they move up. */
     squads: createSquads(),
     /** Each team's commander (commander.js): jobs for the squads. */
@@ -352,6 +356,11 @@ function updateSoldier(w, s, h) {
 
   // Zombies have their own simple mind (zombies.js).
   if (type.zombieAI) {
+    // Bats fly their own way, over everything.
+    if (s.flying) {
+      batStep(w, s, type, h)
+      return
+    }
     zombieStep(w, s, type, h)
     move(w, s, type, h)
     animStep(s, h)
@@ -1272,6 +1281,7 @@ function combat(w, s, type, h) {
 function startReload(w, s, type) {
   s.reloadT = type.reload * (1 + 0.4 * (s.armL + s.armR))
   s.reloadP = 0
+  if (s.target && rand() < 0.3) bark(w, s, 'say_reload')
   emitSound(w.fx, 'reload', s.x, 1, s.z, s.type)
 }
 
@@ -1404,11 +1414,17 @@ function traceSoldiers(w, team, ox, oy, oz, dx, dy, dz, maxDist, supp = 1) {
     const side2 = px * px + pz * pz
     if (supp > 0 && tProj > 0 && tProj * Math.sqrt(hd2) < maxDist && side2 < NEAR_MISS * NEAR_MISS) {
       e.suppress = Math.min(1, e.suppress + 0.05 * supp * (1 - side2 / (NEAR_MISS * NEAR_MISS * 2)))
+      // The crack of it going past (at most a few a tenth of a second, and one a soldier).
+      if (w.time > w.whizNext && w.time - e.whizT > 0.25) {
+        w.whizNext = w.time + 0.04
+        e.whizT = w.time
+        emitSound(w.fx, 'whiz', e.x, e.fy + 1.4, e.z, side2 < 0.6 ? 1 : 0)
+      }
     }
     if (side2 > 1.6) continue
 
     // Body capsule: upright (feet to shoulders) or lying along the body.
-    const lying = e.wProne > 0.5 || e.wDown > 0.5
+    const lying = !e.flying && (e.wProne > 0.5 || e.wDown > 0.5)
     let ax
     let ay
     let az
@@ -1416,7 +1432,16 @@ function traceSoldiers(w, team, ox, oy, oz, dx, dy, dz, maxDist, supp = 1) {
     let by
     let bz
     let r
-    if (!lying) {
+    if (e.flying) {
+      // A bat: a small round target.
+      ax = e.x
+      ay = e.fy + BAT_LIFT - 0.25
+      az = e.z
+      bx = e.x
+      by = e.fy + BAT_LIFT + 0.25
+      bz = e.z
+      r = 0.36
+    } else if (!lying) {
       const top = 1.82 - 0.55 * e.wCrouch
       ax = e.x
       ay = e.fy + 0.2
@@ -1546,6 +1571,7 @@ function hitSoldier(w, s, part, damage, dx, dy, dz, shooter, hx, hy, hz) {
     kill(w, s, part, dx, dy, dz, shooter, clamp(damage / 9, 2.5, 9))
     return
   }
+  if (rand() < 0.4) bark(w, s, 'say_hurt')
   if (!s.downed && part !== PART_HEAD && !UNIT_TYPES[s.type].zombieAI) {
     const legs = s.legL > 0 && s.legR > 0
     if ((s.hp < s.maxHp * 0.22 && rand() < 0.5) || (legs && s.hp < s.maxHp * 0.5 && rand() < 0.5)) setDowned(w, s)
@@ -1584,6 +1610,7 @@ export function blastHit(w, s, dmg, nx, nz, k, attacker) {
 function setDowned(w, s) {
   s.downed = true
   s.downT = 0
+  bark(w, s, 'say_medic', true)
   s.bleed = Math.max(s.bleed, 1.2)
   s.target = null
   releaseCover(w, s)
@@ -1594,6 +1621,22 @@ function setDowned(w, s) {
 }
 
 function kill(w, s, part, dx, dy, dz, killer, power, blast = false) {
+  // A bat: a burst of blood and gone (no body to lie there).
+  if (s.flying) {
+    s.alive = false
+    s.deadT = w.time
+    w.stats.lost[s.team] += 1
+    onZombieKilled(w, s)
+    if (killer && killer.alive && killer.team !== s.team) {
+      killer.kills += 1
+      w.stats.kills[killer.team] += 1
+    }
+    emitImpact(w.fx, s.x, s.fy + BAT_LIFT, s.z, 1, w.time)
+    emitSound(w.fx, 'groan', s.x, s.fy + BAT_LIFT, s.z, 0.4)
+    freeSlot(w, s)
+    w.version += 1
+    return
+  }
   // Multiplayer: the server tells clients how each soldier died so they can play the
   // ragdoll themselves (bodies are cosmetic).
   if (w.deaths) w.deaths.push(s.id, part, dx, dy, dz, power, blast ? 1 : 0, s.charred ? 1 : 0)
@@ -1806,6 +1849,14 @@ function freeSlot(w, s) {
 }
 
 function move(w, s, type, h) {
+  // Going up the wall (zombies.js climbStep): the legs work, the body stays put.
+  if (s.climbT >= 0) {
+    s.vx = 0
+    s.vz = 0
+    s.gait += h * 8
+    s.animMove += (0.9 - s.animMove) * Math.min(1, h * 10)
+    return
+  }
   let speed = 0
   let dirX = 0
   let dirZ = 0

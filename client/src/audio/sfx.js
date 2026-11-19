@@ -9,6 +9,9 @@ import { useSettings } from '../store/settings'
  *   sniper a long echo. Distance muffles (low-pass) and quietens them, and they pan
  *   left/right around the camera.
  * - Bullet impacts, body hits, ragdoll thuds, reload clicks, the drop-in whoosh.
+ * - Bullets cracking past you, soldiers' shouts (a synthesised voice: a buzzy tone through
+ *   two vowel-shaped filters), and sound that takes its time: a shot 150 m off arrives
+ *   half a second after you see its flash.
  * - UI clicks and blips; a soft wind bed during battles.
  *
  * The audio context is created on the first tap/click/key (browsers block it before),
@@ -57,7 +60,10 @@ function spend(b, dist) {
   }
   return false
 }
-const MINOR = new Set(['impact', 'hit', 'thud', 'reload', 'build', 'launch', 'mortar', 'flame', 'heal', 'spawn', 'spit', 'splat'])
+const MINOR = new Set(['impact', 'hit', 'thud', 'reload', 'build', 'launch', 'mortar', 'flame', 'heal', 'spawn', 'spit', 'splat', 'whiz', 'bark'])
+/** Speed of sound (m/s), and the longest a sound is held back (s). */
+const SOUND_SPEED = 340
+const lagOf = (dist, max) => (dist > 25 ? Math.min(max, dist / SOUND_SPEED) : 0)
 
 function ensure() {
   if (ctx) return ctx
@@ -233,7 +239,7 @@ function playShot(key, dist, pan) {
   if (!dest) return
   shotsThisFrame += 1
   activeShots += 1
-  const t = ctx.currentTime
+  const t = ctx.currentTime + lagOf(dist, 0.55)
   const src = noise(dest, t, { ...r.crack, gain: 1 })
   thump(dest, t, r.punch)
   if (r.snap && dist < 40) noise(dest, t, { type: 'highpass', freq: 4200, q: 0.5, gain: 0.5, decay: 0.025 })
@@ -241,6 +247,59 @@ function playShot(key, dist, pan) {
   src.onended = () => {
     activeShots = Math.max(0, activeShots - 1)
   }
+}
+
+/** Vowel formants (Hz): the two filter centres that make a buzzy tone sound like "ah". */
+const VOWELS = { a: [800, 1200], e: [500, 1900], i: [300, 2300], o: [450, 800] }
+/** Shouts: vowels (start, end), pitch (start, end Hz), length (s), loudness. */
+const VOICES = {
+  say_contact: { v: 'oa', f: [135, 178], dur: 0.36, gain: 0.55 },
+  say_hurt: { v: 'ao', f: [200, 105], dur: 0.3, gain: 0.5 },
+  say_medic: { v: 'ei', f: [150, 225], dur: 0.58, gain: 0.55 },
+  say_reload: { v: 'oa', f: [112, 100], dur: 0.3, gain: 0.4 },
+  say_retreat: { v: 'aa', f: [145, 118], dur: 0.52, gain: 0.55 },
+  say_down: { v: 'ao', f: [170, 135], dur: 0.46, gain: 0.5 },
+}
+
+/** One shout: a sawtooth with a little vibrato through two moving vowel filters. */
+function voice(dest, t, v) {
+  const pitch = 0.86 + Math.random() * 0.3
+  const o = ctx.createOscillator()
+  o.type = 'sawtooth'
+  o.frequency.setValueAtTime(v.f[0] * pitch, t)
+  o.frequency.linearRampToValueAtTime(v.f[1] * pitch, t + v.dur)
+  const vib = ctx.createOscillator()
+  vib.frequency.value = 6 + Math.random() * 2
+  const vg = ctx.createGain()
+  vg.gain.value = 3
+  vib.connect(vg)
+  vg.connect(o.frequency)
+  const env = ctx.createGain()
+  env.gain.setValueAtTime(0.0001, t)
+  env.gain.exponentialRampToValueAtTime(1, t + 0.035)
+  env.gain.setValueAtTime(1, t + v.dur * 0.55)
+  env.gain.exponentialRampToValueAtTime(0.0001, t + v.dur)
+  env.connect(dest)
+  const a = VOWELS[v.v[0]]
+  const b = VOWELS[v.v[1]]
+  for (let k = 0; k < 2; k += 1) {
+    const f = ctx.createBiquadFilter()
+    f.type = 'bandpass'
+    f.Q.value = 7
+    f.frequency.setValueAtTime(a[k], t)
+    f.frequency.linearRampToValueAtTime(b[k], t + v.dur * 0.7)
+    const g = ctx.createGain()
+    g.gain.value = k ? 0.5 : 1.2
+    o.connect(f)
+    f.connect(g)
+    g.connect(env)
+  }
+  o.start(t)
+  vib.start(t)
+  o.stop(t + v.dur + 0.05)
+  vib.stop(t + v.dur + 0.05)
+  // The breath at the start of a word.
+  noise(dest, t, { type: 'bandpass', freq: 2600, q: 1, gain: 0.25, attack: 0.004, decay: 0.05 })
 }
 
 // --- World sounds -----------------------------------------------------------------------
@@ -294,10 +353,28 @@ export function worldSound(kind, x, y, z, meta, listener) {
     const r = meta || 4
     const dest = spatial(dist, pan, 1.6 + r * 0.15)
     if (!dest) return
-    thump(dest, t, { from: 110, to: 28, gain: 1.2, decay: 0.45 })
-    noise(dest, t, { type: 'lowpass', freq: 1400, q: 0.5, gain: 1.1, attack: 0.004, decay: 1.1, sweepTo: 160 })
-    if (dist < 45) noise(dest, t, { type: 'highpass', freq: 2200, q: 0.5, gain: 0.5, decay: 0.08 })
-    noise(dest, t + 0.18, { type: 'lowpass', freq: 380, q: 0.4, gain: 0.45, attack: 0.08, decay: 1.4 })
+    // The flash comes first, the bang a moment later.
+    const tb = t + lagOf(dist, 1.2)
+    thump(dest, tb, { from: 110, to: 28, gain: 1.2, decay: 0.45 })
+    noise(dest, tb, { type: 'lowpass', freq: 1400, q: 0.5, gain: 1.1, attack: 0.004, decay: 1.1, sweepTo: 160 })
+    if (dist < 45) noise(dest, tb, { type: 'highpass', freq: 2200, q: 0.5, gain: 0.5, decay: 0.08 })
+    noise(dest, tb + 0.18, { type: 'lowpass', freq: 380, q: 0.4, gain: 0.45, attack: 0.08, decay: 1.4 })
+  } else if (kind === 'whiz') {
+    // A bullet going past: a short bright swish falling in pitch, with a crack on a close one.
+    if (dist > 38) return
+    const close = meta === 1
+    const dest = spatial(dist, pan, close ? 0.55 : 0.3)
+    if (!dest) return
+    noise(dest, t, { type: 'bandpass', freq: 4600, q: 1.8, gain: 1, attack: 0.005, decay: 0.13, sweepTo: 1500 })
+    if (close) noise(dest, t, { type: 'highpass', freq: 5200, q: 0.5, gain: 0.45, attack: 0.001, decay: 0.022 })
+  } else if (kind === 'bark') {
+    // A shout: heard only from fairly near.
+    if (dist > 42) return
+    const v = VOICES[meta]
+    if (!v) return
+    const dest = spatial(dist, pan, v.gain)
+    if (!dest) return
+    voice(dest, t + lagOf(dist, 0.15), v)
   } else if (kind === 'spit') {
     // A spitter retching up a gob: a wet, rising gurgle.
     if (dist > 45) return

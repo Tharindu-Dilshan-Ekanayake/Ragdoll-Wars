@@ -9,7 +9,7 @@ import { getTextures } from '../render/textures'
 import { drain } from '../sim/fx'
 import { segmentHit3D } from '../sim/obstacles'
 import { groundAt } from '../sim/terrain'
-import { addFrameHook, battle, PHASE } from '../state'
+import { addFrameHook, applyShake, battle, PHASE } from '../state'
 import { arrivalCamera, stepArrival } from './arrivalFlight'
 import { blastWalker, stepWalker, WALK } from './walkMode'
 
@@ -222,6 +222,7 @@ export default function Walker() {
       _look.lerp(_target, 1 - Math.exp(-14 * dt))
       camera.lookAt(_look)
       camera.updateMatrixWorld()
+      applyShake(camera, dt)
     })
     return () => {
       offMove()

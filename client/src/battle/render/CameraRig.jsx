@@ -2,7 +2,7 @@ import { useThree } from '@react-three/fiber'
 import { useEffect } from 'react'
 
 import { attachInput } from '../input'
-import { addFrameHook, battle, PHASE } from '../state'
+import { addFrameHook, applyShake, battle, PHASE } from '../state'
 
 /**
  * The RTS camera: orbits a focus point on the ground. Input (input.js) and the HUD move
@@ -77,6 +77,7 @@ export default function CameraRig({ map, selectBoxId }) {
         camera.position.set(v.tx + Math.sin(v.yaw) * cp * v.dist, Math.sin(v.pitch) * v.dist + 0.6, v.tz + Math.cos(v.yaw) * cp * v.dist)
         camera.lookAt(v.tx, 0.6, v.tz)
         camera.updateMatrixWorld()
+        applyShake(camera, dt, 0.3)
       }),
     [map],
   )

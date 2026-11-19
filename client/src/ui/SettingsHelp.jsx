@@ -13,6 +13,8 @@ export function SettingsBody() {
   const setLevel = useQuality((s) => s.setLevel)
   const blood = useSettings((s) => s.blood)
   const setBlood = useSettings((s) => s.setBlood)
+  const shake = useSettings((s) => s.shake)
+  const setShake = useSettings((s) => s.setShake)
   const volume = useSettings((s) => s.volume)
   const setVolume = useSettings((s) => s.setVolume)
   const settings = useQuality((s) => s.settings)
@@ -55,6 +57,27 @@ export function SettingsBody() {
               className={`ff-chip ${blood === v ? 'is-on' : ''}`}
               onClick={() => {
                 setBlood(v)
+                sfx.toggle()
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="ff-form__row">
+        <div className="ff-form__label">Camera shake</div>
+        <div className="ff-seg">
+          {[
+            [true, 'On'],
+            [false, 'Off'],
+          ].map(([v, label]) => (
+            <button
+              type="button"
+              key={label}
+              className={`ff-chip ${shake === v ? 'is-on' : ''}`}
+              onClick={() => {
+                setShake(v)
                 sfx.toggle()
               }}
             >

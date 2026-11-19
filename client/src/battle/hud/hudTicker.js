@@ -64,7 +64,23 @@ function summarise(w) {
   return { count, team, types, unit }
 }
 
+/**
+ * A big wave starts: the camera glides out over the valley so you watch the horde come
+ * in from far off, then (6 s on) goes back where it was - unless you've moved it since.
+ */
+function revealHorde(w) {
+  const g = battle.view.goal
+  if (battle.walk.on || !w.rampart) return
+  const prev = { tx: g.tx, tz: g.tz, dist: g.dist, pitch: g.pitch, yaw: g.yaw }
+  const to = { tx: w.rampart.front + 55, tz: 0, dist: 118, pitch: 0.5, yaw: -1.35 }
+  Object.assign(g, to)
+  setTimeout(() => {
+    if (Math.abs(g.tx - to.tx) < 0.5 && Math.abs(g.dist - to.dist) < 0.5) Object.assign(g, prev)
+  }, 6500)
+}
+
 export function startHudTicker() {
+  let revealedWave = 0
   let lastZombie = ''
   let lastStats = ''
   let lastSel = ''
@@ -73,6 +89,11 @@ export function startHudTicker() {
     if (!w) return
     const z = w.zmode
     if (z) {
+      // The first wave and every fifth: show the horde coming.
+      if (z.state === 'wave' && z.wave !== revealedWave) {
+        revealedWave = z.wave
+        if (z.wave === 1 || z.wave % 5 === 0) revealHorde(w)
+      }
       const buildT = Math.max(0, Math.ceil(z.buildT))
       // Rampart sections in percent (-1 fallen), when the map has one.
       const wall = w.rampart ? w.rampart.segs.map((g) => (g.up ? Math.max(1, Math.round((g.hp / g.max) * 100)) : -1)) : null

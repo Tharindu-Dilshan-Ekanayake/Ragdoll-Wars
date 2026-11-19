@@ -1,3 +1,4 @@
+import { bark } from './barks.js'
 import { UNIT_TYPES } from './units.js'
 
 /**
@@ -83,6 +84,8 @@ export function createSquads() {
       sprung: false,
       /** No new ambush before this (commander.js). */
       ambushNext: 0,
+      /** No new "contact" call before this. */
+      callT: 0,
     })),
     nextId: 1,
     t: 0,
@@ -136,6 +139,7 @@ function joinSquad(w, s) {
     best.order = s.order
     best.sprung = false
     best.ambushNext = 0
+    best.callT = 0
     best.mover = 0
     best.legId = 1
     best.legT = 0
@@ -264,7 +268,14 @@ export function updateSquads(w, h) {
     }
     // Heading: at the enemy as last seen, else at their main body.
     if (q.seen) q.contactT = w.time
+    const was = q.contact
     q.contact = w.time - q.contactT < CONTACT_HOLD
+    // First sight of the enemy: the leader calls it (a squad at most every 10 s).
+    if (q.contact && !was && w.time > q.callT) {
+      q.callT = w.time + 10
+      const l = w.slots[q.leader]
+      if (l && l.alive) bark(w, l, 'say_contact', true)
+    }
     // Nobody in sight any more: an ambush can be laid again.
     if (!q.contact) q.sprung = false
     const foe = w.centroid[1 - q.team]

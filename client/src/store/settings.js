@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
 /**
- * Player settings kept on this device: blood on/off and the in-game volume. (Graphics
+ * Player settings kept on this device: blood on/off, camera shake and the in-game volume. (Graphics
  * level lives in quality.js; Boxity's portal settings arrive via bloxity/integration.js.)
  */
 const KEY = 'ff.settings'
@@ -16,18 +16,25 @@ function load() {
 
 function save(state) {
   try {
-    localStorage.setItem(KEY, JSON.stringify({ blood: state.blood, volume: state.volume }))
+    localStorage.setItem(KEY, JSON.stringify({ blood: state.blood, volume: state.volume, shake: state.shake }))
   } catch {
     // Private mode: settings just won't persist.
   }
 }
 
 const initial = load()
+/** Camera shake is off by default for anyone who's asked their device for less motion. */
+const reducedMotion = typeof window !== 'undefined' && Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
 
 export const useSettings = create((set, get) => ({
   blood: initial.blood !== false,
   /** 0..1, multiplied with Boxity's master volume. */
   volume: typeof initial.volume === 'number' ? Math.min(1, Math.max(0, initial.volume)) : 0.8,
+  shake: typeof initial.shake === 'boolean' ? initial.shake : !reducedMotion,
+  setShake: (shake) => {
+    set({ shake })
+    save(get())
+  },
   setBlood: (blood) => {
     set({ blood })
     save(get())

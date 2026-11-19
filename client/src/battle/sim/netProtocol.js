@@ -1,3 +1,4 @@
+import { BARKS } from './barks.js'
 import { drain } from './fx.js'
 import { UNIT_TYPES } from './units.js'
 
@@ -30,10 +31,10 @@ import { UNIT_TYPES } from './units.js'
 
 export const TYPE_KEYS = Object.keys(UNIT_TYPES)
 export const TYPE_INDEX = Object.fromEntries(TYPE_KEYS.map((k, i) => [k, i]))
-export const SOUND_KINDS = ['shot', 'impact', 'hit', 'thud', 'spawn', 'reload', 'boom', 'launch', 'mortar', 'flame', 'heal', 'groan', 'horn', 'breach', 'build', 'jet', 'spit', 'splat']
+export const SOUND_KINDS = ['shot', 'impact', 'hit', 'thud', 'spawn', 'reload', 'boom', 'launch', 'mortar', 'flame', 'heal', 'groan', 'horn', 'breach', 'build', 'jet', 'spit', 'splat', 'whiz', 'bark']
 const SOUND_INDEX = Object.fromEntries(SOUND_KINDS.map((k, i) => [k, i]))
 /** String metas a sound can carry (weapon keys and vehicle gun sounds). */
-export const META_KEYS = [...TYPE_KEYS, 'cannon', 'autocannon']
+export const META_KEYS = [...TYPE_KEYS, 'cannon', 'autocannon', ...BARKS]
 const META_INDEX = Object.fromEntries(META_KEYS.map((k, i) => [k, i]))
 export const PROJ_KINDS = ['rocket', 'shell', 'cannon', 'bomb', 'acid']
 const PROJ_INDEX = Object.fromEntries(PROJ_KINDS.map((k, i) => [k, i]))

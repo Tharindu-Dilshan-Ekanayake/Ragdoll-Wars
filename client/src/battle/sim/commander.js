@@ -1,3 +1,4 @@
+import { bark } from './barks.js'
 import { SQUAD_SIZE } from './squads.js'
 
 /**
@@ -122,6 +123,8 @@ function commandTeam(w, team, T) {
     // Cut to pieces in a fight: pull back behind the line.
     if (q.role !== 'fallback' && q.contact && q.peak >= 3 && q.n <= Math.ceil(q.peak * BROKEN)) {
       setRole(q, 'fallback', now, clamp(mine.x - ax * 22, -lx, lx), clamp(mine.z - az * 22, -lz, lz))
+      const l = w.slots[q.leader]
+      if (l && l.alive) bark(w, l, 'say_retreat', true)
       continue
     }
     if (q.role === 'fallback') {

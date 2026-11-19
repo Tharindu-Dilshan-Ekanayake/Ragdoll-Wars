@@ -1,3 +1,4 @@
+import { useSettings } from '../store/settings'
 /**
  * Mutable per-frame battle state shared by the canvas, the input layer and the HUD.
  *
@@ -77,6 +78,37 @@ export const battle = {
   hover: null,
   /** Last move order, for the destination marker: { x, z, t } (t = performance time). */
   moveMarker: null,
+  /** Camera shake, 0..1 (blasts, a tank gun beside you): decays by itself. */
+  shake: 0,
+}
+
+/** Adds to the camera shake (unless it's turned off in Settings). */
+export function addShake(amount) {
+  if (!useSettings.getState().shake) return
+  battle.shake = Math.min(1, battle.shake + amount)
+}
+
+/**
+ * Shakes `camera` by the current amount and lets it die down: a jitter in where it
+ * points, and (`move` metres at full strength) in where it is. Call after the camera's
+ * been placed for the frame.
+ */
+export function applyShake(camera, dt, move = 0) {
+  const s = battle.shake
+  if (s < 0.004) {
+    battle.shake = 0
+    return
+  }
+  battle.shake = s * Math.exp(-5 * dt)
+  const k = s * s
+  camera.rotateX((Math.random() - 0.5) * k * 0.06)
+  camera.rotateY((Math.random() - 0.5) * k * 0.06)
+  if (move) {
+    camera.position.x += (Math.random() - 0.5) * k * move
+    camera.position.y += (Math.random() - 0.5) * k * move
+    camera.position.z += (Math.random() - 0.5) * k * move
+  }
+  camera.updateMatrixWorld()
 }
 
 /** Phases for frame hooks: input and camera, then the simulation, then drawing. */

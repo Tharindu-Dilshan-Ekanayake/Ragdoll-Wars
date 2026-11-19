@@ -283,7 +283,8 @@ export default function Soldiers({ getWorld, capacity = MAX_SLOTS }) {
         const n = Math.min(capacity, w.slots.length)
         for (let i = 0; i < n; i += 1) {
           const s = w.slots[i]
-          if (!s.used) continue
+          // (Bats are drawn by Bats.jsx.)
+          if (!s.used || s.flying) continue
           const trs = rig.cache[i]
           let px
           let pz
