@@ -714,7 +714,7 @@ function Inspector() {
       <div className="ff-inspect__head">
         <div>
           <div className="ff-inspect__title">{sel.count} soldiers</div>
-          <div className="ff-inspect__sub">Selected · give them orders on the left</div>
+          <div className="ff-inspect__sub">Selected · give them orders with the {isTouch ? 'buttons up top' : 'panel on the left'}</div>
         </div>
         <button type="button" className="ff-iconbtn ff-iconbtn--small" onClick={deselect} title="Deselect">
           <Glyph name="close" className="ff-ico" />
@@ -793,13 +793,14 @@ function WalkControls() {
 export default function Hud({ onExit }) {
   const panel = useHud((s) => s.panel)
   const walking = useHud((s) => s.walking)
+  const zombies = useHud((s) => s.mode === 'zombies')
   const level = useQuality((s) => s.level)
   // Boxity's screen ads follow modal panels.
   useEffect(() => {
     useApp.getState().setPanel(Boolean(panel))
   }, [panel])
   return (
-    <div className={`ff-hud ${walking ? 'is-walking' : ''}`} data-quality={level}>
+    <div className={`ff-hud ${walking ? 'is-walking' : ''} ${zombies ? 'is-zombies' : ''}`} data-quality={level}>
       <TopBar />
       <Corner onExit={onExit} />
       <Rail />

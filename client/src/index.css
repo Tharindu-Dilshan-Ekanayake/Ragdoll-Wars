@@ -2024,3 +2024,126 @@ button {
 .ff-cloud--error {
   color: var(--ff-bad);
 }
+
+/* --- Phones ------------------------------------------------------------------------- */
+/* Notches and gesture bars: the HUD stays inside the safe area (0 on a screen without). */
+.ff-hud {
+  inset: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+/* A phone's 100vh includes the browser bars that slide away: use the visible height. */
+@supports (height: 100dvh) {
+  :root {
+    --u: clamp(0.62px, min(100vw / 1600, 100dvh / 900), 1.15px);
+  }
+  .ff-modal__card {
+    max-height: calc(100dvh - 32px);
+  }
+  @media (orientation: portrait) {
+    :root {
+      --u: clamp(0.62px, min(100vw / 900, 100dvh / 1500), 1.1px);
+    }
+  }
+}
+/* Fingers: nothing smaller than ~36 px to tap, and no 300 ms double-tap-to-zoom delay. */
+@media (pointer: coarse) {
+  button,
+  select,
+  input {
+    touch-action: manipulation;
+  }
+  .ff-chip {
+    min-height: 36px;
+    min-width: 40px;
+  }
+  .ff-btn--small {
+    min-height: 34px;
+  }
+  .ff-order,
+  .ff-team,
+  .ff-rail__group--row .ff-chip {
+    min-height: 40px;
+  }
+  .ff-order {
+    min-width: 36px;
+  }
+  .ff-rail__group--row .ff-chip {
+    min-width: 34px;
+  }
+  .ff-tab {
+    min-height: 34px;
+  }
+  .ff-action {
+    min-height: 38px;
+    min-width: 38px;
+  }
+  .ff-tray__fold {
+    min-width: 34px;
+  }
+  .ff-iconbtn {
+    min-width: 40px;
+    min-height: 40px;
+  }
+  .ff-modal select,
+  .ff-modal input,
+  .ff-modal .ff-btn {
+    min-height: 42px;
+  }
+  /* (16 px: iOS zooms the page into any smaller text field.) */
+  .ff-modal input,
+  .ff-modal select {
+    font-size: 16px;
+  }
+}
+@media (orientation: portrait) {
+  /* The orders rail: team and orders on one line, the squad size under them (it used to
+     scroll sideways, which hides half the buttons). */
+  .ff-rail {
+    flex-wrap: wrap;
+    overflow-x: visible;
+    row-gap: 6px;
+    align-items: center;
+  }
+  .ff-inspect {
+    top: 232px;
+  }
+  /* Map names get two lines instead of "Steelbay Ware...". */
+  .ff-mapcard__title h3 {
+    white-space: normal;
+    overflow: visible;
+  }
+  /* Zombie Horde's bar is too wide for one row: the wave numbers on top, the speed
+     buttons and Start wave under them; the rest of the HUD makes room. */
+  .ff-top--zombies {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .ff-top--zombies .ff-zbar {
+    flex-wrap: wrap;
+    width: 100%;
+    justify-content: center;
+    gap: 4px;
+  }
+  .ff-top--zombies .ff-zbar__cell {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 3px 4px;
+  }
+  .ff-top--zombies .ff-zbar__cell--wall {
+    display: none;
+  }
+  .ff-top--zombies .ff-zbar__num {
+    font-size: 19px;
+  }
+  .ff-top--zombies .ff-zbar__go {
+    flex: 1 1 100%;
+    justify-content: center;
+    padding: 0.35em 1em;
+    font-size: 15px;
+  }
+  .ff-hud.is-zombies .ff-rail {
+    top: 200px;
+  }
+  .ff-hud.is-zombies .ff-inspect {
+    top: 262px;
+  }
+}
