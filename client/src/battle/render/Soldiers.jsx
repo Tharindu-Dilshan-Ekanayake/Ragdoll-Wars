@@ -16,10 +16,10 @@ import {
 import { useQuality } from '../../store/quality'
 import { MAX_SLOTS } from '../sim/constants'
 import { groundAt } from '../sim/terrain'
-import { animate, buildParts, J_PELVIS, PART_COUNT, P_WEAPON, TRS } from '../sim/rig'
+import { animate, buildParts, J_PELVIS, P_HEAD, P_HELMET, P_PELVIS, P_TORSO, P_UARM_L, PART_COUNT, P_WEAPON, TRS } from '../sim/rig'
 import { UNIT_TYPES, WEAPON_MODELS, weaponModelIndex } from '../sim/units'
 import { addFrameHook, battle, PHASE } from '../state'
-import { buildSoldierGeometries, buildWeaponGeometries } from './models'
+import { buildGearGeometries, buildSoldierGeometries, buildWeaponGeometries } from './models'
 import { getTextures } from './textures'
 
 /**
@@ -39,6 +39,49 @@ import { getTextures } from './textures'
 const MESH_KEYS = ['pelvis', 'torso', 'vest', 'head', 'helmet', 'upperArm', 'foreArm', 'thigh', 'shin', 'boot', 'hand']
 const PART_TO_MESH = [0, 1, 2, 3, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10]
 const PER_SOLDIER = [1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2]
+/** Parts in uniform cloth: drawn with the camouflage pattern (camoMaterial). */
+const CAMO = [true, true, true, false, false, true, false, true, true, false, false]
+/**
+ * Close-up kit (models.js buildGearGeometries): [geometry, the part it rides on, skin?].
+ * Only soldiers near the camera get it: from the top view it's a few pixels.
+ */
+const GEAR = [
+  ['pack', P_TORSO, false],
+  ['belt', P_PELVIS, false],
+  ['goggles', P_HELMET, false],
+  ['face', P_HEAD, true],
+  // Medics only: red crosses on the helmet, an armband.
+  ['medicHelmet', P_HELMET, false, true],
+  ['armband', P_UARM_L, false, true],
+]
+const GEAR_NEAR = 24
+const GEAR_NEAR_LOW = 14
+
+/**
+ * Uniform cloth with a disruptive pattern: three tones of the team colour in blotches,
+ * worked out in the part's own space (no texture, no extra geometry).
+ */
+function camoMaterial() {
+  const m = new MeshLambertMaterial({ vertexColors: true })
+  m.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace('void main() {', 'varying vec3 vCamoP;\nvoid main() {')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n  vCamoP = position;')
+    shader.fragmentShader = shader.fragmentShader.replace('void main() {', 'varying vec3 vCamoP;\nvoid main() {').replace(
+      '#include <color_fragment>',
+      `#include <color_fragment>
+  vec3 cp = vCamoP * 22.0;
+  float cf = sin(cp.x + sin(cp.y * 0.8) * 2.0) * sin(cp.y * 0.9 + sin(cp.z * 1.1) * 1.8) + 0.6 * sin((cp.z + cp.x) * 0.7 + cp.y * 0.3);
+  float dark = 1.0 - smoothstep(-0.36, -0.2, cf);
+  float light = smoothstep(0.4, 0.58, cf);
+  // Dark blotches lean olive-brown, light ones lift: the team colour still reads.
+  diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.62, 0.66, 0.5) + vec3(0.03, 0.03, 0.01), dark * 0.85);
+  diffuseColor.rgb *= 1.0 + light * 0.16;`,
+    )
+  }
+  m.customProgramCacheKey = () => 'ff-camo'
+  return m
+}
 /** Parts big enough to be worth a realtime shadow (small ones and weapons skip it). */
 const CASTS_SHADOW = [true, true, true, true, true, true, false, true, true, false, false]
 /**
@@ -84,6 +127,7 @@ const sphere = new Sphere()
 
 /** The weapon mesh for a mortar set up on the ground. */
 const MORTAR_SET = WEAPON_MODELS.indexOf('mortarSet')
+const SHELLCASE = WEAPON_MODELS.indexOf('shellcase')
 
 function writeMatrix(arr, o, px, py, pz, qx, qy, qz, qw, s) {
   const x2 = qx + qx
@@ -152,12 +196,16 @@ export default function Soldiers({ getWorld, capacity = MAX_SLOTS }) {
   const rig = useMemo(() => {
     const geos = buildSoldierGeometries()
     const weaponGeos = buildWeaponGeometries()
+    const gearGeos = buildGearGeometries()
     const material = new MeshLambertMaterial({ vertexColors: true })
+    const camo = camoMaterial()
     const makeSet = () => ({
-      parts: MESH_KEYS.map((k, i) => makeMesh(geos[k], material, capacity * PER_SOLDIER[i], true)),
+      parts: MESH_KEYS.map((k, i) => makeMesh(geos[k], CAMO[i] ? camo : material, capacity * PER_SOLDIER[i], true)),
       weapons: WEAPON_MODELS.map((k) => makeMesh(weaponGeos[k], material, capacity, true)),
+      gear: GEAR.map(([k]) => makeMesh(gearGeos[k], material, capacity, true)),
       counts: new Int32Array(MESH_KEYS.length),
       wcounts: new Int32Array(WEAPON_MODELS.length),
+      gcounts: new Int32Array(GEAR.length),
     })
     const tex = getTextures()
     const shadowMat = new MeshBasicMaterial({ map: tex.blob, transparent: true, depthWrite: false })
@@ -173,9 +221,10 @@ export default function Soldiers({ getWorld, capacity = MAX_SLOTS }) {
       shadows,
       rings,
       material,
+      camo,
       shadowMat,
       ringMat,
-      geos: [...Object.values(geos), ...Object.values(weaponGeos), shadowGeo, ringGeo],
+      geos: [...Object.values(geos), ...Object.values(weaponGeos), ...Object.values(gearGeos), shadowGeo, ringGeo],
       cache: Array.from({ length: capacity }, () => new Float32Array(PART_COUNT * TRS)),
       cacheKey: new Float64Array(capacity).fill(-1),
       frame: 0,
@@ -186,6 +235,7 @@ export default function Soldiers({ getWorld, capacity = MAX_SLOTS }) {
     () => () => {
       for (const g of rig.geos) g.dispose()
       rig.material.dispose()
+      rig.camo.dispose()
       rig.shadowMat.dispose()
       rig.ringMat.dispose()
     },
@@ -219,7 +269,10 @@ export default function Soldiers({ getWorld, capacity = MAX_SLOTS }) {
         for (const set of rig.sets) {
           set.counts.fill(0)
           set.wcounts.fill(0)
+          set.gcounts.fill(0)
         }
+        const gearR = useQuality.getState().level === 'LOW' ? GEAR_NEAR_LOW : GEAR_NEAR
+        const gear2 = gearR * gearR
         let nShadow = 0
         let nRing = 0
         const shadowArr = rig.shadows.instanceMatrix.array
@@ -296,11 +349,27 @@ export default function Soldiers({ getWorld, capacity = MAX_SLOTS }) {
             ca[idx * 3 + 1] = col[1] * k
             ca[idx * 3 + 2] = col[2] * k
           }
+          // Close up: the field kit and a face.
+          if (!zpal && (px - cx) * (px - cx) + (pz - cz) * (pz - cz) < gear2) {
+            for (let g = 0; g < GEAR.length; g += 1) {
+              if (GEAR[g][3] && !medic) continue
+              const mesh = set.gear[g]
+              const idx = set.gcounts[g]++
+              const o = GEAR[g][1] * TRS
+              writeMatrix(mesh.instanceMatrix.array, idx * 16, trs[o], trs[o + 1], trs[o + 2], trs[o + 3], trs[o + 4], trs[o + 5], trs[o + 6], trs[o + 7])
+              const ca = mesh.instanceColor.array
+              const c = GEAR[g][2] ? skin : null
+              const k = GEAR[g][2] ? (s.charred ? 0.3 : 1) : shade
+              ca[idx * 3] = (c ? c[0] : 1) * k
+              ca[idx * 3 + 1] = (c ? c[1] : 1) * k
+              ca[idx * 3 + 2] = (c ? c[2] : 1) * k
+            }
+          }
           // A mortar gunner standing still has his mortar set up on the ground in front of
-          // him; a loader at work has put his rifle away.
+          // him; his loader carries a case of rounds (no rifle), set down at the tube.
           const settled = s.alive && !s.downed && s.dropY <= 0 && s.animMove < 0.15
           const deployed = settled && UNIT_TYPES[s.type].crew
-          const wi = deployed ? MORTAR_SET : settled && s.loaderOf >= 0 ? -1 : weaponModelIndex(s.type)
+          const wi = deployed ? MORTAR_SET : s.loaderOf >= 0 ? (settled ? -1 : SHELLCASE) : weaponModelIndex(s.type)
           if (wi >= 0) {
             const mesh = set.weapons[wi]
             const idx = wcounts[wi]++
@@ -342,6 +411,10 @@ export default function Soldiers({ getWorld, capacity = MAX_SLOTS }) {
             flush(set.weapons[m], set.wcounts[m], true)
             set.weapons[m].visible = set.wcounts[m] > 0
           }
+          for (let m = 0; m < set.gear.length; m += 1) {
+            flush(set.gear[m], set.gcounts[m], true)
+            set.gear[m].visible = set.gcounts[m] > 0
+          }
         }
         flush(rig.shadows, nShadow, false)
         flush(rig.rings, nRing, true)
@@ -354,6 +427,7 @@ export default function Soldiers({ getWorld, capacity = MAX_SLOTS }) {
       {rig.sets.map((set, si) => [
         ...set.parts.map((m, i) => <primitive key={`p${si}-${i}`} object={m} castShadow={realtimeShadows && si === 0 && CASTS_SHADOW[i] && (!LIMB_SHADOW[i] || rig.limbShadows !== false)} />),
         ...set.weapons.map((m, i) => <primitive key={`w${si}-${i}`} object={m} castShadow={false} />),
+        ...set.gear.map((m, i) => <primitive key={`g${si}-${i}`} object={m} castShadow={false} />),
       ])}
       <primitive object={rig.shadows} visible={!realtimeShadows} />
       <primitive object={rig.rings} />

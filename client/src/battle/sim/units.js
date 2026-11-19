@@ -234,7 +234,9 @@ export const UNIT_TYPES = {
     heavy: false,
     medic: { range: 40, heal: 70, time: 2.4, revive: 4.5 },
     max: 8,
-    model: 'pistol',
+    // No gun: a medic carries his bag and keeps out of the shooting.
+    unarmed: true,
+    model: 'medbag',
     front: 0.17,
     back: 0.03,
     foregrip: 0,
@@ -470,7 +472,7 @@ export const VEHICLE_KEYS = ['jeep', 'apc', 'tank', 'gunship', 'scout']
 
 /** Weapon meshes (a unit uses `model` or its own key). */
 /** The weapon models (render/models.js); 'mortarSet' is a mortar set up on the ground, not carried. */
-export const WEAPON_MODELS = ['pistol', 'smg', 'rifle', 'shotgun', 'sniper', 'mg', 'rocket', 'flame', 'mortar', 'mortarSet']
+export const WEAPON_MODELS = ['pistol', 'smg', 'rifle', 'shotgun', 'sniper', 'mg', 'rocket', 'flame', 'mortar', 'mortarSet', 'shellcase', 'medbag']
 export const weaponModelIndex = (key) => WEAPON_MODELS.indexOf(UNIT_TYPES[key]?.model || key)
 
 /** Quick battle: the same mixed army for each side, as [type, count, z offset]. */

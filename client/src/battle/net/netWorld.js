@@ -1,29 +1,5 @@
 import { emitDecal, emitExplosion, emitFlame, emitFlash, emitImpact, emitSound, emitTracer } from '../sim/fx'
-import {
-  decodeMeta,
-  F_ARM_L,
-  F_ARM_R,
-  F_BURNING,
-  F_DOWNED,
-  F_DROPPING,
-  F_HEALING,
-  F_LEG_L,
-  F_LEG_R,
-  MINE_STRIDE,
-  PROJ_KINDS,
-  PROJECTILE_STRIDE,
-  SOLDIER_STRIDE,
-  SOUND_KINDS,
-  TYPE_KEYS,
-  V_ALIVE,
-  V_CRASHING,
-  V_HIT,
-  V_WRECK,
-  VEHICLE_STRIDE,
-  WALKER_STRIDE,
-  ZOMBIE_RESULTS,
-  ZOMBIE_STATES,
-} from '../sim/netProtocol'
+import { decodeMeta, F_ARM_L, F_ARM_R, F_BURNING, F_DOWNED, F_DROPPING, F_HEALING, F_LEG_L, F_LEG_R, F_LOADER, MINE_STRIDE, PROJECTILE_STRIDE, PROJ_KINDS, SOLDIER_STRIDE, SOUND_KINDS, TYPE_KEYS, VEHICLE_STRIDE, V_ALIVE, V_CRASHING, V_HIT, V_WRECK, WALKER_STRIDE, ZOMBIE_RESULTS, ZOMBIE_STATES } from '../sim/netProtocol'
 import { pieceBoxes } from '../sim/pieces'
 import { wrapAngle } from '../sim/rig'
 import { resetSoldier } from '../sim/soldier'
@@ -102,6 +78,8 @@ export function applySnapshot(w, net, snap) {
     x.reloadP = s[i + 14] / 100
     const f = s[i + 15]
     x.downed = Boolean(f & F_DOWNED)
+    // (Only whether he's a loader matters here: the renderer gives him the rounds.)
+    x.loaderOf = f & F_LOADER ? 0 : -1
     x.burnT = f & F_BURNING ? Math.max(x.burnT, 0.6) : 0
     x.legL = f & F_LEG_L ? 1 : 0
     x.legR = f & F_LEG_R ? 1 : 0

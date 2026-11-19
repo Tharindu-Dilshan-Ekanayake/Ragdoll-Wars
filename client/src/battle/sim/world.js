@@ -835,6 +835,12 @@ function combat(w, s, type, h) {
       return
     }
   }
+  // Unarmed (a medic between patients): nothing to fire.
+  if (type.unarmed) {
+    s.ready = Math.max(0, s.ready - h * 3)
+    s.reloadP = -1
+    return
+  }
   // A mortar loader: face the tube and drop a round in each time it fires.
   if (s.loaderOf >= 0) {
     const g = w.slots[s.loaderOf]

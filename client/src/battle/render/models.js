@@ -409,8 +409,78 @@ function mortarSet() {
   ])
 }
 
+/** A mortar loader's load: a case of rounds carried by its handle (no rifle). */
+function shellcase() {
+  return merge([
+    place(box(0.13, 0.2, 0.42, OLIVE), 0, -0.14, 0.06),
+    place(box(0.135, 0.03, 0.43, BLACK), 0, -0.06, 0.06),
+    place(box(0.03, 0.05, 0.16, BLACK), 0, -0.01, 0.06),
+    // Stencilled band and the latches.
+    place(box(0.135, 0.04, 0.2, TAN), 0, -0.15, 0.06),
+    place(box(0.14, 0.03, 0.03, STEEL), 0, -0.07, -0.1),
+    place(box(0.14, 0.03, 0.03, STEEL), 0, -0.07, 0.22),
+  ])
+}
+
+/** A medic's bag, carried by its handle: green canvas, a white patch with a red cross. */
+function medbag() {
+  const red = [0.78, 0.12, 0.1]
+  return merge([
+    place(box(0.15, 0.2, 0.34, [0.3, 0.38, 0.26]), 0, -0.13, 0.04),
+    place(box(0.155, 0.03, 0.35, [0.22, 0.27, 0.2]), 0, -0.04, 0.04),
+    place(box(0.03, 0.05, 0.14, BLACK), 0, 0.0, 0.04),
+    place(box(0.158, 0.11, 0.11, [0.92, 0.92, 0.9]), 0, -0.13, 0.04),
+    place(box(0.162, 0.07, 0.025, red), 0, -0.13, 0.04),
+    place(box(0.162, 0.025, 0.07, red), 0, -0.13, 0.04),
+  ])
+}
+
 export function buildWeaponGeometries() {
-  return { pistol: pistol(), smg: smg(), rifle: rifle(), shotgun: shotgun(), sniper: sniper(), mg: mg(), rocket: rocket(), flame: flame(), mortar: mortar(), mortarSet: mortarSet() }
+  return { pistol: pistol(), smg: smg(), rifle: rifle(), shotgun: shotgun(), sniper: sniper(), mg: mg(), rocket: rocket(), flame: flame(), mortar: mortar(), mortarSet: mortarSet(), shellcase: shellcase(), medbag: medbag() }
+}
+
+// --- Close-up gear (drawn only near the camera: Soldiers.jsx) ------------------------
+
+const KIT = [0.36, 0.36, 0.28]
+const STRAP = [0.2, 0.19, 0.16]
+const LENS = [0.12, 0.16, 0.2]
+
+/**
+ * Field kit worn over the uniform, each piece in its part's frame: a pack with a rolled
+ * mat on the back (torso), pouches, a canteen and a holster on the belt (pelvis), goggles
+ * and a band on the helmet, and a nose and ears for the face (head; skin-coloured).
+ */
+export function buildGearGeometries() {
+  const pack = merge([
+    place(box(0.24, 0.26, 0.085, KIT), 0, 0.02, -0.17),
+    place(box(0.18, 0.08, 0.045, [0.42, 0.42, 0.33]), 0, -0.07, -0.23),
+    place(cyl(0.042, 0.042, 0.26, 6, [0.5, 0.44, 0.32]), 0, 0.17, -0.17, 0, 0, Math.PI / 2),
+    // Shoulder straps over the front.
+    place(box(0.05, 0.42, 0.02, STRAP), 0.12, 0.03, 0.135),
+    place(box(0.05, 0.42, 0.02, STRAP), -0.12, 0.03, 0.135),
+  ])
+  const belt = merge([
+    place(box(0.08, 0.1, 0.1, KIT), 0.19, -0.01, 0.06),
+    place(box(0.08, 0.1, 0.1, KIT), -0.19, -0.01, 0.06),
+    place(cyl(0.045, 0.045, 0.14, 6, [0.3, 0.33, 0.26]), 0.15, -0.02, -0.13),
+    place(box(0.06, 0.14, 0.09, STRAP), -0.2, -0.06, -0.05),
+  ])
+  const goggles = merge([
+    place(tint(new CylinderGeometry(0.196, 0.198, 0.035, 10, 1, true), ...STRAP), 0, 0.055, 0),
+    place(box(0.085, 0.05, 0.03, LENS), 0.05, 0.07, 0.18),
+    place(box(0.085, 0.05, 0.03, LENS), -0.05, 0.07, 0.18),
+  ])
+  const face = merge([
+    place(box(0.034, 0.05, 0.04), 0, -0.012, 0.162),
+    place(box(0.024, 0.055, 0.04), 0.158, -0.005, 0),
+    place(box(0.024, 0.055, 0.04), -0.158, -0.005, 0),
+  ])
+  // A medic's markings: red crosses on the helmet's sides and front, an armband.
+  const red = [0.8, 0.12, 0.1]
+  const crossAt = (x, z, ry) => [place(box(0.075, 0.025, 0.012, red), x, 0.09, z, 0, ry, 0), place(box(0.025, 0.075, 0.012, red), x, 0.09, z, 0, ry, 0)]
+  const medicHelmet = merge([...crossAt(0, 0.175, 0), ...crossAt(0.175, 0, Math.PI / 2), ...crossAt(-0.175, 0, Math.PI / 2)])
+  const armband = merge([place(tint(new CylinderGeometry(0.079, 0.079, 0.06, 8, 1, true), 0.95, 0.95, 0.93), 0, -0.08, 0), place(box(0.012, 0.04, 0.03, red), 0.08, -0.08, 0)])
+  return { pack, belt, goggles, face, medicHelmet, armband }
 }
 
 /** Triangle count of a geometry (for the perf report). */

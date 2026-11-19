@@ -54,7 +54,7 @@ function summarise(w) {
           order: one.order,
           kills: one.kills,
           range: UNIT_TYPES[one.type].range,
-          damage: UNIT_TYPES[one.type].damage * UNIT_TYPES[one.type].pellets,
+          damage: UNIT_TYPES[one.type].unarmed ? 0 : UNIT_TYPES[one.type].damage * UNIT_TYPES[one.type].pellets,
           wounds: { head: one.headW, torso: one.torsoW, armL: one.armL, armR: one.armR, legL: one.legL, legR: one.legR },
           bleeding: one.bleed > 0.05,
           mag: one.mag,

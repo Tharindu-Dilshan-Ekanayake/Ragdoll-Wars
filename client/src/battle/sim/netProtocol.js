@@ -55,6 +55,8 @@ export const F_LEG_R = 16
 export const F_ARM_L = 32
 export const F_ARM_R = 64
 export const F_HEALING = 128
+/** A mortar loader (carries rounds, not his rifle). */
+export const F_LOADER = 256
 /** Vehicle flag bits. */
 export const V_ALIVE = 1
 export const V_WRECK = 2
@@ -99,6 +101,7 @@ export function encodeSnapshot(w, enc) {
     if (x.armR > 0) f |= F_ARM_R
     const healing = x.patient && x.healT > 0
     if (healing) f |= F_HEALING
+    if (x.loaderOf >= 0) f |= F_LOADER
     s.push(
       x.id,
       TYPE_INDEX[x.type],

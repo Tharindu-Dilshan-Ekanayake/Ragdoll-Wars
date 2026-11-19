@@ -105,6 +105,7 @@ const MAX_RANGE = Math.max(...UNIT_ORDER.map((k) => UNIT_TYPES[k].range))
 
 /** What a unit does per hit, in words: bullets, a blast, fire, or healing. */
 function damageText(u) {
+  if (u.unarmed) return 'Unarmed'
   if (u.blast) return `${u.blast.damage} blast · ${u.blast.radius} m`
   if (u.flame) return `${u.flame.dps}/s fire`
   if (u.pellets > 1) return `${u.damage} × ${u.pellets}`
