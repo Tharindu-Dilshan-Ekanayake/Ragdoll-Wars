@@ -4,7 +4,7 @@ import { MAPS, ZOMBIE_MAP } from '../../../client/src/battle/maps/index.js'
 import { createEncoder, encodeSnapshot } from '../../../client/src/battle/sim/netProtocol.js'
 import { BUILD_GROUPS } from '../../../client/src/battle/sim/pieces.js'
 import { applySave } from '../../../client/src/battle/sim/saveGame.js'
-import { QUICK_SQUADS, UNIT_TYPES } from '../../../client/src/battle/sim/units.js'
+import { UNIT_TYPES } from '../../../client/src/battle/sim/units.js'
 import { clearAll, createWorld, deleteSelected, initZombieMode, moveSelected, orderSelected, spawnUnits, stepWorld, withUnits } from '../../../client/src/battle/sim/world.js'
 import { PRICES, restartZombies, startWave } from '../../../client/src/battle/sim/zombies.js'
 import { resolveIdentity } from '../bloxityApi.js'
@@ -19,13 +19,22 @@ import { resolveIdentity } from '../bloxityApi.js'
  * snapshot ~15 times a second (sim/netProtocol.js) and draws it, with bodies, ragdolls
  * and effects played on their own machine.
  *
- * Modes: 'sandbox' (each player commands Blue or Red; teams auto-balance, players can
- * switch) and 'zombies' (Zombie Horde in co-op: everyone on Blue, one shared purse).
+ * Modes: 'sandbox' (each player commands Blue or Red, and the sides stay even: two
+ * players are one each, four are two a side; you get the side you asked for when it has
+ * room, and can switch only to the smaller side) and 'zombies' (Zombie Horde in co-op: two players, both on Blue, defending the
+ * same wall with one shared army and purse - either can command any of it).
  * The first player in is the host: they can clear the field, change speed, pause and
  * load a saved battlefield; if they leave, the next player takes over.
+ *
+ * A private room (made with a code) starts as a waiting room: friends join, pick their
+ * side, and nothing runs until the host sends 'start' - then everyone goes into the
+ * battle on the host's map together. Anyone joining after that goes straight in. Quick
+ * match rooms start at once.
  */
 
 const MAX_PLAYERS = 4
+/** Zombie Horde co-op is two players: one wall, one army, one purse. */
+const MAX_ZOMBIE_PLAYERS = 2
 const SIM_HZ = 30
 const SNAP_EVERY = 2
 const RECONNECT_SECONDS = 15
@@ -95,16 +104,21 @@ export class BattleRoom extends Room {
     this.w = createWorld(map, CAPS, this.mode)
     this.w.deaths = []
     this.w.revives = []
-    if (this.mode === 'zombies') initZombieMode(this.w)
+    if (this.mode === 'zombies') {
+      initZombieMode(this.w)
+      this.maxClients = MAX_ZOMBIE_PLAYERS
+    }
     this.enc = createEncoder(this.w)
     this.code = null
+    // Private rooms wait for the host's Start; quick match ones are under way at once.
+    this.started = !options.private
     if (options.private) {
       // A short code friends can read out instead of the long generated id.
       this.roomId = makeCode()
       this.code = this.roomId
       await this.setPrivate(true)
     }
-    await this.setMetadata({ mode: this.mode, mapId: this.mapId, code: this.code })
+    await this.setMetadata({ mode: this.mode, mapId: this.mapId, code: this.code, started: this.started, max: this.maxClients })
     this.setSimulationInterval((dt) => this.tick(dt), 1000 / SIM_HZ)
     this.onMessage('*', (client, type, payload) => this.command(client, String(type), payload))
   }
@@ -121,9 +135,10 @@ export class BattleRoom extends Room {
   }
 
   onJoin(client, options, auth) {
-    // The side they asked for (sandbox); none asked, the emptier one.
+    // Sandbox sides stay even: the side they asked for if it isn't the bigger one, else
+    // the smaller side (two players: one each; four: two a side). Zombie Horde: all Blue.
     const asked = options?.team === 0 || options?.team === 1 ? options.team : null
-    const team = this.mode === 'zombies' ? 0 : asked ?? this.emptierTeam()
+    const team = this.mode === 'zombies' ? 0 : asked !== null && this.count(asked) <= this.count(1 - asked) ? asked : this.emptierTeam()
     const host = ![...this.players.values()].some((p) => p.host)
     this.players.set(client.sessionId, {
       name: auth?.name || 'Commander',
@@ -139,7 +154,7 @@ export class BattleRoom extends Room {
     })
     // The newcomer needs every built piece: resend the list with the next snapshot.
     this.enc.buildVersion = -1
-    client.send('welcome', { mapId: this.mapId, mode: this.mode, code: this.code, team, host, speed: this.speed, paused: this.paused })
+    client.send('welcome', { mapId: this.mapId, mode: this.mode, code: this.code, team, host, speed: this.speed, paused: this.paused, started: this.started })
     this.sendPlayers()
   }
 
@@ -174,6 +189,28 @@ export class BattleRoom extends Room {
     this.sendPlayers()
   }
 
+  /** How many players are on `team`. */
+  count(team) {
+    let n = 0
+    for (const p of this.players.values()) if (p.team === team) n += 1
+    return n
+  }
+
+  /**
+   * Evens the sides out (someone left the waiting room, say): players move from the
+   * bigger side to the smaller one - the host last - until they're at most one apart.
+   */
+  balance() {
+    if (this.mode !== 'sandbox') return
+    for (;;) {
+      const big = this.count(0) > this.count(1) ? 0 : 1
+      if (this.count(big) - this.count(1 - big) <= 1) return
+      const list = [...this.players.values()].filter((p) => p.team === big)
+      const mover = list.reverse().find((p) => !p.host) || list[0]
+      mover.team = 1 - big
+    }
+  }
+
   emptierTeam() {
     let blue = 0
     let red = 0
@@ -188,6 +225,8 @@ export class BattleRoom extends Room {
   }
 
   tick(dtMs) {
+    // The waiting room: nothing runs (or goes out) until the host starts the battle.
+    if (!this.started) return
     const w = this.w
     w.timeScale = this.paused ? 0 : this.speed
     stepWorld(w, Math.min(0.1, dtMs / 1000))
@@ -243,9 +282,24 @@ export class BattleRoom extends Room {
     const w = this.w
     const msg = payload && typeof payload === 'object' ? payload : {}
     switch (type) {
+      case 'start': {
+        if (this.started) return
+        if (!p.host) return this.toast(client, 'Only the host can start the battle')
+        this.started = true
+        this.balance()
+        this.sendPlayers()
+        this.enc.buildVersion = -1
+        this.setMetadata({ started: true })
+        this.broadcast('start', { mapId: this.mapId, mode: this.mode })
+        return
+      }
       case 'team': {
         if (this.mode !== 'sandbox') return
-        p.team = payload === 1 ? 1 : 0
+        const to = payload === 1 ? 1 : 0
+        if (to === p.team) return
+        // Only to the smaller side, so it stays one each (or two a side).
+        if (this.count(to) >= this.count(p.team)) return this.toast(client, 'The teams have to stay even - that side is full')
+        p.team = to
         this.sendPlayers()
         return
       }
@@ -290,14 +344,8 @@ export class BattleRoom extends Room {
       case 'delete':
         withUnits(w, p.team, idList(msg.s), idList(msg.v), () => deleteSelected(w))
         return
-      case 'quick': {
-        if (this.mode !== 'sandbox') return
-        for (let team = 0; team < 2; team += 1) {
-          const base = w.map.bases[team]
-          for (const [key, n, dz] of QUICK_SQUADS) spawnUnits(w, key, team, base.x + (team === 0 ? 14 : -14), base.z + dz, n, 'attack')
-        }
-        return
-      }
+      // (No 'quick': a ready-made army on both sides makes no sense when each player
+      // builds their own - it's a single-player button.)
       case 'clear':
         if (!p.host || this.mode !== 'sandbox') return this.toast(client, 'Only the host can clear the battlefield')
         clearAll(w)

@@ -9,6 +9,7 @@ import BattleScene from './BattleScene'
 import Hud from './hud/Hud'
 import { useHud } from './hud/hudStore'
 import { startHudTicker } from './hud/hudTicker'
+import { startZombieTutorial } from './tutorial'
 import { mapById } from './maps'
 import { disposeTextures } from './render/textures'
 import { createWorld, initZombieMode, setCaps } from './sim/world'
@@ -103,6 +104,8 @@ function installWorld(world, online = false) {
   const team = mine ? mine.team : useHud.getState().team
   const slot = mine ? Math.max(0, getNet().players.filter((p) => p.team === team).indexOf(mine)) : 0
   startArrival(world, team, slot)
+  // A first Zombie Horde game (single player): the guide up the wall to Start wave.
+  const stopTutorial = online ? () => {} : startZombieTutorial(world)
   const stopTicker = startHudTicker()
   startAmbience()
   return () => {
@@ -115,6 +118,7 @@ function installWorld(world, online = false) {
       net.onSpeed = null
       net.onDisconnect = null
     }
+    stopTutorial()
     stopTicker()
     stopAmbience()
     if (battle.world === world) battle.world = null
@@ -128,6 +132,13 @@ function installWorld(world, online = false) {
   }
 }
 
+/**
+ * How many battle screens are up. Leaving the room waits a tick and checks this: React's
+ * StrictMode (development) unmounts and remounts every effect straight away, and that
+ * pretend exit mustn't drop you out of the multiplayer room.
+ */
+let mountedBattles = 0
+
 export default function Battle({ mapId, mode = 'sandbox', onExit }) {
   const [map, setMap] = useState(null)
   const [ready, setReady] = useState(false)
@@ -138,6 +149,7 @@ export default function Battle({ mapId, mode = 'sandbox', onExit }) {
   useEffect(() => {
     let cancelled = false
     let teardown = null
+    mountedBattles += 1
     mapById(mapId)
       .load()
       .then((m) => {
@@ -158,8 +170,12 @@ export default function Battle({ mapId, mode = 'sandbox', onExit }) {
     return () => {
       cancelled = true
       teardown?.()
-      // Leaving the battle screen leaves the multiplayer room too.
-      if (net.online()) leaveBattle()
+      // Leaving the battle screen leaves the multiplayer room too - once it's really gone
+      // (not StrictMode's instant remount, which comes back before this runs).
+      mountedBattles -= 1
+      setTimeout(() => {
+        if (mountedBattles === 0 && net.online()) leaveBattle()
+      }, 0)
     }
   }, [mapId, mode])
 

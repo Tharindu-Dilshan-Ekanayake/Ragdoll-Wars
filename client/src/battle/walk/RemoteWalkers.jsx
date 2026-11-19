@@ -15,12 +15,13 @@ import { addFrameHook, battle, PHASE } from '../state'
  * The other players in a multiplayer battle, when they're out walking (walk mode): their
  * own Bloxity avatars, wearing what they wear, with a team-coloured ring and their name.
  * Positions come in with the server's snapshots (net/netWorld.js keeps the latest per
- * player) and are glided towards here. Hidden while they're commanding.
+ * player) and are glided towards here. Hidden while they're commanding - except in
+ * Zombie Horde co-op, where your partner stays standing on the wall where they last were.
  */
 
 const SMOOTH = 12
 
-function RemoteWalker({ sid, name, team, avatar }) {
+function RemoteWalker({ sid, name, team, avatar, stay }) {
   const groupRef = useRef(null)
   const bodyRef = useRef(null)
   const motionRef = useRef({ time: 0, speed: 0, grounded: true, maxSpeed: 6, vy: 0, stride: 0, salute: 0 })
@@ -48,12 +49,17 @@ function RemoteWalker({ sid, name, team, avatar }) {
       const body = bodyRef.current
       if (!group || !body) return
       const wk = battle.world?.netMirror?.walkers.get(sid)
-      group.visible = Boolean(wk)
-      motionRef.current.paused = !wk
       if (!wk) {
-        shown = false
+        // Commanding: gone - or, in co-op, standing still where they were.
+        const keep = stay && shown
+        group.visible = keep
+        motionRef.current.paused = !keep
+        if (keep) motionRef.current.speed = 0
+        else shown = false
         return
       }
+      group.visible = true
+      motionRef.current.paused = false
       const dt = Math.min(rawDelta, 0.05)
       const k = shown ? 1 - Math.exp(-SMOOTH * dt) : 1
       group.position.x += (wk.x - group.position.x) * k
@@ -72,7 +78,7 @@ function RemoteWalker({ sid, name, team, avatar }) {
       lastY = y
       shown = true
     })
-  }, [sid])
+  }, [sid, stay])
 
   return (
     <group ref={groupRef} visible={false}>
@@ -97,6 +103,7 @@ export default function RemoteWalkers() {
   const status = useNet((s) => s.status)
   const players = useNet((s) => s.players)
   const sid = useNet((s) => s.sessionId)
+  const coop = useNet((s) => s.mode === 'zombies')
   if (status !== 'online') return null
-  return players.filter((p) => p.sid !== sid).map((p) => <RemoteWalker key={p.sid} sid={p.sid} name={p.name} team={p.team} avatar={p.avatar} />)
+  return players.filter((p) => p.sid !== sid).map((p) => <RemoteWalker key={p.sid} sid={p.sid} name={p.name} team={p.team} avatar={p.avatar} stay={coop} />)
 }

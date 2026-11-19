@@ -4,6 +4,7 @@ import { worldSound } from '../audio/sfx'
 import CameraRig from './render/CameraRig'
 import Effects from './render/Effects'
 import Bats from './render/Bats'
+import TutorialGuide from './render/TutorialGuide'
 import Callouts from './render/Callouts'
 import Ordnance from './render/Ordnance'
 import GameCanvas from './render/GameCanvas'
@@ -98,6 +99,7 @@ export default function BattleScene({ map, onReady }) {
       <Effects />
       <Callouts />
       <Bats />
+      <TutorialGuide />
       <Structures />
       <Ordnance />
       <Vehicles />

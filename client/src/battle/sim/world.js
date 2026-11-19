@@ -1849,14 +1849,6 @@ function freeSlot(w, s) {
 }
 
 function move(w, s, type, h) {
-  // Going up the wall (zombies.js climbStep): the legs work, the body stays put.
-  if (s.climbT >= 0) {
-    s.vx = 0
-    s.vz = 0
-    s.gait += h * 8
-    s.animMove += (0.9 - s.animMove) * Math.min(1, h * 10)
-    return
-  }
   let speed = 0
   let dirX = 0
   let dirZ = 0

@@ -13,7 +13,7 @@ import { MAPS } from '../maps'
 import { applySave, saveCounts, serialize } from '../sim/saveGame'
 import { battle } from '../state'
 import { deleteSelection, deselect, focusSelection, giveOrder, quickBattle, restartRun, selectAll, setSpeedCmd, setTeamCmd, startWaveNow, togglePauseCmd } from '../commands'
-import { inviteLink, net } from '../../net/battleNet'
+import { net } from '../../net/battleNet'
 import { me, useNet } from '../../store/net'
 import { PRICES } from '../sim/zombies'
 import TouchStick from '../../lobby/TouchStick'
@@ -21,7 +21,9 @@ import { toggleWalk } from '../walk/walkMode'
 import { BodyDiagram, Glyph, WeaponIcon } from './icons'
 import { renderThumbnails } from './thumbnails'
 import { COMPACT, useHud } from './hudStore'
+import { skipTutorial, useTutorial } from '../tutorial'
 import Panels from './Panels'
+import { RoomWatcher } from './RoomCard'
 
 /**
  * The battle HUD (DOM over the canvas). Layout: score and speed across the top, the
@@ -278,7 +280,7 @@ function Rail() {
   return (
     <div className={`ff-rail ${hidden ? 'is-collapsed' : ''}`}>
       {/* Compact HUD: tuck the whole column away (and bring it back). */}
-      <button type="button" className="ff-sidetab ff-sidetab--left" onClick={toggleRail} title={hidden ? 'Show the orders' : 'Hide the orders'} aria-label={hidden ? 'Show the orders' : 'Hide the orders'}>
+      <button type="button" className="ff-sidetab ff-sidetab--left" {...sideTab('left', hidden, toggleRail)} title={hidden ? 'Show the orders' : 'Hide the orders'} aria-label={hidden ? 'Show the orders' : 'Hide the orders'}>
         <Glyph name="chevron" className="ff-ico" />
       </button>
       {/* Compact HUD: one button per thing, tap to change. */}
@@ -526,12 +528,29 @@ function Tray() {
             className={`ff-tab ${tab === key ? 'is-on' : ''}`}
             onClick={() => {
               setTab(key)
+              // Tucked away: a tab brings the tray back up too.
+              if (hidden) toggleDock()
               sfx.toggle()
             }}
           >
             {label}
           </button>
         ))}
+        {/* Tucked away, the fold button's down with the cards: this brings them back. */}
+        {hidden && (
+          <button
+            type="button"
+            className="ff-tab ff-tab--show"
+            title="Show the cards"
+            onClick={() => {
+              toggleDock()
+              sfx.toggle()
+            }}
+          >
+            <Glyph name="chevron" className="ff-ico is-flipped" />
+            Show
+          </button>
+        )}
         {building && (
           <button
             type="button"
@@ -594,6 +613,7 @@ function Tray() {
               <button
                 type="button"
                 key={key}
+                data-key={key}
                 className={`ff-card ff-card--team${team} ff-g-${group.label.toLowerCase()} ${placing === key ? 'is-on' : ''} ${poor(key) ? 'is-poor' : ''}`}
                 onClick={() => {
                   setPlacing(key)
@@ -656,17 +676,49 @@ function Hint() {
   return <div className="ff-hint">{text}</div>
 }
 
+/** Where a swipe on a side column's tab started (per side), and whether it was a swipe. */
+const swipes = { left: null, right: null }
+
+/**
+ * A side column's tab (compact HUD): tap it, or swipe it - in from the edge opens the
+ * column, back out to the edge folds it.
+ */
+function sideTab(side, hidden, toggle) {
+  return {
+    onPointerDown: (e) => {
+      swipes[side] = { x: e.clientX, swiped: false }
+      e.currentTarget.setPointerCapture?.(e.pointerId)
+    },
+    onPointerUp: (e) => {
+      const s = swipes[side]
+      if (!s) return
+      const dx = e.clientX - s.x
+      if (Math.abs(dx) < 24) return
+      s.swiped = true
+      const inward = side === 'left' ? dx > 0 : dx < 0
+      if (inward === hidden) toggle()
+    },
+    onClick: () => {
+      const swiped = swipes[side]?.swiped
+      swipes[side] = null
+      if (!swiped) toggle()
+    },
+  }
+}
+
 function Actions() {
   const setPanel = useHud((s) => s.setPanel)
   const zombies = useHud((s) => s.mode === 'zombies')
+  // Multiplayer: each player builds their own side, so no Quick battle.
+  const online = useNet((s) => s.status === 'online')
   const hidden = useHud((s) => s.actionsHidden)
   const toggleActions = useHud((s) => s.toggleActions)
   return (
     <div className={`ff-actions ${hidden ? 'is-collapsed' : ''}`}>
-      <button type="button" className="ff-sidetab ff-sidetab--right" onClick={toggleActions} title={hidden ? 'Show the buttons' : 'Hide the buttons'} aria-label={hidden ? 'Show the buttons' : 'Hide the buttons'}>
+      <button type="button" className="ff-sidetab ff-sidetab--right" {...sideTab('right', hidden, toggleActions)} title={hidden ? 'Show the buttons' : 'Hide the buttons'} aria-label={hidden ? 'Show the buttons' : 'Hide the buttons'}>
         <Glyph name="chevron" className="ff-ico" />
       </button>
-      {!zombies && (
+      {!zombies && !online && (
         <button type="button" className="ff-action ff-action--accent" onClick={quickBattle} title="Drop two matching armies">
           <Glyph name="bolt" className="ff-ico" />
           <span>Quick battle</span>
@@ -780,67 +832,36 @@ function Inspector() {
   )
 }
 
-/** Multiplayer: the room's code (private rooms) and who's playing on which side. */
-function RoomPanel() {
-  const status = useNet((s) => s.status)
-  const players = useNet((s) => s.players)
-  const code = useNet((s) => s.code)
-  const sid = useNet((s) => s.sessionId)
-  const known = useRef(null)
-  // Tells you when someone joins or leaves.
-  useEffect(() => {
-    if (status !== 'online') {
-      known.current = null
-      return
-    }
-    const now = new Map(players.map((p) => [p.sid, p.name]))
-    if (known.current) {
-      for (const [id, name] of now) if (!known.current.has(id) && id !== sid) useHud.getState().showToast(`${name} joined the battle`, 'info')
-      for (const [id, name] of known.current) if (!now.has(id)) useHud.getState().showToast(`${name} left`, 'info')
-    }
-    known.current = now
-  }, [players, status, sid])
-  if (status !== 'online') return null
-  // Sends the invite link: the phone's share sheet where there is one, else the clipboard.
-  const invite = async () => {
-    const link = inviteLink(code)
-    sfx.click()
-    try {
-      if (isTouch && navigator.share) {
-        await navigator.share({ title: 'Floppy Front', text: `Join my battle! Code ${code}`, url: link })
-        return
-      }
-      await navigator.clipboard.writeText(link)
-      useHud.getState().showToast('Invite link copied: send it to your friends', 'info')
-    } catch (err) {
-      if (err?.name !== 'AbortError') useHud.getState().showToast(`Send them this code: ${code}`, 'info')
-    }
-  }
+/** The first-time guide's banner (battle/tutorial.js): what to do now, and Skip. */
+function TutorialBanner() {
+  const step = useTutorial((s) => s.step)
+  const walking = useHud((s) => s.walking)
+  if (!step) return null
+  const text =
+    step === 'climb'
+      ? walking
+        ? 'Follow the light: walk up the stairs onto the wall.'
+        : 'Press Walk, then follow the light up the stairs onto the wall.'
+      : step === 'place'
+        ? COMPACT
+          ? 'Tap Units, pick a Rifle, then tap the wall by the light to put your first soldier there.'
+          : 'Pick a Rifle from the cards below, then click the wall by the light to put your first soldier there.'
+        : 'Ready? Press Start wave: the horde comes when you say so.'
+  const n = step === 'climb' ? 1 : step === 'place' ? 2 : 3
   return (
-    <div className="ff-room">
-      <div className="ff-room__head">
-        <span className="ff-room__title">Multiplayer</span>
-        {code && (
-          <span className="ff-room__code" title="Friends join with this code">
-            Code <b>{code}</b>
-          </span>
-        )}
-      </div>
-      {code && (
-        <button type="button" className="ff-btn ff-btn--small ff-room__invite" onClick={invite}>
-          {isTouch && navigator.share ? 'Invite friends' : 'Copy invite link'}
-        </button>
-      )}
-      {players.map((p) => (
-        <div key={p.sid} className="ff-room__player">
-          <span className={`ff-room__dot ff-room__dot--${p.team}`} />
-          <span className="ff-room__name">
-            {p.name}
-            {p.sid === sid ? ' (you)' : ''}
-          </span>
-          {p.host && <span className="ff-room__host" title="Host">★</span>}
-        </div>
-      ))}
+    <div className="ff-tut" role="status">
+      <span className="ff-tut__step">{n} / 3</span>
+      <span className="ff-tut__text">{text}</span>
+      <button
+        type="button"
+        className="ff-btn ff-btn--small ff-tut__skip"
+        onClick={() => {
+          skipTutorial()
+          sfx.click()
+        }}
+      >
+        Skip
+      </button>
     </div>
   )
 }
@@ -877,20 +898,59 @@ export default function Hud({ onExit }) {
   const walking = useHud((s) => s.walking)
   const zombies = useHud((s) => s.mode === 'zombies')
   const level = useQuality((s) => s.level)
+  const tut = useTutorial((s) => s.step)
+  const rootRef = useRef(null)
+  // Compact HUD: the status bar, the speed buttons and the menu buttons are stacked
+  // top-right; the side columns start just under them, however tall that stack is
+  // (the wave bar grows a Start wave button, a phone turned upright wraps it...).
+  useEffect(() => {
+    const root = rootRef.current
+    if (!root || typeof ResizeObserver === 'undefined') return undefined
+    const mq = window.matchMedia('(pointer: coarse), (max-width: 820px)')
+    const parts = () => ['.ff-top', '.ff-corner'].map((sel) => root.querySelector(sel)).filter(Boolean)
+    const update = () => {
+      if (!mq.matches) {
+        root.style.removeProperty('--side-top')
+        return
+      }
+      const base = root.getBoundingClientRect().top
+      let bottom = base
+      for (const el of parts()) bottom = Math.max(bottom, el.getBoundingClientRect().bottom)
+      root.style.setProperty('--side-top', `${Math.round(bottom - base + 8)}px`)
+    }
+    const ro = new ResizeObserver(update)
+    ro.observe(root)
+    for (const el of parts()) ro.observe(el)
+    mq.addEventListener?.('change', update)
+    update()
+    return () => {
+      ro.disconnect()
+      mq.removeEventListener?.('change', update)
+    }
+  }, [zombies])
+  // Compact HUD, out walking: the side columns fold to their tabs (tap one to open it),
+  // leaving the stick and jump room; back to commanding, they're as you had them.
+  useEffect(() => {
+    if (!walking || !window.matchMedia('(pointer: coarse), (max-width: 820px)').matches) return undefined
+    const { railHidden, actionsHidden } = useHud.getState()
+    useHud.setState({ railHidden: true, actionsHidden: true })
+    return () => useHud.setState({ railHidden, actionsHidden })
+  }, [walking])
   // Boxity's screen ads follow modal panels.
   useEffect(() => {
     useApp.getState().setPanel(Boolean(panel))
   }, [panel])
   return (
-    <div className={`ff-hud ${walking ? 'is-walking' : ''} ${zombies ? 'is-zombies' : ''}`} data-quality={level}>
+    <div ref={rootRef} className={`ff-hud ${walking ? 'is-walking' : ''} ${zombies ? 'is-zombies' : ''}`} data-quality={level} data-tut={tut || undefined}>
       <TopBar />
       <Corner onExit={onExit} />
       <Rail />
       <Inspector />
       <Tray />
       <Actions />
+      <TutorialBanner />
       <Toast />
-      <RoomPanel />
+      <RoomWatcher />
       <WalkControls />
       <ZombieResult onExit={onExit} />
     </div>

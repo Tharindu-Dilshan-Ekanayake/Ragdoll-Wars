@@ -7,7 +7,7 @@ import { useProgress, ZOMBIE_BADGES } from '../store/progress'
 import { useEffect, useState } from 'react'
 
 import { useBloxity } from '../bloxity/BloxityContext'
-import { joinBattle, parseCode } from '../net/battleNet'
+import { inviteLink, joinBattle, leaveBattle, parseCode, setRoomTeam, startRoom } from '../net/battleNet'
 import { cloudText, fetchBoards, useCloud } from '../net/cloud'
 import { LEADERBOARDS } from '../shared/profile'
 import { useNet } from '../store/net'
@@ -174,11 +174,12 @@ function ZombiePanel() {
       </div>
       <p>
         Mirefall Bastion: a stone rampart across a drowned marsh, and the dead coming out of the mist. Put your troops up on the wall to shoot down into the horde - they
-        can't climb it, but they'll pound a section until it falls. Every zombie you drop pays a bounty, every wave cleared pays a bonus and patches the wall. Ten zombies
-        through and it's over.
+        can't climb it or get past it, but they'll pound it section by section, and spitters lob acid up at your troops from out in the marsh. Every zombie you drop pays a
+        bounty, every wave cleared pays a bonus and patches the wall. Bring the whole wall down and they win.
       </p>
       <ul>
         <li>Click the top of the rampart to place troops on it; walk up the stairs yourself</li>
+        <li>Spread your troops along the whole wall: the horde batters wherever nobody's shooting</li>
         <li>Walkers, fast Runners, hulking Brutes - and a giant Behemoth on waves 10 and 15</li>
         <li>Start with $500; machine guns, rockets and mortars on the wall are your friends</li>
       </ul>
@@ -208,7 +209,7 @@ function ZombiePanel() {
 }
 
 /** Blue or Red: which army you'll build in the battle. */
-function SidePick({ team, setTeam }) {
+function SidePick({ team, setTeam, full = [false, false] }) {
   return (
     <div className="ff-seg ff-mp__sides" role="group" aria-label="Your side">
       {[
@@ -219,6 +220,8 @@ function SidePick({ team, setTeam }) {
           type="button"
           key={id}
           className={`ff-chip ff-mp__side ff-mp__side--${id} ${team === id ? 'is-on' : ''}`}
+          disabled={full[id]}
+          title={full[id] ? 'That side is full: the teams stay even' : undefined}
           onClick={() => {
             setTeam(id)
             sfx.toggle()
@@ -226,8 +229,110 @@ function SidePick({ team, setTeam }) {
         >
           <span className="ff-mp__sidedot" />
           {label}
+          {full[id] ? ' (full)' : ''}
         </button>
       ))}
+    </div>
+  )
+}
+
+/**
+ * The waiting room: the room code (and an invite link), a block for each of the four
+ * places with who's in it and on which side, your side, and - for the host - Start.
+ */
+function WaitingRoom() {
+  const players = useNet((s) => s.players)
+  const code = useNet((s) => s.code)
+  const mode = useNet((s) => s.mode)
+  const mapId = useNet((s) => s.mapId)
+  const sid = useNet((s) => s.sessionId)
+  const [copied, setCopied] = useState(false)
+  const mine = players.find((p) => p.sid === sid)
+  const host = Boolean(mine?.host)
+  const zombies = mode === 'zombies'
+  const mapName = zombies ? ZOMBIE_MAP.name : MAPS.find((m) => m.id === mapId)?.name || mapId
+  // Zombie Horde co-op is two of you on the one wall; a sandbox room takes four.
+  const seats = zombies ? 2 : 4
+  // Sides stay even (the server holds to it): you can only move to the smaller one.
+  const onSide = (t) => players.filter((p) => p.team === t).length
+  const full = mine ? [0, 1].map((t) => t !== mine.team && onSide(t) >= onSide(mine.team)) : [false, false]
+  const copy = async () => {
+    sfx.click()
+    try {
+      await navigator.clipboard.writeText(inviteLink(code))
+      setCopied(true)
+    } catch {
+      setCopied(false)
+    }
+  }
+  return (
+    <div className="ff-wait">
+      <div className="ff-wait__head">
+        <div>
+          <div className="ff-wait__label">Room code</div>
+          <div className="ff-wait__code">{code}</div>
+        </div>
+        <button type="button" className="ff-btn" onClick={copy}>
+          {copied ? 'Link copied' : 'Copy invite link'}
+        </button>
+      </div>
+      <p className="ff-wait__info">
+        {zombies ? 'Co-op Zombie Horde' : 'Sandbox battle'} · {mapName} · {players.length}/{seats} players
+      </p>
+      <div className="ff-wait__slots">
+        {Array.from({ length: seats }, (_, i) => {
+          const p = players[i]
+          return (
+            <div key={i} className={`ff-wait__slot ${p ? `is-filled is-team${p.team}` : ''}`}>
+              {p ? (
+                <>
+                  <span className="ff-wait__dot" />
+                  <span className="ff-wait__name">
+                    {p.name}
+                    {p.sid === sid ? ' (you)' : ''}
+                  </span>
+                  {p.host && (
+                    <span className="ff-wait__host" title="Host">
+                      ★
+                    </span>
+                  )}
+                </>
+              ) : (
+                <span className="ff-wait__empty">{zombies ? 'Waiting for your partner…' : 'Waiting for a friend…'}</span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+      {zombies && <p className="ff-wait__info">You both hold the same wall, side by side: one army, one purse - either of you can place and command any of it.</p>}
+      {!zombies && <p className="ff-wait__info">Blue against Red, on the same map: two players are one each, four are two a side.</p>}
+      {!zombies && mine && <SidePick team={mine.team} setTeam={setRoomTeam} full={full} />}
+      <div className="ff-mp__row">
+        {host ? (
+          <button
+            type="button"
+            className="ff-btn ff-btn--accent ff-btn--big"
+            onClick={() => {
+              sfx.select()
+              startRoom()
+            }}
+          >
+            Start battle
+          </button>
+        ) : (
+          <span className="ff-wait__note">Waiting for the host to start the battle…</span>
+        )}
+        <button
+          type="button"
+          className="ff-btn"
+          onClick={() => {
+            sfx.click()
+            leaveBattle()
+          }}
+        >
+          Leave room
+        </button>
+      </div>
     </div>
   )
 }
@@ -238,25 +343,24 @@ function MultiplayerPanel() {
   const message = useNet((s) => s.message)
   const [mapId, setMapId] = useState(MAPS[0].id)
   const [mode, setMode] = useState('sandbox')
-  const [team, setTeam] = useState(0)
   const [code, setCode] = useState('')
   const name = identity?.displayName || identity?.username || 'Commander'
   const busy = status === 'connecting'
   const zombies = mode === 'zombies'
   const go = (how) => {
     sfx.click()
-    joinBattle({ ...how, team }, name)
+    joinBattle(how, name)
   }
+  if (status === 'waiting') return <WaitingRoom />
   return (
     <div className="ff-mp">
-      <section className="ff-mp__card ff-mp__card--wide">
-        <h3>Your side</h3>
-        <p>Pick Blue or Red, then build your own army in the battle. You can switch side there too. (Zombie Horde: everyone fights together on one side.)</p>
-        <SidePick team={team} setTeam={setTeam} />
-      </section>
       <section className="ff-mp__card">
         <h3>Create a room</h3>
-        <p>You get a room code to send to your friends: up to 4 players. You choose the mode and the map.</p>
+        <p>
+          {zombies
+            ? 'You get a room code to send to one friend: Zombie Horde is two players, side by side on the same wall, with one army.'
+            : 'You get a room code to send to your friends: 2 or 4 players, Blue against Red. You choose the map.'}
+        </p>
         <div className="ff-seg">
           {[
             ['sandbox', 'Sandbox battle'],
@@ -292,24 +396,15 @@ function MultiplayerPanel() {
             className="ff-input"
             value={code}
             maxLength={200}
-            placeholder="Room code or invite link"
+            placeholder="Code or link"
+            autoComplete="off"
+            autoCapitalize="characters"
+            spellCheck={false}
             onChange={(e) => setCode(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && parseCode(code) && go({ kind: 'code', code })}
           />
           <button type="button" className="ff-btn ff-btn--accent" disabled={busy || !parseCode(code)} onClick={() => go({ kind: 'code', code })}>
             Join room
-          </button>
-        </div>
-      </section>
-      <section className="ff-mp__card ff-mp__card--wide ff-mp__quick">
-        <h3>Or just play</h3>
-        <p>Jump into any open battle with other players (or start one they can join).</p>
-        <div className="ff-mp__row">
-          <button type="button" className="ff-btn" disabled={busy} onClick={() => go({ kind: 'quick', mode: 'sandbox' })}>
-            Quick sandbox
-          </button>
-          <button type="button" className="ff-btn" disabled={busy} onClick={() => go({ kind: 'quick', mode: 'zombies' })}>
-            Quick Zombie Horde
           </button>
         </div>
       </section>

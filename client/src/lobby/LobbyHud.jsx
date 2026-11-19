@@ -6,36 +6,64 @@ import { Glyph } from '../battle/hud/icons'
 import { STATIONS } from './seaFort'
 import { lobby, useLobby } from './lobbyState'
 import StationPanels from './StationPanels'
-import { cloudText, useCloud } from '../net/cloud'
 import { joinBattle, parseCode } from '../net/battleNet'
 import { useNet } from '../store/net'
 import TouchStick from './TouchStick'
 
 const isTouch = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches
 
+/**
+ * Your Bloxity profile picture (`pfp`): a full URL for a guest, or a path on Bloxity's
+ * image server - sized the way the SDK asks for its own.
+ */
+function pfpUrl(identity) {
+  const p = typeof identity?.pfp === 'string' ? identity.pfp : ''
+  if (!p) return ''
+  if (/^https?:\/\//.test(p)) return p
+  return `https://static.bloxity.io/img/${p.replace(/^\//, '')}?width=128&quality=85&v=2`
+}
+
+/** Top right: just your picture and your name. */
+function NameTag({ identity, name }) {
+  const src = pfpUrl(identity)
+  const [broken, setBroken] = useState('')
+  return (
+    <div className="ff-player ff-player--hud">
+      {src && broken !== src ? (
+        <img className="ff-player__pfp" src={src} alt="" draggable={false} onError={() => setBroken(src)} />
+      ) : (
+        <span className="ff-player__pfp ff-player__pfp--letter">{name.slice(0, 1).toUpperCase()}</span>
+      )}
+      <span className="ff-player__name">{name}</span>
+    </div>
+  )
+}
+
 /** The battle code in this page's address (an invite link: ?join=CODE), read once. */
 const inviteCode = typeof window !== 'undefined' ? parseCode(new URLSearchParams(window.location.search).get('join')) : ''
 let inviteTaken = false
 
 /**
- * The lobby HUD: settings and help top-right under your name and
- * sign-in, where you are top-centre, the "open" prompt while you stand on a pad, touch controls, and the
- * station panels.
+ * The lobby HUD: your picture and name top right with settings and help under them, the
+ * "open" prompt while you stand on a pad, touch controls, and the station panels.
  */
 export default function LobbyHud() {
   const zone = useLobby((s) => s.zone)
   const panel = useLobby((s) => s.panel)
   const arriving = useLobby((s) => s.arriving)
   const setPanel = useLobby((s) => s.setPanel)
-  const { identity, isLoggedIn, login, isReady } = useBloxity()
+  const { identity, isReady } = useBloxity()
   const station = STATIONS.find((s) => s.id === zone)
   const name = identity?.displayName || identity?.username || 'Commander'
-  const cloud = useCloud((s) => s.status)
   const netStatus = useNet((s) => s.status)
   const netMessage = useNet((s) => s.message)
   // An invite link: join that battle as soon as we know who you are (or after a moment,
   // for a guest on a build without a Boxity sign-in).
   const [invited, setInvited] = useState(Boolean(inviteCode))
+  // Into a waiting room (made one, or joined by code or link): show it.
+  useEffect(() => {
+    if (netStatus === 'waiting') useLobby.getState().setPanel('multiplayer')
+  }, [netStatus])
   const [waited, setWaited] = useState(false)
   useEffect(() => {
     if (!inviteCode) return undefined
@@ -112,24 +140,7 @@ export default function LobbyHud() {
           <Glyph name="trophy" className="ff-ico" />
         </button>
       </div>
-      <div className="ff-campname">
-        <span className="ff-campname__title">Sea Fort</span>
-        <span className="ff-campname__sub">{isTouch ? 'Cross a bridge, step into a circle' : 'WASD to walk · drag to look · cross a bridge and step into a circle'}</span>
-      </div>
-      <div className="ff-player ff-player--hud">
-        <span className="ff-player__dot" />
-        {name}
-        {isLoggedIn && cloud !== 'off' && (
-          <span className={`ff-cloud ff-cloud--${cloud}`} title={cloudText(cloud, isLoggedIn)}>
-            <Glyph name="cloud" className="ff-ico" />
-          </span>
-        )}
-        {isReady && !isLoggedIn && (
-          <button type="button" className="ff-btn ff-btn--small" onClick={login}>
-            Sign in
-          </button>
-        )}
-      </div>
+      <NameTag identity={identity} name={name} />
       {station && !panel && (
         <button
           type="button"
@@ -151,6 +162,14 @@ export default function LobbyHud() {
               OK
             </button>
           )}
+        </div>
+      )}
+      {netStatus === 'waiting' && panel !== 'multiplayer' && (
+        <div className="ff-invite">
+          <span>You're in a room, waiting for the battle to start</span>
+          <button type="button" className="ff-btn ff-btn--small" onClick={() => open('multiplayer')}>
+            Open
+          </button>
         </div>
       )}
       <TouchStick />

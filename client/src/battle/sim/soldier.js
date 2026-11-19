@@ -71,11 +71,6 @@ export function makeSoldier(slot) {
     holdFire: false,
     /** Zombie Horde: climbing the wall (seconds up it, -1 not), which section, whether it
      *  tries, when it may next try, and how long it's had nobody to fight up on the wall. */
-    climbT: -1,
-    climbSeg: -1,
-    climber: false,
-    climbWait: 0,
-    deckIdle: 0,
     /** A bat: flies, and isn't drawn as a soldier. Seconds left flitting off after a bite. */
     flying: false,
     retreatT: 0,
@@ -83,7 +78,6 @@ export function makeSoldier(slot) {
     barkT: 0,
     whizT: -99,
     /** Zombie Horde: when this zombie got through the wall (0: it hasn't). */
-    behindAt: 0,
     flankDone: false,
     goalX: 0,
     goalZ: 0,
@@ -229,16 +223,10 @@ export function resetSoldier(s, type, team, x, z, yaw, order) {
   s.dragDone = false
   s.dragT = -99
   s.holdFire = false
-  s.climbT = -1
-  s.climbSeg = -1
-  s.climber = false
-  s.climbWait = 0
-  s.deckIdle = 0
   s.flying = Boolean(type.zombieAI && type.zombieAI.flying)
   s.retreatT = 0
   s.barkT = 0
   s.whizT = -99
-  s.behindAt = 0
   s.flankDone = false
   s.goalMode = 0
   s.goalY = null
