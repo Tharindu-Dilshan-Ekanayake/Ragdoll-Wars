@@ -18,6 +18,12 @@ const KEY_MAP = {
   Space: 'jump',
 }
 
+/** Typing in a text box (the room code, a name...): those keys are letters, not moves. */
+const typing = (e) => {
+  const t = e.target
+  return t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)
+}
+
 export function useKeyboard() {
   const keys = useRef({
     forward: false,
@@ -34,6 +40,7 @@ export function useKeyboard() {
     }
 
     const onKeyDown = (e) => {
+      if (typing(e)) return
       if (KEY_MAP[e.code]) e.preventDefault() // stop Space scrolling the page
       set(e.code, true)
     }

@@ -174,11 +174,12 @@ function ZombiePanel() {
       </div>
       <p>
         Mirefall Bastion: a stone rampart across a drowned marsh, and the dead coming out of the mist. Put your troops up on the wall to shoot down into the horde - they
-        can't climb it, but they'll pound a section until it falls. Every zombie you drop pays a bounty, every wave cleared pays a bonus and patches the wall. Ten zombies
-        through and it's over.
+        can't climb it or get past it, but they'll pound it section by section, and spitters lob acid up at your troops from out in the marsh. Every zombie you drop pays a
+        bounty, every wave cleared pays a bonus and patches the wall. Bring the whole wall down and they win.
       </p>
       <ul>
         <li>Click the top of the rampart to place troops on it; walk up the stairs yourself</li>
+        <li>Spread your troops along the whole wall: the horde batters wherever nobody's shooting</li>
         <li>Walkers, fast Runners, hulking Brutes - and a giant Behemoth on waves 10 and 15</li>
         <li>Start with $500; machine guns, rockets and mortars on the wall are your friends</li>
       </ul>
@@ -342,26 +343,17 @@ function MultiplayerPanel() {
   const message = useNet((s) => s.message)
   const [mapId, setMapId] = useState(MAPS[0].id)
   const [mode, setMode] = useState('sandbox')
-  const [team, setTeam] = useState(0)
   const [code, setCode] = useState('')
   const name = identity?.displayName || identity?.username || 'Commander'
   const busy = status === 'connecting'
   const zombies = mode === 'zombies'
   const go = (how) => {
     sfx.click()
-    joinBattle({ ...how, team }, name)
+    joinBattle(how, name)
   }
   if (status === 'waiting') return <WaitingRoom />
   return (
     <div className="ff-mp">
-      <section className="ff-mp__card ff-mp__card--wide">
-        <h3>Your side</h3>
-        <p>
-          Blue against Red, on the same map: with two players it's one each, with four it's two a side. Pick the side you'd like - you get it if it has room. (Zombie Horde: the two of you fight
-          together on one side.)
-        </p>
-        <SidePick team={team} setTeam={setTeam} />
-      </section>
       <section className="ff-mp__card">
         <h3>Create a room</h3>
         <p>
@@ -405,23 +397,14 @@ function MultiplayerPanel() {
             value={code}
             maxLength={200}
             placeholder="Code or link"
+            autoComplete="off"
+            autoCapitalize="characters"
+            spellCheck={false}
             onChange={(e) => setCode(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && parseCode(code) && go({ kind: 'code', code })}
           />
           <button type="button" className="ff-btn ff-btn--accent" disabled={busy || !parseCode(code)} onClick={() => go({ kind: 'code', code })}>
             Join room
-          </button>
-        </div>
-      </section>
-      <section className="ff-mp__card ff-mp__card--wide ff-mp__quick">
-        <h3>Or just play</h3>
-        <p>Jump into any open battle with other players (or start one they can join).</p>
-        <div className="ff-mp__row">
-          <button type="button" className="ff-btn" disabled={busy} onClick={() => go({ kind: 'quick', mode: 'sandbox' })}>
-            Quick sandbox
-          </button>
-          <button type="button" className="ff-btn" disabled={busy} onClick={() => go({ kind: 'quick', mode: 'zombies' })}>
-            Quick Zombie Horde
           </button>
         </div>
       </section>
