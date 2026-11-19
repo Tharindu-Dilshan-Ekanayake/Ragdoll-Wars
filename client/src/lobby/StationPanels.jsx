@@ -292,7 +292,7 @@ function MultiplayerPanel() {
             className="ff-input"
             value={code}
             maxLength={200}
-            placeholder="Room code or invite link"
+            placeholder="Code or link"
             onChange={(e) => setCode(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && parseCode(code) && go({ kind: 'code', code })}
           />
