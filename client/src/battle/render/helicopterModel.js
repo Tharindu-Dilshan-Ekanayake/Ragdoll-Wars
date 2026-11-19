@@ -4,7 +4,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 /**
  * Floppy Front's utility helicopter, built in code: a smooth lofted fuselage (rounded
  * cross-sections from the nose to the end of the tail boom) with its glazing cut into it -
- * a framed windscreen, chin windows, cabin windows - and both cabin doors slid open on a
+ * a framed windscreen and cabin windows - and both cabin doors slid open on a
  * dark cabin, so door gunners sit in the doorways. On top the engine cowling with its
  * intakes and exhausts and the rotor mast; behind, a swept fin with the tail rotor, a
  * tailplane with end plates; underneath, skids with upturned toes on curved cross tubes.
@@ -117,9 +117,9 @@ function hullFace(z, t) {
   const s = Math.sin(t)
   // The open cabin doors.
   if (z > -0.45 && z < 0.9 && Math.abs(c) > 0.6 && s > -0.3 && s < 0.55) return null
-  // Windscreen (a centre post up the middle), chin windows below it.
+  // Windscreen (a centre post up the middle). No chin windows: facing down, unlit, they
+  // read as a hole in the nose.
   if (z > 1.55 && z < 3.2 && s > 0.12) return Math.abs(c) < 0.12 || (z > 1.55 && z < 1.85) ? FRAME : GLASS
-  if (z > 2.2 && z < 3.2 && s < -0.12 && s > -0.75) return GLASS
   // Cabin windows behind the doors.
   if (z > -1.15 && z < -0.65 && Math.abs(c) > 0.55 && s > 0.15 && s < 0.6) return GLASS
   // Orange band round the tail boom, darker belly, olive above.
@@ -142,7 +142,7 @@ function fuselage() {
   }
   const idx = []
   for (let i = 0; i < STATIONS.length; i += 1) for (let k = 0; k < RADIAL; k += 1) pos.push(...ring(STATIONS[i], k))
-  // Faces between stations (outward winding), and which colour each is.
+  // Faces between stations, and which colour each is.
   const faceColor = []
   for (let i = 0; i < STATIONS.length - 1; i += 1) {
     for (let k = 0; k < RADIAL; k += 1) {
@@ -152,7 +152,9 @@ function fuselage() {
       const d = (i + 1) * RADIAL + ((k + 1) % RADIAL)
       const col = hullFace((STATIONS[i][0] + STATIONS[i + 1][0]) / 2, ((k + 0.5) / RADIAL) * Math.PI * 2)
       if (!col) continue
-      idx.push(a, b, c, b, d, c)
+      // Counter-clockwise seen from outside (ring angle runs anticlockwise from +z, the
+      // stations run towards -z).
+      idx.push(a, c, b, b, c, d)
       faceColor.push(col, col)
     }
   }
@@ -179,7 +181,7 @@ function fuselage() {
       const t = ((k + 0.5) / RADIAL) * Math.PI * 2
       const out = hullFace(z, t)
       const col = out === GLASS ? GLASS_IN : Math.sin(t) < -0.45 ? FLOOR_IN : LINING
-      idx.push(a, c, b, b, c, d)
+      idx.push(a, b, c, b, d, c)
       faceColor.push(col, col)
     }
   }
@@ -250,8 +252,9 @@ export function buildHelicopterGeometry({ armed = false } = {}) {
       place(tint(new BoxGeometry(0.5, 0.75, 0.1), '#2c302a'), x, 2.2, 1.4, -0.12),
       place(tint(new BoxGeometry(0.08, 0.32, 0.4), CABIN), x, 1.7, 1.65),
     ]),
-    place(tint(new BoxGeometry(1.5, 0.45, 0.12), CABIN), 0, 2.15, 2.45, 0.5),
-    place(tint(new BoxGeometry(1.55, 0.06, 0.35), '#1f2226'), 0, 2.42, 2.4),
+    // (Narrow enough to stay inside the nose as it tapers.)
+    place(tint(new BoxGeometry(1.2, 0.42, 0.1), CABIN), 0, 2.12, 2.3, 0.5),
+    place(tint(new BoxGeometry(1.15, 0.05, 0.3), '#1f2226'), 0, 2.36, 2.24),
     place(tint(new BoxGeometry(0.25, 0.4, 0.6), CABIN), 0, 1.75, 1.95),
     // Doors slid back along the outside of the cabin.
     place(tint(new BoxGeometry(0.06, 1.05, 1.3), OLIVE_DARK), 1.3, 2.0, -1.1),

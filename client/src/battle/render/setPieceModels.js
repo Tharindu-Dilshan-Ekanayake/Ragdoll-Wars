@@ -922,7 +922,7 @@ function tyres(b, o) {
   for (const x of [-0.65, 0.65]) {
     for (const z of [-0.65, 0.65]) {
       const n = 2 + ((hash(s + x, z) * 3) | 0)
-      for (let k = 0; k < n; k += 1) b.cyl(x, 0.14 + k * 0.29, z, 0.44, 0.44, 0.28, '#1d1f21', 8)
+      for (let k = 0; k < n; k += 1) b.cyl(x, 0.14 + k * 0.29, z, 0.44, 0.44, 0.28, '#1d1f21', 6)
     }
   }
 }
@@ -1308,7 +1308,6 @@ function rack(b, o) {
       if (k < 0.12) continue
       const x = -len / 2 + (i + 0.5) * bw
       const gh = y > 3 ? 0.9 : 1.15
-      if (!b.lite) b.box(x, y + 0.14, 0, bw * 0.8, 0.12, 0.95, '#8a6a46')
       const c = GOODS[(k * GOODS.length * 7) % GOODS.length | 0]
       if (k > 0.85) {
         for (const dx of [-0.35, 0.35]) for (const dz of [-0.22, 0.22]) b.cyl(x + dx * bw * 0.6, y + 0.2 + 0.45, dz, 0.22, 0.22, 0.9, '#2f5f8f', 8)

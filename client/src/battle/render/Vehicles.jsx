@@ -22,6 +22,7 @@ import { buildCrewGeometries, crewMaterial } from './crewModel'
 import { buildHelicopterGeometry, MAIN_ROTOR_PIVOT, TAIL_ROTOR_PIVOT } from './helicopterModel'
 import { createParticles, spawnParticle, stepParticles } from './particles'
 import { getTextures } from './textures'
+import { buildVehicleLods } from './vehicleLod'
 import { buildVehicleGeometries, helicopterTrim } from './vehicleModels'
 
 /**
@@ -30,7 +31,9 @@ import { buildVehicleGeometries, helicopterTrim } from './vehicleModels'
  * charred with flames for a while (and smoke on presets with particles); a hit flashes
  * the body. The crew ride in them (crewModel.js, two instanced meshes for every crewman
  * of every vehicle, in their team's uniform) until it's destroyed - then the sim throws
- * them out. Strike jets streak over, and selected vehicles get a ring.
+ * them out. Past a distance from the camera each vehicle swaps to its light model
+ * (vehicleLod.js), so a field full of armour stays inside the triangle budget. Strike jets
+ * streak over, and selected vehicles get a ring.
  *
  * Empty meshes are hidden: a battle without vehicles costs nothing here.
  */
@@ -99,6 +102,8 @@ function setColor(mesh, i, r, g, b) {
 
 export default function Vehicles() {
   const realtimeShadows = useQuality((st) => st.settings.shadows === 'realtime')
+  // Detailed models within this distance of the camera, light ones beyond.
+  const lodNear = useQuality((st) => st.settings.lodNear)
   const particlesOn = useQuality((st) => st.settings.particles)
 
   const rig = useMemo(() => {
@@ -110,6 +115,7 @@ export default function Vehicles() {
     heliArmed.tailRotor.dispose()
     const heliTrim = helicopterTrim()
     const crewGeo = buildCrewGeometries()
+    const lods = buildVehicleLods()
     const tex = getTextures()
     const mats = {
       body: new MeshLambertMaterial({ vertexColors: true }),
@@ -129,6 +135,9 @@ export default function Vehicles() {
         body: instanced(geos[k].body, mats.body, n, true),
         top: instanced(geos[k].top, mats.body, n, true),
         trim: instanced(geos[k].trim, mats.trim, n, true),
+        farBody: instanced(lods[k].body, mats.body, n, true),
+        farTop: instanced(lods[k].top, mats.body, n, true),
+        farTrim: instanced(lods[k].trim, mats.trim, n, true),
         pivot: geos[k].pivot,
       }
     }
@@ -138,6 +147,7 @@ export default function Vehicles() {
         top: instanced(heli.mainRotor, mats.body, n, true),
         tail: instanced(heli.tailRotor, mats.body, n, true),
         trim: instanced(heliTrim, mats.trim, n, true),
+        farBody: instanced(lods.heli, mats.body, n, true),
       }
     }
     const crew = { seated: instanced(crewGeo.seated, mats.crew, MAX_CREW, true), hatch: instanced(crewGeo.hatch, mats.crew, MAX_CREW, true) }
@@ -147,9 +157,11 @@ export default function Vehicles() {
     const rings = instanced(ringGeo, mats.ring, n, true)
     rings.renderOrder = 2
     const fires = instanced(card, mats.fire, n * 2, true)
-    const allGeos = [geos.jeep.body, geos.jeep.top, geos.jeep.trim, geos.apc.body, geos.apc.top, geos.apc.trim, geos.tank.body, geos.tank.top, geos.tank.trim, geos.jet, heli.body, heliArmed.body, heli.mainRotor, heli.tailRotor, heliTrim, crewGeo.seated, crewGeo.hatch, card, flat, ringGeo]
+    const allGeos = [geos.jeep.body, geos.jeep.top, geos.jeep.trim, geos.apc.body, geos.apc.top, geos.apc.trim, geos.tank.body, geos.tank.top, geos.tank.trim, geos.jet, heli.body, heliArmed.body, heli.mainRotor, heli.tailRotor, heliTrim, crewGeo.seated, crewGeo.hatch, card, flat, ringGeo, ...['jeep', 'apc', 'tank'].flatMap((k) => [lods[k].body, lods[k].top, lods[k].trim]), lods.heli]
     const counts = Object.fromEntries(ALL.map((k) => [k, 0]))
-    return { kinds, crew, jets, shadows, rings, fires, mats, counts, geos: allGeos }
+    const nearCounts = Object.fromEntries(ALL.map((k) => [k, 0]))
+    const farCounts = Object.fromEntries(ALL.map((k) => [k, 0]))
+    return { kinds, crew, jets, shadows, rings, fires, mats, counts, nearCounts, farCounts, geos: allGeos }
   }, [])
 
   const smoke = useMemo(() => (particlesOn ? createParticles(260, false) : null), [particlesOn])
@@ -172,7 +184,11 @@ export default function Vehicles() {
       const dt = Math.min(0.05, delta) * w.timeScale
       const camQ = state.camera.quaternion
       const counts = rig.counts
-      for (let k = 0; k < ALL.length; k += 1) counts[ALL[k]] = 0
+      const nearCounts = rig.nearCounts
+      const farCounts = rig.farCounts
+      for (let k = 0; k < ALL.length; k += 1) counts[ALL[k]] = nearCounts[ALL[k]] = farCounts[ALL[k]] = 0
+      const cam = state.camera.position
+      const near2 = (lodNear * 0.6) ** 2
       let nShadow = 0
       let nRing = 0
       let nFire = 0
@@ -193,15 +209,22 @@ export default function Vehicles() {
         e.set(v.pitch, v.yaw, v.roll, 'YXZ')
         q.setFromEuler(e)
         mBody.compose(p.set(v.x, y, v.z), q, s.set(sc, sc, sc))
-        mBody.toArray(kind.body.instanceMatrix.array, idx * 16)
-        mBody.toArray(kind.trim.instanceMatrix.array, idx * 16)
+        // Detailed close to the camera, the light model further off.
+        const near = (v.x - cam.x) ** 2 + (y - cam.y) ** 2 + (v.z - cam.z) ** 2 < near2
+        const bodyMesh = near ? kind.body : kind.farBody
+        const bi = near ? nearCounts[v.type]++ : farCounts[v.type]++
+        // Ground vehicles swap their trim with the model; a helicopter's trim stays put.
+        const trimMesh = kind.farTrim && !near ? kind.farTrim : kind.trim
+        const ti = kind.farTrim ? bi : idx
+        mBody.toArray(bodyMesh.instanceMatrix.array, bi * 16)
+        mBody.toArray(trimMesh.instanceMatrix.array, ti * 16)
         // Charred when wrecked, a white flash when hit.
         const dead = v.wreck || v.crashing
         const flash = !dead && v.hitT < 0.07 ? 1.8 : 1
         const shade = dead ? 0.2 : flash
-        setColor(kind.body, idx, shade, shade, shade)
+        setColor(bodyMesh, bi, shade, shade, shade)
         const tc = TEAM_RGB[v.team]
-        setColor(kind.trim, idx, tc.r * (dead ? 0.2 : 1), tc.g * (dead ? 0.2 : 1), tc.b * (dead ? 0.2 : 1))
+        setColor(trimMesh, ti, tc.r * (dead ? 0.2 : 1), tc.g * (dead ? 0.2 : 1), tc.b * (dead ? 0.2 : 1))
         if (v.spec.air) {
           // Rotors spin (slowing to a stop on a wreck).
           const spin = dead ? (v.wreck ? 0 : time * 10) : time * 28 + v.seed
@@ -221,12 +244,13 @@ export default function Vehicles() {
           e.set(v.pitch, v.turretYaw, v.roll, 'YXZ')
           q.setFromEuler(e)
           mTop.compose(pivot, q, s.set(sc, sc, sc))
-          mTop.toArray(kind.top.instanceMatrix.array, idx * 16)
-          setColor(kind.top, idx, shade, shade, shade)
+          const topMesh = near ? kind.top : kind.farTop
+          mTop.toArray(topMesh.instanceMatrix.array, bi * 16)
+          setColor(topMesh, bi, shade, shade, shade)
         }
-        // The crew, while it's still a working vehicle.
+        // The crew, while it's still a working vehicle (and close enough to make out).
         const seats = CREW[v.type]
-        if (seats && !dead) {
+        if (seats && !dead && near) {
           const cc = CREW_RGB[v.team]
           for (let c = 0; c < seats.length; c += 1) {
             const seat = seats[c]
@@ -239,7 +263,9 @@ export default function Vehicles() {
             setColor(mesh, at, cc.r, cc.g, cc.b)
           }
         }
-        if (!realtimeShadows || v.spec.air) {
+        // A blob shadow where there's no realtime one: no realtime shadows, aircraft, and
+        // the light far models (which cast none).
+        if (!realtimeShadows || v.spec.air || !near) {
           const lift = Math.min(1, y / 40)
           const size = v.spec.radius * 2.6 * (1 + lift * 0.5) * sc
           mPart.compose(p.set(v.x, 0.03 + i * 0.0005, v.z), q.identity(), s.set(size, 1, size * (v.spec.air ? 1.6 : 1.3)))
@@ -276,10 +302,19 @@ export default function Vehicles() {
         const k = ALL[a]
         const kind = rig.kinds[k]
         const n = counts[k]
-        commit(kind.body, n)
-        commit(kind.top, n)
-        commit(kind.trim, n)
-        if (kind.tail) commit(kind.tail, n)
+        commit(kind.body, nearCounts[k])
+        commit(kind.farBody, farCounts[k])
+        if (kind.tail) {
+          // Helicopter: rotors and trim for every one.
+          commit(kind.top, n)
+          commit(kind.tail, n)
+          commit(kind.trim, n)
+        } else {
+          commit(kind.top, nearCounts[k])
+          commit(kind.farTop, farCounts[k])
+          commit(kind.trim, nearCounts[k])
+          commit(kind.farTrim, farCounts[k])
+        }
       }
 
       // Strike jets.
@@ -302,7 +337,7 @@ export default function Vehicles() {
       commit(rig.fires, nFire)
       if (smoke) stepParticles(smoke, dt, state.size.height)
     })
-  }, [rig, smoke, realtimeShadows])
+  }, [rig, smoke, realtimeShadows, lodNear])
 
   const { kinds } = rig
   return (
@@ -312,6 +347,9 @@ export default function Vehicles() {
           <primitive object={kinds[k].body} castShadow={realtimeShadows} />
           <primitive object={kinds[k].top} castShadow={realtimeShadows} />
           <primitive object={kinds[k].trim} />
+          <primitive object={kinds[k].farBody} />
+          {kinds[k].farTop && <primitive object={kinds[k].farTop} />}
+          {kinds[k].farTrim && <primitive object={kinds[k].farTrim} />}
           {kinds[k].tail && <primitive object={kinds[k].tail} />}
         </group>
       ))}

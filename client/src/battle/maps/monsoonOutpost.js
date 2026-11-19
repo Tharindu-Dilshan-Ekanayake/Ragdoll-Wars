@@ -34,7 +34,6 @@ const WEST = [
   ...thicket(-26, 42, 6, 5, 1.1),
   ...thicket(-50, -44, 6, 4.5, 2),
   ...thicket(-47, -14, 4, 3, 3.3),
-  ...thicket(-15, -46, 5, 4, 4.1),
 ]
 
 const WEST_PIECES = [
