@@ -20,7 +20,8 @@ import { resolveIdentity } from '../bloxityApi.js'
  * and effects played on their own machine.
  *
  * Modes: 'sandbox' (each player commands Blue or Red; teams auto-balance, players can
- * switch) and 'zombies' (Zombie Horde in co-op: everyone on Blue, one shared purse).
+ * switch) and 'zombies' (Zombie Horde in co-op: two players, both on Blue, defending the
+ * same wall with one shared army and purse - either can command any of it).
  * The first player in is the host: they can clear the field, change speed, pause and
  * load a saved battlefield; if they leave, the next player takes over.
  *
@@ -31,6 +32,8 @@ import { resolveIdentity } from '../bloxityApi.js'
  */
 
 const MAX_PLAYERS = 4
+/** Zombie Horde co-op is two players: one wall, one army, one purse. */
+const MAX_ZOMBIE_PLAYERS = 2
 const SIM_HZ = 30
 const SNAP_EVERY = 2
 const RECONNECT_SECONDS = 15
@@ -100,7 +103,10 @@ export class BattleRoom extends Room {
     this.w = createWorld(map, CAPS, this.mode)
     this.w.deaths = []
     this.w.revives = []
-    if (this.mode === 'zombies') initZombieMode(this.w)
+    if (this.mode === 'zombies') {
+      initZombieMode(this.w)
+      this.maxClients = MAX_ZOMBIE_PLAYERS
+    }
     this.enc = createEncoder(this.w)
     this.code = null
     // Private rooms wait for the host's Start; quick match ones are under way at once.
@@ -111,7 +117,7 @@ export class BattleRoom extends Room {
       this.code = this.roomId
       await this.setPrivate(true)
     }
-    await this.setMetadata({ mode: this.mode, mapId: this.mapId, code: this.code, started: this.started })
+    await this.setMetadata({ mode: this.mode, mapId: this.mapId, code: this.code, started: this.started, max: this.maxClients })
     this.setSimulationInterval((dt) => this.tick(dt), 1000 / SIM_HZ)
     this.onMessage('*', (client, type, payload) => this.command(client, String(type), payload))
   }

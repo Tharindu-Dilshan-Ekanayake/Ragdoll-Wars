@@ -247,6 +247,8 @@ function WaitingRoom() {
   const host = Boolean(mine?.host)
   const zombies = mode === 'zombies'
   const mapName = zombies ? ZOMBIE_MAP.name : MAPS.find((m) => m.id === mapId)?.name || mapId
+  // Zombie Horde co-op is two of you on the one wall; a sandbox room takes four.
+  const seats = zombies ? 2 : 4
   const copy = async () => {
     sfx.click()
     try {
@@ -268,10 +270,10 @@ function WaitingRoom() {
         </button>
       </div>
       <p className="ff-wait__info">
-        {zombies ? 'Co-op Zombie Horde' : 'Sandbox battle'} · {mapName} · {players.length}/4 players
+        {zombies ? 'Co-op Zombie Horde' : 'Sandbox battle'} · {mapName} · {players.length}/{seats} players
       </p>
       <div className="ff-wait__slots">
-        {[0, 1, 2, 3].map((i) => {
+        {Array.from({ length: seats }, (_, i) => {
           const p = players[i]
           return (
             <div key={i} className={`ff-wait__slot ${p ? `is-filled is-team${p.team}` : ''}`}>
@@ -289,12 +291,13 @@ function WaitingRoom() {
                   )}
                 </>
               ) : (
-                <span className="ff-wait__empty">Waiting for a friend…</span>
+                <span className="ff-wait__empty">{zombies ? 'Waiting for your partner…' : 'Waiting for a friend…'}</span>
               )}
             </div>
           )
         })}
       </div>
+      {zombies && <p className="ff-wait__info">You both hold the same wall, side by side: one army, one purse - either of you can place and command any of it.</p>}
       {!zombies && mine && <SidePick team={mine.team} setTeam={setRoomTeam} />}
       <div className="ff-mp__row">
         {host ? (
@@ -346,12 +349,16 @@ function MultiplayerPanel() {
     <div className="ff-mp">
       <section className="ff-mp__card ff-mp__card--wide">
         <h3>Your side</h3>
-        <p>Pick Blue or Red, then build your own army in the battle. You can switch side there too. (Zombie Horde: everyone fights together on one side.)</p>
+        <p>Pick Blue or Red, then build your own army in the battle. You can switch side there too. (Zombie Horde: the two of you fight together on one side.)</p>
         <SidePick team={team} setTeam={setTeam} />
       </section>
       <section className="ff-mp__card">
         <h3>Create a room</h3>
-        <p>You get a room code to send to your friends: up to 4 players. You choose the mode and the map.</p>
+        <p>
+          {zombies
+            ? 'You get a room code to send to one friend: Zombie Horde is two players, side by side on the same wall, with one army.'
+            : 'You get a room code to send to your friends: up to 4 players. You choose the mode and the map.'}
+        </p>
         <div className="ff-seg">
           {[
             ['sandbox', 'Sandbox battle'],
