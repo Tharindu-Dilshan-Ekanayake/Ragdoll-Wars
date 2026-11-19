@@ -5,6 +5,9 @@ import { create } from 'zustand'
  * being placed, speed) and slow-moving summaries of the battle copied in by the 10 Hz
  * ticker (hudTicker.js). Never written from a frame loop.
  */
+/** A phone or a narrow window: the compact HUD (same query as the CSS in index.css). */
+export const COMPACT = typeof window !== 'undefined' && Boolean(window.matchMedia?.('(pointer: coarse), (max-width: 820px)').matches)
+
 export const useHud = create((set, get) => ({
   team: 0,
   order: 'attack',
@@ -15,8 +18,11 @@ export const useHud = create((set, get) => ({
   paused: false,
   /** Touch: one-finger drag draws a selection box instead of panning. */
   selectMode: false,
-  /** Whether the dock is collapsed. */
-  dockHidden: false,
+  /** Whether the dock is collapsed (on a phone it starts shut: the Units button opens it). */
+  dockHidden: COMPACT,
+  /** Compact HUD: the orders column on the left and the actions column on the right can each be tucked away. */
+  railHidden: false,
+  actionsHidden: false,
   /** 'sandbox' or 'zombies'. */
   mode: 'sandbox',
   /** Zombie Horde summary from the ticker: { wave, total, state, cash, left, buildT, breaches, maxBreaches, kills, result } */
@@ -39,7 +45,13 @@ export const useHud = create((set, get) => ({
   setTeam: (team) => set({ team }),
   setOrder: (order) => set({ order }),
   setCount: (count) => set({ count }),
-  setPlacing: (placing) => set({ placing: get().placing === placing ? null : placing, selectMode: false }),
+  // (On a phone, picking a unit closes the dock so the battlefield is there to tap.)
+  setPlacing: (placing) => {
+    const same = get().placing === placing
+    set({ placing: same ? null : placing, selectMode: false, ...(!same && COMPACT ? { dockHidden: true } : {}) })
+  },
+  toggleRail: () => set({ railHidden: !get().railHidden }),
+  toggleActions: () => set({ actionsHidden: !get().actionsHidden }),
   cancelPlacing: () => set({ placing: null }),
   setSpeed: (speed) => set({ speed, paused: false }),
   togglePause: () => set({ paused: !get().paused }),

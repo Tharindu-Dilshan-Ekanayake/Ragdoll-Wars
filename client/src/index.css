@@ -2095,17 +2095,6 @@ button {
   }
 }
 @media (orientation: portrait) {
-  /* The orders rail: team and orders on one line, the squad size under them (it used to
-     scroll sideways, which hides half the buttons). */
-  .ff-rail {
-    flex-wrap: wrap;
-    overflow-x: visible;
-    row-gap: 6px;
-    align-items: center;
-  }
-  .ff-inspect {
-    top: 232px;
-  }
   /* Map names get two lines instead of "Steelbay Ware...". */
   .ff-mapcard__title h3 {
     white-space: normal;
@@ -2140,12 +2129,6 @@ button {
     padding: 0.35em 1em;
     font-size: 15px;
   }
-  .ff-hud.is-zombies .ff-rail {
-    top: 200px;
-  }
-  .ff-hud.is-zombies .ff-inspect {
-    top: 262px;
-  }
 }
 
 /* --- Invite links (multiplayer) ----------------------------------------------------- */
@@ -2178,5 +2161,223 @@ button {
 @media (orientation: portrait) {
   .ff-invite {
     top: 160px;
+  }
+}
+
+/* --- The phone HUD ---------------------------------------------------------------------
+   A phone (or a narrow window), upright or on its side: the top-left stays empty, the
+   orders are a column down the left edge, the action buttons a column down the right, and
+   each column folds away to a small tab; the unit picker is its own panel, opened by the
+   Units button. (JS: hudStore COMPACT is the same query.) */
+.ff-sidetab,
+.ff-only-compact,
+.ff-unitsbtn {
+  display: none;
+}
+@media (pointer: coarse), (max-width: 820px) {
+  .ff-hud {
+    --side-top: 64px;
+  }
+  .ff-only-desktop {
+    display: none !important;
+  }
+  .ff-only-compact {
+    display: flex;
+  }
+  .ff-only-compact.is-gone {
+    display: none !important;
+  }
+  /* The orders: down the left edge. */
+  .ff-hud .ff-rail {
+    top: var(--side-top);
+    bottom: auto;
+    left: 8px;
+    right: auto;
+    transform: none;
+    width: auto;
+    min-width: 0;
+    max-height: calc(100% - var(--side-top) - 8px);
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 6px;
+    padding: 6px;
+    overflow-x: visible;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+  .ff-hud .ff-rail__group {
+    flex-direction: column;
+    flex: none;
+    align-items: stretch;
+    gap: 6px;
+  }
+  .ff-hud .ff-rail__label {
+    display: none;
+  }
+  .ff-hud .ff-order span {
+    display: none;
+  }
+  .ff-hud .ff-order {
+    justify-content: center;
+    padding: 6px;
+    min-width: 44px;
+  }
+  .ff-hud .ff-teamcycle {
+    flex-direction: column;
+    gap: 2px;
+    align-items: center;
+    font-size: 11px;
+  }
+  .ff-hud .ff-teamcycle b {
+    font-weight: 600;
+  }
+  .ff-hud .ff-teamcycle .ff-team__flag {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+  }
+  .ff-hud .ff-team--blue .ff-team__flag {
+    background: #3d8bff;
+  }
+  .ff-hud .ff-team--red .ff-team__flag {
+    background: #ff4d4d;
+  }
+  .ff-hud .ff-squadcycle {
+    min-width: 44px;
+    justify-content: center;
+    font-size: 15px;
+  }
+  /* The buttons: down the right edge, icons only. */
+  .ff-hud .ff-actions {
+    top: var(--side-top);
+    bottom: auto;
+    left: auto;
+    right: 8px;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 6px;
+    padding: 6px;
+    background: var(--ff-bg);
+    border: 1px solid var(--ff-line);
+    max-height: calc(100% - var(--side-top) - 8px);
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+  .ff-hud .ff-action {
+    min-width: 44px;
+    justify-content: center;
+    padding: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 0;
+  }
+  .ff-hud .ff-action span {
+    display: none;
+  }
+  .ff-hud .ff-action--accent {
+    background: var(--ff-accent);
+  }
+  /* Fold a column away: just its tab is left, to bring it back. */
+  .ff-sidetab {
+    display: grid;
+    place-items: center;
+    height: 36px;
+    min-width: 44px;
+    border-radius: 8px;
+    color: var(--ff-dim);
+    background: rgba(255, 255, 255, 0.06);
+  }
+  .ff-sidetab .ff-ico {
+    width: 18px;
+    height: 18px;
+  }
+  .ff-sidetab--left .ff-ico {
+    transform: rotate(90deg);
+  }
+  .ff-sidetab--right .ff-ico {
+    transform: rotate(-90deg);
+  }
+  .ff-hud .ff-rail.is-collapsed,
+  .ff-hud .ff-actions.is-collapsed {
+    padding: 0;
+    background: transparent;
+    border-color: transparent;
+    overflow: visible;
+  }
+  .ff-hud .is-collapsed > :not(.ff-sidetab) {
+    display: none !important;
+  }
+  .ff-hud .is-collapsed .ff-sidetab {
+    height: 44px;
+    background: var(--ff-bg);
+    border: 1px solid var(--ff-line);
+  }
+  .ff-hud .ff-rail.is-collapsed .ff-sidetab--left .ff-ico {
+    transform: rotate(-90deg);
+  }
+  .ff-hud .ff-actions.is-collapsed .ff-sidetab--right .ff-ico {
+    transform: rotate(90deg);
+  }
+  /* The selection's details sit between the two columns. */
+  .ff-hud .ff-inspect {
+    top: var(--side-top);
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    width: min(360px, calc(100% - 150px));
+    min-width: 0;
+  }
+  .ff-hud:has(.ff-room) .ff-inspect {
+    top: calc(var(--side-top) + 96px);
+  }
+  /* The multiplayer panel: under the top bar, out of the corners. */
+  .ff-hud .ff-room {
+    top: var(--side-top);
+    left: 50%;
+    transform: translateX(-50%);
+    min-width: 0;
+    max-width: calc(100% - 150px);
+    font-size: 12px;
+  }
+  /* The unit picker: its own panel, shut until the Units button opens it. */
+  .ff-hud .ff-tray.is-hidden {
+    transform: translateX(-50%);
+  }
+  .ff-hud .ff-tray.is-hidden > :not(.ff-hint):not(.ff-unitsbtn) {
+    display: none;
+  }
+  .ff-tray.is-hidden .ff-unitsbtn {
+    display: block;
+  }
+  .ff-unitsbtn {
+    min-height: 44px;
+    padding: 8px 28px;
+    border-radius: 99px;
+    background: var(--ff-accent);
+    color: #1b1206;
+    font-family: var(--ff-display);
+    font-size: 16px;
+    box-shadow: 0 3px 0 rgba(0, 0, 0, 0.3);
+  }
+  .ff-unitsbtn.is-placing {
+    background: #ff6b5a;
+    color: #fff;
+  }
+  .ff-tray__fold {
+    width: 36px;
+  }
+}
+@media (pointer: coarse) and (orientation: portrait), (max-width: 820px) and (orientation: portrait) {
+  .ff-hud .ff-tray.is-hidden {
+    transform: none;
+  }
+  /* Upright, the score bar and the wave bar take more room across the top. */
+  .ff-hud {
+    --side-top: 114px;
+  }
+  .ff-hud.is-zombies {
+    --side-top: 206px;
   }
 }

@@ -20,7 +20,7 @@ import TouchStick from '../../lobby/TouchStick'
 import { toggleWalk } from '../walk/walkMode'
 import { BodyDiagram, Glyph, WeaponIcon } from './icons'
 import { renderThumbnails } from './thumbnails'
-import { useHud } from './hudStore'
+import { COMPACT, useHud } from './hudStore'
 import Panels from './Panels'
 
 /**
@@ -273,9 +273,28 @@ function Rail() {
   const setCount = useHud((s) => s.setCount)
   const toggleSelectMode = useHud((s) => s.toggleSelectMode)
   const zombies = useHud((s) => s.mode === 'zombies')
+  const hidden = useHud((s) => s.railHidden)
+  const toggleRail = useHud((s) => s.toggleRail)
   return (
-    <div className="ff-rail">
-      <div className={`ff-rail__group ${zombies ? 'is-gone' : ''}`}>
+    <div className={`ff-rail ${hidden ? 'is-collapsed' : ''}`}>
+      {/* Compact HUD: tuck the whole column away (and bring it back). */}
+      <button type="button" className="ff-sidetab ff-sidetab--left" onClick={toggleRail} title={hidden ? 'Show the orders' : 'Hide the orders'} aria-label={hidden ? 'Show the orders' : 'Hide the orders'}>
+        <Glyph name="chevron" className="ff-ico" />
+      </button>
+      {/* Compact HUD: one button per thing, tap to change. */}
+      <button
+        type="button"
+        className={`ff-order ff-only-compact ff-teamcycle ff-team--${TEAMS[team].key} ${zombies ? 'is-gone' : ''}`}
+        onClick={() => {
+          setTeamCmd(1 - team)
+          sfx.toggle()
+        }}
+        title="Switch team"
+      >
+        <span className="ff-team__flag" />
+        <b>{TEAMS[team].name}</b>
+      </button>
+      <div className={`ff-rail__group ff-only-desktop ${zombies ? 'is-gone' : ''}`}>
         <div className="ff-rail__label">Team</div>
         {TEAMS.map((t) => (
           <button
@@ -302,7 +321,18 @@ function Rail() {
           </button>
         ))}
       </div>
-      <div className="ff-rail__group ff-rail__group--row">
+      <button
+        type="button"
+        className="ff-chip ff-only-compact ff-squadcycle is-on"
+        onClick={() => {
+          setCount(count === 1 ? 5 : count === 5 ? 10 : 1)
+          sfx.toggle()
+        }}
+        title="How many soldiers to drop at a time"
+      >
+        ×{count}
+      </button>
+      <div className="ff-rail__group ff-rail__group--row ff-only-desktop">
         <div className="ff-rail__label">Squad</div>
         {[1, 5, 10].map((n) => (
           <button
@@ -468,9 +498,22 @@ function Tray() {
     </span>
   )
 
+  const cancelPlacing = useHud((s) => s.cancelPlacing)
   return (
     <div className={`ff-tray ${hidden ? 'is-hidden' : ''}`}>
       <Hint />
+      {/* Compact HUD: the unit picker is its own panel, opened from here. */}
+      <button
+        type="button"
+        className={`ff-unitsbtn ${placing ? 'is-placing' : ''}`}
+        onClick={() => {
+          sfx.click()
+          if (placing) cancelPlacing()
+          else toggleDock()
+        }}
+      >
+        {placing ? 'Stop placing' : 'Units'}
+      </button>
       <div className="ff-tray__tabs">
         {[
           ['units', 'Units'],
@@ -598,13 +641,13 @@ function Hint() {
       : u.trap
         ? `lay ${count} ${name.toLowerCase()}${count > 1 ? 's' : ''}`
         : `drop ${count} ${name}${count > 1 ? 's' : ''}`
-    text = `${isTouch ? 'Tap' : 'Click'} the ground to ${what}${piece ? '' : ` for ${TEAMS[team].name}`}  ·  ${isTouch ? 'tap the card again' : 'right-click / Esc'} to stop`
+    text = `${isTouch ? 'Tap' : 'Click'} the ground to ${what}${piece ? '' : ` for ${TEAMS[team].name}`}  ·  ${COMPACT ? 'tap Stop placing' : isTouch ? 'tap the card again' : 'right-click / Esc'} to stop`
   } else if (selection) {
     text = `${selection.count} selected  ·  ${isTouch ? 'tap' : 'click'} the ground to move them  ·  Attack / Hold / Flank to give orders`
   } else if (mode === 'zombies' && zombie && zombie.state === 'build' && !zombie.result) {
     text = 'Buy troops and build defences on the west side, then press Start wave'
   } else if (alive[0] + alive[1] === 0) {
-    text = 'Pick a unit below, then click the battlefield to deploy it — or press Quick battle'
+    text = COMPACT ? 'Tap Units to pick a soldier, then tap the battlefield — or Quick battle' : 'Pick a unit below, then click the battlefield to deploy it — or press Quick battle'
   } else if (isTouch) {
     text = 'Drag to pan  ·  pinch to zoom  ·  twist to turn  ·  tap a soldier to inspect'
   } else {
@@ -616,8 +659,13 @@ function Hint() {
 function Actions() {
   const setPanel = useHud((s) => s.setPanel)
   const zombies = useHud((s) => s.mode === 'zombies')
+  const hidden = useHud((s) => s.actionsHidden)
+  const toggleActions = useHud((s) => s.toggleActions)
   return (
-    <div className="ff-actions">
+    <div className={`ff-actions ${hidden ? 'is-collapsed' : ''}`}>
+      <button type="button" className="ff-sidetab ff-sidetab--right" onClick={toggleActions} title={hidden ? 'Show the buttons' : 'Hide the buttons'} aria-label={hidden ? 'Show the buttons' : 'Hide the buttons'}>
+        <Glyph name="chevron" className="ff-ico" />
+      </button>
       {!zombies && (
         <button type="button" className="ff-action ff-action--accent" onClick={quickBattle} title="Drop two matching armies">
           <Glyph name="bolt" className="ff-ico" />
