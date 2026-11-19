@@ -1357,19 +1357,56 @@ function bldg(b, o) {
   const c = o.color || ['#d6cfc0', '#cfc6b2', '#c9c2b6', '#d8d2c6'][((o.seed || 0) * 4) | 0]
   const trim = shade(c, 0.78)
   const h = L.h
-  // Floor inside, a plinth round the outside.
-  b.box(0, 0.035, 0, L.w - 2 * t, 0.07, L.d - 2 * t, o.floor || '#8b7d66', 'plain', 2, 8)
-  for (const [x, z, w, d] of [
-    [0, -L.d / 2 - 0.12, L.w + 0.48, 0.24],
-    [0, L.d / 2 + 0.12, L.w + 0.48, 0.24],
-    [-L.w / 2 - 0.12, 0, 0.24, L.d],
-    [L.w / 2 + 0.12, 0, 0.24, L.d],
-  ])
-    b.box(x, 0.12, z, w, 0.24, d, trim, 'concrete', 2, 8)
+  const floorC = o.floor || '#8b7d66'
+  // Floor inside, a plinth round the outside (broken at the doorways, which get a
+  // threshold level with the floor).
+  b.box(0, 0.035, 0, L.w - 2 * t, 0.07, L.d - 2 * t, floorC, 'plain', 2, 8)
+  for (const [side, x, z, w, d] of [
+    ['n', 0, -L.d / 2 - 0.12, L.w + 0.48, 0.24],
+    ['s', 0, L.d / 2 + 0.12, L.w + 0.48, 0.24],
+    ['w', -L.w / 2 - 0.12, 0, 0.24, L.d],
+    ['e', L.w / 2 + 0.12, 0, 0.24, L.d],
+  ]) {
+    const alongX = side === 'n' || side === 's'
+    const len = alongX ? w : d
+    let from = -len / 2
+    const gaps = L.openings.filter((op) => op.kind === 'door' && op.side === side).map((op) => (alongX ? op.x : op.z)).sort((a, b2) => a - b2)
+    for (const g of [...gaps, null]) {
+      const to = g === null ? len / 2 : g - BLDG.door / 2
+      if (to - from > 0.05) {
+        const mid = (from + to) / 2
+        b.box(alongX ? mid : x, 0.12, alongX ? z : mid, alongX ? to - from : w, 0.24, alongX ? d : to - from, trim, 'concrete', 2, 8)
+      }
+      if (g !== null) from = g + BLDG.door / 2
+    }
+  }
   for (const wl of L.walls) b.box(wl.x, wl.h / 2, wl.z, wl.w, wl.h, wl.d, c, 'plain', 2, 8)
+  // A darker dado band round the rooms, so a doorway shows a room, not a flat grey panel.
+  const dado = shade(c, 0.72)
+  for (const wl of L.walls) {
+    if (wl.sill) continue
+    const ns = Math.abs(wl.d - t) < 0.01 && Math.abs(Math.abs(wl.z) - (L.d / 2 - t / 2)) < 0.01
+    const ew = !ns && Math.abs(wl.w - t) < 0.01 && Math.abs(Math.abs(wl.x) - (L.w / 2 - t / 2)) < 0.01
+    const alongX = ns
+    const across = alongX ? wl.z : wl.x
+    // Outer walls face in; a partition both ways.
+    const sides = ns || ew ? [-Math.sign(across)] : [-1, 1]
+    for (const sd of sides) {
+      const n = across + sd * (t / 2 + 0.01)
+      if (alongX) b.box(wl.x, 0.57, n, wl.w, 1.0, 0.02, dado, 'plain', 2, 8)
+      else b.box(n, 0.57, wl.z, 0.02, 1.0, wl.d, dado, 'plain', 2, 8)
+    }
+  }
+  // What a door leaf mustn't swing into: the stair, the furniture.
+  const keepOut = L.furniture.map((f) => [f.x - f.w / 2, f.x + f.w / 2, f.z - f.d / 2, f.z + f.d / 2])
+  if (L.two) keepOut.push([L.stairX0, L.stairX0 + BLDG.stairRun, -L.d / 2 + t, L.stripZ1])
+  const clear = (x0, x1, z0, z1) => !keepOut.some((k) => x0 < k[1] && x1 > k[0] && z0 < k[3] && z1 > k[2])
+  const doorTrim = shade(c, 0.48)
   for (const op of L.openings) {
     const alongX = op.side === 'n' || op.side === 's'
-    const top = op.kind === 'door' ? doorH : winTop
+    const door = op.kind === 'door'
+    const top = door ? doorH : winTop
+    if (door) doorway(b, op, alongX, L, c, floorC, clear)
     const lw = alongX ? op.along : t
     const ld = alongX ? t : op.along
     // The wall over the opening (two storeys: up to the window above, and over that).
@@ -1377,20 +1414,26 @@ function bldg(b, o) {
       const s2 = L.storey
       b.box(op.x, (top + s2 + BLDG.sill) / 2, op.z, lw, s2 + BLDG.sill - top, ld, c, 'plain', 2, 0)
       b.box(op.x, (s2 + winTop + h) / 2, op.z, lw, h - s2 - winTop, ld, c, 'plain', 2, 0)
-      const fw2 = alongX ? op.along + 0.16 : t + 0.08
-      const fd2 = alongX ? t + 0.08 : op.along + 0.16
-      b.box(op.x, s2 + winTop + 0.06, op.z, fw2, 0.12, fd2, trim, 'detail')
+      const fw2 = alongX ? op.along + 0.02 : t + 0.08
+      const fd2 = alongX ? t + 0.08 : op.along + 0.02
+      b.box(op.x, s2 + winTop - 0.05, op.z, fw2, 0.12, fd2, trim, 'detail')
       b.box(op.x, s2 + BLDG.sill + 0.03, op.z, alongX ? op.along + 0.2 : t + 0.16, 0.06, alongX ? t + 0.16 : op.along + 0.2, trim, 'detail')
     } else b.box(op.x, (top + h) / 2, op.z, lw, h - top, ld, c, 'plain', 2, 0)
-    // Frame: a head and two jambs, proud of the wall.
-    const fw = alongX ? op.along + 0.16 : t + 0.08
-    const fd = alongX ? t + 0.08 : op.along + 0.16
-    b.box(op.x, top + 0.06, op.z, fw, 0.12, fd, trim, 'detail')
+    // Frame: a head and two jambs, proud of the wall (dark round a doorway, and drawn on
+    // LOW too, so the way in reads from across the map).
+    // Set just inside the opening: a frame face lying in the plane of the reveal or the
+    // lintel's underside flickers against it (z-fighting).
+    const fw = alongX ? op.along + 0.02 : t + 0.08
+    const fd = alongX ? t + 0.08 : op.along + 0.02
+    const fc = door ? doorTrim : trim
+    const fm = door ? 'plain' : 'detail'
+    b.box(op.x, top - 0.05, op.z, fw, 0.12, fd, fc, fm)
     for (const s of [-1, 1]) {
-      const jx = alongX ? op.x + s * (op.along / 2 + 0.04) : op.x
-      const jz = alongX ? op.z : op.z + s * (op.along / 2 + 0.04)
-      const base = op.kind === 'door' ? 0 : BLDG.sill
-      b.box(jx, (base + top) / 2, jz, alongX ? 0.08 : t + 0.08, top - base, alongX ? t + 0.08 : 0.08, trim, 'detail')
+      const jx = alongX ? op.x + s * (op.along / 2 - 0.03) : op.x
+      const jz = alongX ? op.z : op.z + s * (op.along / 2 - 0.03)
+      const base = door ? 0.07 : BLDG.sill + 0.06
+      const jt = top - 0.11
+      b.box(jx, (base + jt) / 2, jz, alongX ? 0.08 : t + 0.08, jt - base, alongX ? t + 0.08 : 0.08, fc, fm)
     }
     if (op.kind === 'win') b.box(op.x, BLDG.sill + 0.03, op.z, alongX ? op.along + 0.2 : t + 0.16, 0.06, alongX ? t + 0.16 : op.along + 0.2, trim, 'detail')
   }
@@ -1414,12 +1457,21 @@ function bldg(b, o) {
     for (const lv of L.levels) {
       if (lv.slab) b.box(lv.x, s2 - 0.1, lv.z, lv.w, 0.2, lv.d, o.floor || '#8b7d66')
       else if (lv.ramp) {
+        // A plastered stair (one colour, so the overlapping step sides don't flicker),
+        // wooden treads with a nosing, and a cupboard door under the high end, so seen
+        // through a doorway it reads as a stair, not a wall.
         const n = Math.ceil(s2 / 0.2)
         const run = lv.w / n
+        const body = shade(c, 0.9)
         for (let k = 0; k < n; k += 1) {
           const top = ((k + 1) / n) * s2
-          b.box(lv.x - lv.w / 2 + run * (k + 0.5), top / 2, lv.z, run + 0.01, top, lv.d, k % 2 ? '#9a968c' : '#a39f95', 'concrete')
+          const sx = lv.x - lv.w / 2 + run * (k + 0.5)
+          b.box(sx, top / 2, lv.z, run + 0.01, top, lv.d, body, 'plain', 2, 8)
+          b.box(sx - 0.02, top + 0.015, lv.z, run + 0.04, 0.03, lv.d - 0.02, '#6b4a2e', 'plain', 2, 8)
         }
+        const ex = lv.x + lv.w / 2
+        b.box(ex + 0.025, 0.07 + 0.9, lv.z, 0.05, 1.8, Math.min(1.0, lv.d - 0.5), '#6e4e30', 'plain', 2, 2)
+        b.box(ex + 0.06, 1.0, lv.z + 0.32, 0.04, 0.05, 0.05, '#c9b27a', 'detail')
       }
     }
     const land0 = L.stairX0 + BLDG.stairRun
@@ -1430,14 +1482,66 @@ function bldg(b, o) {
   }
   // The roof: a slab with a parapet (the cutaway mesh).
   const rc = o.roof || shade(c, 0.88)
-  b.box(0, h + 0.1, 0, L.w + 0.2, 0.2, L.d + 0.2, rc, 'cut', 2, 0)
+  // Flush with the walls: a thin overhang's shadow is finer than a shadow-map texel and
+  // shows as diagonal stripes on the wall below it. The parapet's corners don't overlap.
+  b.box(0, h + 0.1, 0, L.w, 0.2, L.d, rc, 'cut', 2, 0)
   for (const [x, z, w, d] of [
-    [0, -L.d / 2, L.w + 0.2, 0.2],
-    [0, L.d / 2, L.w + 0.2, 0.2],
-    [-L.w / 2, 0, 0.2, L.d],
-    [L.w / 2, 0, 0.2, L.d],
+    [0, -L.d / 2 + 0.1, L.w, 0.2],
+    [0, L.d / 2 - 0.1, L.w, 0.2],
+    [-L.w / 2 + 0.1, 0, 0.2, L.d - 0.4],
+    [L.w / 2 - 0.1, 0, 0.2, L.d - 0.4],
   ])
     b.box(x, h + 0.45, z, w, 0.5, d, c, 'cut', 2, 0)
+}
+
+/**
+ * A doorway's fittings: a threshold level with the floor, the doors standing open
+ * (a pair swung in against the jambs, or out if the stair or furniture is in the way;
+ * one leaf in a partition), and outside, a canopy with a lamp over it.
+ */
+function doorway(b, op, alongX, L, c, floorC, clear) {
+  const { t, door, doorH } = BLDG
+  const inner = op.side === 'in'
+  // Into the building, as (along, across) axes: n faces -z so in is +z, and so on.
+  const inward = op.side === 'n' || op.side === 'w' ? 1 : -1
+  const at = (a, n, w, h, dd, y, color, mat = 'plain', skip = 0) => {
+    // a: offset along the wall from the door's centre; n: offset across, into the room.
+    if (alongX) b.box(op.x + a, y, op.z + n, w, h, dd, color, mat, 2, skip)
+    else b.box(op.x + n, y, op.z + a, dd, h, w, color, mat, 2, skip)
+  }
+  const leafC = '#6e4e30'
+  const lw = inner ? door - 0.08 : door / 2 - 0.05
+  const lh = doorH - 0.12
+  if (!inner) {
+    // Threshold through the wall and across the plinth.
+    const depth = t + 0.24
+    at(0, (-inward * 0.24) / 2, door, 0.07, depth, 0.035, shade(floorC, 0.85), 'concrete', 8)
+    // The leaves: hinged at the jambs, standing square to the wall.
+    for (const s of [-1, 1]) {
+      const a = s * (door / 2 - 0.07)
+      const face = t / 2
+      const into = (dir) => {
+        const n0 = dir * face
+        const n1 = dir * (face + lw)
+        const lo = Math.min(n0, n1)
+        const hi = Math.max(n0, n1)
+        return alongX ? [op.x + a - 0.03, op.x + a + 0.03, op.z + lo, op.z + hi] : [op.x + lo, op.x + hi, op.z + a - 0.03, op.z + a + 0.03]
+      }
+      const dir = clear(...into(inward)) ? inward : -inward
+      const n = dir * (face + lw / 2)
+      at(a, n, 0.05, lh, lw, 0.07 + lh / 2, leafC, 'plain', 8)
+      // A handle on the leaf's free edge.
+      at(a - s * 0.04, dir * (face + lw - 0.1), 0.04, 0.05, 0.12, 1.0, '#c9b27a', 'detail')
+    }
+    // The canopy and its lamp (on the trim mesh, which casts no shadow: the canopy's
+    // shadow edge on the wall aliases into stripes).
+    const out = -inward
+    at(0, out * (t / 2 + 0.35), door + 0.7, 0.08, 0.7, doorH + 0.26, shade(c, 0.62), 'detail')
+    at(0, out * (t / 2 + 0.06), 0.22, 0.1, 0.1, doorH + 0.14, '#ffd890', 'detail')
+  } else {
+    // One leaf in a partition doorway, swung back along the wall into the bigger room.
+    at(-door / 2 + 0.06 + 0, t / 2 + lw / 2, 0.05, lh, lw, 0.07 + lh / 2, leafC, 'plain', 8)
+  }
 }
 
 const DRAW = {

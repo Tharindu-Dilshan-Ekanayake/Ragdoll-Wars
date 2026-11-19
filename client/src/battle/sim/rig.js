@@ -186,16 +186,17 @@ function poseArms(out, type, ready, reloadP, t, seed, swing = -1) {
   let gy
   let gz
   if (pistol) {
-    // Arms out in front of the chest when aiming; down by the hip when relaxed.
+    // Both hands on it: arms out in front of the chest when aiming; relaxed, a low ready
+    // (held in close at the middle of the body, muzzle down in front).
     const cx = (out[J_SH_L * 3] + out[shR]) / 2
     const cy = (out[J_SH_L * 3 + 1] + out[shR + 1]) / 2
     const cz = (out[J_SH_L * 3 + 2] + out[shR + 2]) / 2
     const ax = cx + DIR[0] * 0.44 - UP[0] * 0.05
     const ay = cy + DIR[1] * 0.44 - UP[1] * 0.05
     const az = cz + DIR[2] * 0.44 - UP[2] * 0.05
-    const rx = out[shR] - UP[0] * 0.4 + FWD[0] * 0.12
-    const ry = out[shR + 1] - UP[1] * 0.4 + FWD[1] * 0.12
-    const rz = out[shR + 2] - UP[2] * 0.4 + FWD[2] * 0.12
+    const rx = cx + FWD[0] * 0.24 - UP[0] * 0.3 - LEFT[0] * 0.03
+    const ry = cy + FWD[1] * 0.24 - UP[1] * 0.3 - LEFT[1] * 0.03
+    const rz = cz + FWD[2] * 0.24 - UP[2] * 0.3 - LEFT[2] * 0.03
     gx = lerp(rx, ax, ready)
     gy = lerp(ry, ay, ready)
     gz = lerp(rz, az, ready)
@@ -218,9 +219,10 @@ function poseArms(out, type, ready, reloadP, t, seed, swing = -1) {
   let ly
   let lz
   if (pistol) {
-    lx = gx + LEFT[0] * 0.05
-    ly = gy - 0.03
-    lz = gz + LEFT[2] * 0.05
+    // The support hand wraps the firing hand from the left.
+    lx = gx + LEFT[0] * 0.055 + DIR[0] * 0.02
+    ly = gy - 0.035
+    lz = gz + LEFT[2] * 0.055 + DIR[2] * 0.02
   } else {
     lx = gx + DIR[0] * type.foregrip
     ly = gy + DIR[1] * type.foregrip - 0.04
@@ -350,8 +352,10 @@ function poseUpright(s, out, t, type) {
   const ay2 = Math.sin(ap)
   const az2 = Math.cos(ay) * Math.cos(ap)
   // Relaxed: low ready, muzzle forward-down and a little across the body.
-  const ry = twist * 0.6 + 0.3
-  const rp = -0.45
+  // (A pistol in both hands points straight ahead and further down.)
+  const pistolHeld = type.foregrip === 0
+  const ry = twist * 0.6 + (pistolHeld ? 0.06 : 0.3)
+  const rp = pistolHeld ? -0.6 : -0.45
   const rx2 = Math.sin(ry) * Math.cos(rp)
   const ry2 = Math.sin(rp)
   const rz2 = Math.cos(ry) * Math.cos(rp)

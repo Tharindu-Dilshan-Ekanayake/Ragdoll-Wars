@@ -136,8 +136,8 @@ const FORWARD_PIECES = [
   ['floodlight', -48, 12],
 ]
 const FORWARD_SETS = [
-  ['bldg', -56, -14, 0, { w: 10, d: 7, doors: [['w', 0]], split: null, color: '#c9c0a4' }],
-  ['bldg', -56, 15, 0, { w: 8, d: 6, doors: [['w', 1.2]], split: null, color: '#bfb59a' }],
+  ['bldg', -56, -14, 0, { w: 10, d: 7, doors: [['w', 0], ['e', 0]], split: null, color: '#c9c0a4' }],
+  ['bldg', -56, 15, 0, { w: 8, d: 6, doors: [['w', 1.2], ['e', 0]], split: null, color: '#bfb59a' }],
   ['truck', -63, 33, 1, { color: '#5d6b4a' }],
   ['truck', -67, 33, 1, { color: '#4f5c40' }],
 ]

@@ -226,8 +226,10 @@ export function buildCover(map) {
   const roofs = []
   // Raised floors (levels.js): platforms with their railings, and ramps up to them.
   for (const l of map.levels || []) {
-    // A roof is drawn with its building; a ladder is rails and rungs leaning on the wall.
-    if (l.roof) continue
+    // A roof is drawn with its building, and so are a building's upper floor and its stair
+    // (drawn here too they'd fill the ground floor with a block and flicker against the
+    // floor drawn upstairs); a ladder is rails and rungs leaning on the wall.
+    if (l.roof || l.slab || l.stair) continue
     if (l.ladder) {
       ladder(concrete, l)
       continue
