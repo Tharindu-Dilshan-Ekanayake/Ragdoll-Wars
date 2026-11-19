@@ -1,5 +1,5 @@
 import { mirrorSet } from '../sim/setpieces.js'
-import { box, mirrored, mirrorPatch, mirrorRoad, scatterTrees } from './mapKit.js'
+import { box, mirrored, mirrorPatch, mirrorRoad, mirrorTerrain, scatterTrees } from './mapKit.js'
 
 /**
  * Ironhold Depot - an army supply depot laid out like the real thing. Each side holds a
@@ -51,7 +51,6 @@ const WEST_PIECES = [
   ['sandwall', -67, 19.5, 1],
   ['tower', -68, -24],
   ['tower', -68, 24],
-  ['helipad', -78, 0],
   ['floodlight', -72, -8],
   ['floodlight', -72, 8],
   ['radiomast', -84, -34],
@@ -76,7 +75,7 @@ const WEST_SETS = [
   ['pallets', -44.4, -22.6, 0],
   ['pallets', -62, 22.6, 0],
   // The rail spur along the north fence with its wagons.
-  ['rail', -42, 47.5, 0, { len: 86 }],
+  ['rail', -55, 47.5, 0, { len: 110 }],
   ['railcar', -60, 47.5, 0, { seed: 0.2 }],
   ['railcar', -45, 47.5, 0, { type: 'tanker' }],
   ['railcar', -30, 47.5, 0, { seed: 0.8 }],
@@ -104,10 +103,59 @@ const CENTRE = [
   box('lowwall', 0, 36, 6, 0.6),
 ]
 
-const { obstacles, pieces } = mirrored(WEST, WEST_PIECES, CENTRE, [['floodlight', 3, -4], ['floodlight', -3, 4]])
+// --- The bigger depot (220 x 140) --------------------------------------------------
+// The hesco wall and everything behind it move 22 m back, the rail spur, fences and the
+// office 12 m out. Inside the compound that opens up: a vehicle workshop and a guardroom
+// you can go inside, another container row, lorries; a fighting trench in front of the
+// wall, a blast berm round the fuel point.
+const fx = (x) => (x < -64 ? x - 22 : x)
+const fz = (z) => (Math.abs(z) > 40 ? z + Math.sign(z) * 12 : z)
+const mv = (o) => ({ ...o, x: fx(o.x), z: fz(o.z) })
+const mvPiece = ([k, x, z, r]) => [k, fx(x), fz(z), r]
+const mvSet = ([k, x, z, r, o]) => [k, fx(x), fz(z), r, o]
+
+const NEW_WEST = [
+  ...[-80, -72].flatMap((x, i) => [box('container', x, -30, 6.1, 2.5, 2.6, i + 2), box('container', x, -27.4, 6.1, 2.5, 5.2, i)]),
+  box('barrier', -74, -4, 2.6, 0.7),
+  box('barrier', -74, 4, 2.6, 0.7),
+  box('crate', -68, 18, 1.25, 1.25, 2.5),
+  box('crate', -69.35, 18, 1.25, 1.25),
+]
+const NEW_PIECES = [
+  ['drum', -84, 12],
+  ['drum', -84.8, 12.6],
+  ['ammocrate', -70, 32],
+  ['floodlight', -70, -14],
+]
+const NEW_SETS = [
+  ['bldg', -76, 26, 0, { w: 14, d: 9, doors: [['e', -1.5], ['s', 4]], color: '#9aa09a', floor: '#6f726d' }],
+  ['bldg', -77, -13, 0, { w: 8, d: 6, doors: [['e', 0]], split: null, color: '#b3ad9c' }],
+  ['truck', -71, 10, 1, { color: '#4f5c40' }],
+  ['forklift', -69, -19, 0, { flip: true }],
+]
+
+const WEST_ALL = [...WEST.map(mv), ...NEW_WEST]
+const WEST_PIECES_ALL = [...WEST_PIECES.map(mvPiece), ...NEW_PIECES]
+const WEST_SETS_ALL = [...WEST_SETS.map(mvSet), ...NEW_SETS]
+
+const TERRAIN = mirrorTerrain({
+  trenches: [
+    { points: [[-62, -34], [-61, -22], [-62, -12]], w: 2.8, d: 1.4, ramp: 4 },
+    { points: [[-62, 12], [-61, 22], [-62, 34]], w: 2.8, d: 1.4, ramp: 4 },
+  ],
+  ridges: [{ points: [[-46, -58], [-32, -58]], w: 5, h: 1.6 }],
+  hills: [
+    { x: -98, z: -56, r: 9, h: 2.2 },
+    { x: -98, z: 50, r: 8, h: 2 },
+    { x: -14, z: -58, r: 7, h: 1.6 },
+  ],
+  rough: 0.12,
+})
+
+const { obstacles, pieces } = mirrored(WEST_ALL, WEST_PIECES_ALL, CENTRE, [['floodlight', 3, -4], ['floodlight', -3, 4]])
 const westRoads = [
-  { width: 3.2, points: [[-40, -60], [-40, 60]] },
-  { width: 2.4, points: [[-78, -30], [-78, 30]] },
+  { width: 3.2, points: [[-40, -76], [-40, 76]] },
+  { width: 2.4, points: [[-100, -30], [-100, 30]] },
 ]
 const mirrorPad = (p) => ({ ...p, x: -p.x })
 const mirrorLine = (l) => ({ ...l, points: l.points.map(([x, z]) => [-x, z]) })
@@ -121,8 +169,8 @@ const WEST_PADS = [
 const WEST_LINES = [
   // Parking bays in the car park, ballast and sleepers under the rails.
   ...[-33.5, -28.5, -23.5, -18.5].map((x) => ({ points: [[x, -30], [x, -38]], width: 0.2, color: 'rgba(235,235,230,0.85)' })),
-  { points: [[-85, 47.5], [0, 47.5]], width: 3.2, color: '#6e6a62' },
-  { points: [[-85, 47.5], [0, 47.5]], width: 2.6, color: '#4a3a2c', dash: [0.25, 0.55] },
+  { points: [[-110, 59.5], [0, 59.5]], width: 3.2, color: '#6e6a62' },
+  { points: [[-110, 59.5], [0, 59.5]], width: 2.6, color: '#4a3a2c', dash: [0.25, 0.55] },
   { points: [[-67, -22], [-41, -22]], width: 0.3, color: 'rgba(230,196,70,0.9)' },
   { points: [[-67, 22], [-41, 22]], width: 0.3, color: 'rgba(230,196,70,0.9)' },
 ]
@@ -130,20 +178,21 @@ const WEST_LINES = [
 export const IRONHOLD_DEPOT = {
   id: 'depot',
   name: 'Ironhold Depot',
-  width: 170,
-  depth: 110,
+  width: 220,
+  depth: 140,
+  terrain: TERRAIN,
   bases: [
-    { x: -72, z: 0 },
-    { x: 72, z: 0 },
+    { x: -94, z: 0 },
+    { x: 94, z: 0 },
   ],
   obstacles,
   pieces,
-  sets: [...WEST_SETS, ...WEST_SETS.map(mirrorSet)],
+  sets: [...WEST_SETS_ALL, ...WEST_SETS_ALL.map(mirrorSet)],
   pads: [...WEST_PADS, ...WEST_PADS.map(mirrorPad)],
   lines: [...WEST_LINES, ...WEST_LINES.map(mirrorLine)],
-  roads: [{ width: 4.2, points: [[-92, 0], [92, 0]] }, ...westRoads, ...westRoads.map(mirrorRoad)],
-  mud: [[-10, -20, 4], [-70, 30, 4]].flatMap((p) => [p, mirrorPatch(p)]),
-  trees: scatterTrees(60, 61, 85, 55),
+  roads: [{ width: 4.2, points: [[-118, 0], [118, 0]] }, ...westRoads, ...westRoads.map(mirrorRoad)],
+  mud: [[-10, -20, 4], [-92, 30, 4], [-64, 0, 4]].flatMap((p) => [p, mirrorPatch(p)]),
+  trees: scatterTrees(70, 61, 110, 70),
   hills: [150, 250],
   hillScale: 0.9,
   theme: {

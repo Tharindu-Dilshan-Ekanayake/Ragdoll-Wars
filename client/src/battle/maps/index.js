@@ -42,7 +42,7 @@ export const MAPS = [
     id: 'depot',
     name: 'Ironhold Depot',
     blurb: 'An army supply depot: warehouses with loading docks and trucks, an ordered container yard, a rail spur with wagons, the depot office, hesco walls and a checkpoint in the middle.',
-    size: '170 × 110 m',
+    size: '220 × 140 m',
     load: () => import('./ironholdDepot.js'),
   },
   {
