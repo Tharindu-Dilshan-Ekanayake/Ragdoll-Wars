@@ -4,7 +4,7 @@ import { MAPS, ZOMBIE_MAP } from '../../../client/src/battle/maps/index.js'
 import { createEncoder, encodeSnapshot } from '../../../client/src/battle/sim/netProtocol.js'
 import { BUILD_GROUPS } from '../../../client/src/battle/sim/pieces.js'
 import { applySave } from '../../../client/src/battle/sim/saveGame.js'
-import { QUICK_SQUADS, UNIT_TYPES } from '../../../client/src/battle/sim/units.js'
+import { UNIT_TYPES } from '../../../client/src/battle/sim/units.js'
 import { clearAll, createWorld, deleteSelected, initZombieMode, moveSelected, orderSelected, spawnUnits, stepWorld, withUnits } from '../../../client/src/battle/sim/world.js'
 import { PRICES, restartZombies, startWave } from '../../../client/src/battle/sim/zombies.js'
 import { resolveIdentity } from '../bloxityApi.js'
@@ -344,14 +344,8 @@ export class BattleRoom extends Room {
       case 'delete':
         withUnits(w, p.team, idList(msg.s), idList(msg.v), () => deleteSelected(w))
         return
-      case 'quick': {
-        if (this.mode !== 'sandbox') return
-        for (let team = 0; team < 2; team += 1) {
-          const base = w.map.bases[team]
-          for (const [key, n, dz] of QUICK_SQUADS) spawnUnits(w, key, team, base.x + (team === 0 ? 14 : -14), base.z + dz, n, 'attack')
-        }
-        return
-      }
+      // (No 'quick': a ready-made army on both sides makes no sense when each player
+      // builds their own - it's a single-player button.)
       case 'clear':
         if (!p.host || this.mode !== 'sandbox') return this.toast(client, 'Only the host can clear the battlefield')
         clearAll(w)

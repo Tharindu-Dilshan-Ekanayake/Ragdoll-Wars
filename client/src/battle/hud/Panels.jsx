@@ -2,6 +2,7 @@ import { HelpBody, SettingsBody } from '../../ui/SettingsHelp'
 import { clearBattlefield } from '../commands'
 import { Glyph } from './icons'
 import { useHud } from './hudStore'
+import { RoomCard } from './RoomCard'
 
 /** Modal panels over the battle: settings, how to play, and the two confirmations. */
 
@@ -30,6 +31,7 @@ export default function Panels({ onExit }) {
   if (panel === 'settings')
     return (
       <Modal title="Settings" onClose={close}>
+        <RoomCard />
         <SettingsBody />
       </Modal>
     )
