@@ -60,6 +60,10 @@ function jeep() {
     place(box(1.7, 0.42, 1.3, OLIVE_DARK), 0, 1.2, -0.85),
     place(box(0.08, 0.7, 0.08, STEEL), 0, 1.6, -0.6),
     place(cyl(0.38, 0.38, 0.22, 10, '#202224'), 0, 1.05, -2.1, Math.PI / 2),
+    // Seats for the driver and his mate, and the steering wheel.
+    place(box(0.5, 0.55, 0.1, '#2a2c2e'), 0.42, 1.32, -0.12, 0.15),
+    place(box(0.5, 0.55, 0.1, '#2a2c2e'), -0.42, 1.32, -0.12, 0.15),
+    place(cyl(0.17, 0.17, 0.035, 10, '#1e1f22'), 0.42, 1.45, 0.42, -1.1),
   ]
   for (const sx of [-0.98, 0.98]) for (const sz of [-1.35, 1.35]) body.push(wheel(0.42, 0.34, sx, 0.42, sz))
   const top = [place(box(0.14, 0.16, 0.9, STEEL), 0, 0, 0.25), place(cyl(0.035, 0.035, 0.6, 6, '#1e1f22'), 0, 0.02, 0.95, Math.PI / 2), place(box(0.1, 0.22, 0.1, STEEL), 0, -0.12, 0)]
@@ -74,12 +78,16 @@ function apc() {
     place(box(2.6, 0.9, 1.2, OLIVE_DARK), 0, 1.45, 2.65, 0.6),
     place(box(0.5, 0.18, 0.5, STEEL), 0.7, 2.25, -1.6),
     place(box(2.72, 0.12, 5.6, OLIVE_DARK), 0, 1.48, 0),
+    // The driver's hatch, open.
+    place(box(0.55, 0.06, 0.55, OLIVE_DARK), 0.75, 2.45, 0.95, -1.2),
   ]
   for (const sx of [-1.36, 1.36]) for (const sz of [-2.1, -0.7, 0.7, 2.1]) body.push(wheel(0.56, 0.4, sx, 0.56, sz))
   const top = [
     place(box(1.3, 0.55, 1.5, OLIVE_DARK), 0, 0.2, 0),
     place(cyl(0.075, 0.075, 2.1, 8, '#1e1f22'), 0, 0.22, 1.7, Math.PI / 2),
     place(box(0.3, 0.3, 0.3, STEEL), 0, 0.22, 0.8),
+    // The commander's hatch, open.
+    place(box(0.5, 0.05, 0.5, OLIVE_DARK), -0.4, 0.72, -0.95, -1.2),
   ]
   const trim = [place(box(0.03, 0.3, 3.0, TRIM), 1.36, 1.25, 0), place(box(0.03, 0.3, 3.0, TRIM), -1.36, 1.25, 0)]
   return { body: merge(body), top: merge(top), trim: merge(trim), pivot: [0, 2.25, -0.3] }
@@ -103,6 +111,10 @@ function tank() {
     place(cyl(0.16, 0.16, 0.4, 8, '#26282a'), 0, 0.2, 5.3, Math.PI / 2),
     place(cyl(0.35, 0.35, 0.25, 10, OLIVE_DARK), 0.55, 0.62, -0.4),
     place(box(0.5, 0.3, 0.9, OLIVE_DARK), 0, 0.15, -1.75),
+    // The commander's cupola hatch thrown open, a machine gun beside it.
+    place(box(0.62, 0.06, 0.62, OLIVE_DARK), 0.55, 1.0, -0.88, -1.15),
+    place(cyl(0.03, 0.03, 0.9, 6, '#1e1f22'), 0.1, 0.85, -0.1, Math.PI / 2),
+    place(box(0.1, 0.14, 0.4, STEEL), 0.1, 0.85, -0.5),
   ]
   const trim = [place(box(0.03, 0.32, 1.8, TRIM), 1.16, 0.2, 0), place(box(0.03, 0.32, 1.8, TRIM), -1.16, 0.2, 0)]
   return { body: merge(body), top: merge(top), trim: merge(trim), pivot: [0, 2.05, -0.3] }

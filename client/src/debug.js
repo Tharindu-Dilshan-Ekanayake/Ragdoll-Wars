@@ -36,5 +36,8 @@ export function installDebugHooks() {
     async zombies() {
       return import('./battle/sim/zombies.js')
     },
+    async vehicles() {
+      return import('./battle/sim/vehicles.js')
+    },
   }
 }

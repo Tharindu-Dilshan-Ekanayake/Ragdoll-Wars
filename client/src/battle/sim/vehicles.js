@@ -5,7 +5,7 @@ import { explode, fireProjectile } from './ordnance.js'
 import { crushStructures } from './structures.js'
 import { wrapAngle } from './rig.js'
 import { UNIT_TYPES } from './units.js'
-import { blastHit, castBullet } from './world.js'
+import { blastHit, castBullet, ejectCrew } from './world.js'
 
 /**
  * Phase 3: vehicles and strikes.
@@ -38,6 +38,39 @@ const JET_END = 340
 let nextVehicleId = 1e6
 
 const rand = Math.random
+
+/**
+ * Who rides in each vehicle and where - render/Vehicles.jsx draws them, and when the
+ * vehicle is destroyed they're thrown out (becomeWreck). `frame`: 'body', or 'top' to
+ * turn with the turret / gun (position relative to its pivot); `pose`: 'seated' (origin
+ * at the seat) or 'hatch' (standing, origin at the waist); local metres, +Z forward;
+ * `yaw` turns the crewman (a door gunner faces out of the door).
+ */
+export const CREW = {
+  jeep: [
+    { frame: 'body', pose: 'seated', x: 0.42, y: 1.05, z: 0, yaw: 0 },
+    { frame: 'body', pose: 'seated', x: -0.42, y: 1.05, z: 0, yaw: 0 },
+    { frame: 'top', pose: 'hatch', x: 0, y: -0.55, z: -0.55, yaw: 0 },
+  ],
+  apc: [
+    { frame: 'body', pose: 'hatch', x: 0.75, y: 1.8, z: 1.4, yaw: 0 },
+    { frame: 'top', pose: 'hatch', x: -0.4, y: 0.1, z: -0.45, yaw: 0 },
+  ],
+  tank: [
+    { frame: 'body', pose: 'hatch', x: -0.5, y: 1.35, z: 2.3, yaw: 0 },
+    { frame: 'top', pose: 'hatch', x: 0.55, y: 0.45, z: -0.4, yaw: 0 },
+  ],
+  gunship: [
+    { frame: 'body', pose: 'seated', x: 1.02, y: 1.32, z: 0.4, yaw: Math.PI / 2 },
+    { frame: 'body', pose: 'seated', x: -1.02, y: 1.32, z: 0.4, yaw: -Math.PI / 2 },
+  ],
+  scout: [
+    { frame: 'body', pose: 'seated', x: 1.02, y: 1.32, z: 0.4, yaw: Math.PI / 2 },
+    { frame: 'body', pose: 'seated', x: -1.02, y: 1.32, z: 0.4, yaw: -Math.PI / 2 },
+  ],
+}
+/** Chance each crewman of a destroyed ground vehicle gets out alive (aircraft: none). */
+const CREW_SURVIVE = 0.35
 const gauss = () => (rand() + rand() + rand() - 1.5) * 2
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v)
 
@@ -294,6 +327,39 @@ function becomeWreck(w, v) {
   v.pitch = 0
   v.roll = 0
   explode(w, v.x, 1, v.z, 3.5 + v.spec.radius, 110, null, 1)
+  bailOut(w, v)
+}
+
+/**
+ * The crew of a destroyed vehicle: thrown out by the blast (bodies), or - from a ground
+ * vehicle, sometimes - scrambling clear, hurt, to fight on as soldiers. Done after the
+ * wreck's own explosion so survivors aren't caught in it.
+ */
+function bailOut(w, v) {
+  const seats = CREW[v.type]
+  if (!seats) return
+  const sc = v.spec.scale || 1
+  for (const seat of seats) {
+    const yaw = seat.frame === 'top' ? v.turretYaw : v.yaw
+    const cs = Math.cos(yaw)
+    const sn = Math.sin(yaw)
+    // Where the seat is now, and the way out from the middle of the vehicle.
+    let ox = (seat.x * cs + seat.z * sn) * sc
+    let oz = (-seat.x * sn + seat.z * cs) * sc
+    let l = Math.hypot(ox, oz)
+    if (l < 0.3) {
+      const a = rand() * Math.PI * 2
+      ox = Math.sin(a)
+      oz = Math.cos(a)
+      l = 1
+    }
+    const nx = ox / l + (rand() - 0.5) * 0.6
+    const nz = oz / l + (rand() - 0.5) * 0.6
+    const nl = Math.hypot(nx, nz) || 1
+    const survive = !v.spec.air && rand() < CREW_SURVIVE
+    const reach = survive ? v.spec.radius * sc + 1.2 : l
+    ejectCrew(w, v.team, v.x + (nx / nl) * reach, v.z + (nz / nl) * reach, nx / nl, nz / nl, survive, !survive && rand() < 0.5)
+  }
 }
 
 /**

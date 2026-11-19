@@ -67,6 +67,11 @@ export function buildHelicopterGeometry() {
     place(tint(new BoxGeometry(0.06, 0.95, 1.15), DOOR), 1.22, 1.72, 0.4),
     place(tint(new BoxGeometry(0.06, 0.95, 1.15), DOOR), -1.22, 1.72, 0.4),
     place(tint(new CylinderGeometry(0.12, 0.14, 0.55, 8), STEEL), 0, 3.35, 0),
+    // A door gun on a swing arm at each open door, for the door gunners.
+    place(tint(new BoxGeometry(0.9, 0.12, 0.12), STEEL), 1.75, 1.74, 0.4),
+    place(tint(new BoxGeometry(0.9, 0.12, 0.12), STEEL), -1.75, 1.74, 0.4),
+    place(tint(new BoxGeometry(0.1, 0.4, 0.1), STEEL), 1.42, 1.5, 0.4),
+    place(tint(new BoxGeometry(0.1, 0.4, 0.1), STEEL), -1.42, 1.5, 0.4),
     // Skids and struts.
     place(tint(new CylinderGeometry(0.07, 0.07, 4.8, 6), STEEL), 1.1, 0.07, 0.4, Math.PI / 2),
     place(tint(new CylinderGeometry(0.07, 0.07, 4.8, 6), STEEL), -1.1, 0.07, 0.4, Math.PI / 2),

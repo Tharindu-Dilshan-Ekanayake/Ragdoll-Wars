@@ -1428,6 +1428,37 @@ export function spawnOne(w, type, team, x, z, yaw, order) {
   return s
 }
 
+/**
+ * A crewman thrown out of a destroyed vehicle at (x, z), flung along (nx, nz): dead (a
+ * body - no unit cap, it's not a unit), or `survive`: alive but hurt, a soldier who
+ * fights on - only if the team has room, otherwise he doesn't make it either.
+ */
+export function ejectCrew(w, team, x, z, nx, nz, survive, charred) {
+  const yaw = Math.atan2(nx, nz)
+  if (survive) {
+    const s = spawnOne(w, UNIT_TYPES.smg, team, x, z, yaw, 'hold')
+    if (s) {
+      s.hp *= 0.5
+      s.staggerT = 0.9
+      s.bleed = 0.4
+      s.suppress = 1
+      return s
+    }
+  }
+  const s = allocSlot(w)
+  if (!s) return null
+  POS.x = x
+  POS.z = z
+  collideCircle(w.obs, POS, SOLDIER_RADIUS)
+  resetSoldier(s, UNIT_TYPES.smg, team, POS.x, POS.z, yaw, 'hold')
+  w.stats.deployed[team] += 1
+  s.charred = Boolean(charred)
+  const up = 0.9 + rand() * 0.4
+  const l = Math.hypot(nx, up, nz)
+  kill(w, s, -1, nx / l, up / l, nz / l, null, 14 + rand() * 12, true)
+  return s
+}
+
 /** Takes a living soldier off the field at once (no body). */
 export function removeSoldier(w, s) {
   freeSlot(w, s)

@@ -16,8 +16,9 @@ import {
 } from 'three'
 
 import { useQuality } from '../../store/quality'
-import { MAX_JETS, MAX_VEHICLES, jetPosition } from '../sim/vehicles'
+import { CREW, MAX_JETS, MAX_VEHICLES, jetPosition } from '../sim/vehicles'
 import { addFrameHook, battle, PHASE } from '../state'
+import { buildCrewGeometries, crewMaterial } from './crewModel'
 import { buildHelicopterGeometry, MAIN_ROTOR_PIVOT, TAIL_ROTOR_PIVOT } from './helicopterModel'
 import { createParticles, spawnParticle, stepParticles } from './particles'
 import { getTextures } from './textures'
@@ -27,7 +28,9 @@ import { buildVehicleGeometries, helicopterTrim } from './vehicleModels'
  * Every vehicle on the battlefield: per kind, one instanced mesh each for the body, the
  * turret (or a helicopter's rotors) and the team-coloured trim. Wrecks are drawn
  * charred with flames for a while (and smoke on presets with particles); a hit flashes
- * the body. Strike jets streak over, and selected vehicles get a ring.
+ * the body. The crew ride in them (crewModel.js, two instanced meshes for every crewman
+ * of every vehicle, in their team's uniform) until it's destroyed - then the sim throws
+ * them out. Strike jets streak over, and selected vehicles get a ring.
  *
  * Empty meshes are hidden: a battle without vehicles costs nothing here.
  */
@@ -37,10 +40,19 @@ const AIR = ['gunship', 'scout']
 const ALL = [...GROUND, ...AIR]
 const TEAM_RGB = [new Color('#3d78dc'), new Color('#d64545')]
 const RING_RGB = [new Color('#7fb4ff'), new Color('#ff8a8a')]
+/** The crew's uniform, as the soldiers wear it (Soldiers.jsx TEAM_COLORS). */
+const CREW_RGB = [new Color('#3f7ddf'), new Color('#d84848')]
+const MAX_CREW = MAX_VEHICLES * 3
 
 const mBody = new Matrix4()
 const mPart = new Matrix4()
 const mLocal = new Matrix4()
+const mTop = new Matrix4()
+const mSeat = new Matrix4()
+const mCrew = new Matrix4()
+const qSeat = new Quaternion()
+const seatP = new Vector3()
+const one = new Vector3(1, 1, 1)
 const q = new Quaternion()
 const qSpin = new Quaternion()
 const e = new Euler(0, 0, 0, 'YXZ')
@@ -93,9 +105,11 @@ export default function Vehicles() {
     const geos = buildVehicleGeometries()
     const heli = buildHelicopterGeometry()
     const heliTrim = helicopterTrim()
+    const crewGeo = buildCrewGeometries()
     const tex = getTextures()
     const mats = {
       body: new MeshLambertMaterial({ vertexColors: true }),
+      crew: crewMaterial(),
       trim: new MeshLambertMaterial({ color: '#ffffff' }),
       shadow: new MeshBasicMaterial({ map: tex.blob, transparent: true, depthWrite: false }),
       ring: new MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.9, depthWrite: false }),
@@ -122,15 +136,16 @@ export default function Vehicles() {
         trim: instanced(heliTrim, mats.trim, n, true),
       }
     }
+    const crew = { seated: instanced(crewGeo.seated, mats.crew, MAX_CREW, true), hatch: instanced(crewGeo.hatch, mats.crew, MAX_CREW, true) }
     const jets = instanced(geos.jet, mats.body, MAX_JETS, false)
     const shadows = instanced(flat, mats.shadow, n + MAX_JETS, false)
     shadows.renderOrder = 1
     const rings = instanced(ringGeo, mats.ring, n, true)
     rings.renderOrder = 2
     const fires = instanced(card, mats.fire, n * 2, true)
-    const allGeos = [geos.jeep.body, geos.jeep.top, geos.jeep.trim, geos.apc.body, geos.apc.top, geos.apc.trim, geos.tank.body, geos.tank.top, geos.tank.trim, geos.jet, heli.body, heli.mainRotor, heli.tailRotor, heliTrim, card, flat, ringGeo]
+    const allGeos = [geos.jeep.body, geos.jeep.top, geos.jeep.trim, geos.apc.body, geos.apc.top, geos.apc.trim, geos.tank.body, geos.tank.top, geos.tank.trim, geos.jet, heli.body, heli.mainRotor, heli.tailRotor, heliTrim, crewGeo.seated, crewGeo.hatch, card, flat, ringGeo]
     const counts = Object.fromEntries(ALL.map((k) => [k, 0]))
-    return { kinds, jets, shadows, rings, fires, mats, counts, geos: allGeos }
+    return { kinds, crew, jets, shadows, rings, fires, mats, counts, geos: allGeos }
   }, [])
 
   const smoke = useMemo(() => (particlesOn ? createParticles(260, false) : null), [particlesOn])
@@ -157,6 +172,8 @@ export default function Vehicles() {
       let nShadow = 0
       let nRing = 0
       let nFire = 0
+      let nSeated = 0
+      let nHatch = 0
       smokeT -= dt
       const puff = smokeT <= 0
       if (puff) smokeT = 0.12
@@ -199,9 +216,24 @@ export default function Vehicles() {
           pivot.set(kind.pivot[0], kind.pivot[1], kind.pivot[2]).applyMatrix4(mBody)
           e.set(v.pitch, v.turretYaw, v.roll, 'YXZ')
           q.setFromEuler(e)
-          mPart.compose(pivot, q, s.set(sc, sc, sc))
-          mPart.toArray(kind.top.instanceMatrix.array, idx * 16)
+          mTop.compose(pivot, q, s.set(sc, sc, sc))
+          mTop.toArray(kind.top.instanceMatrix.array, idx * 16)
           setColor(kind.top, idx, shade, shade, shade)
+        }
+        // The crew, while it's still a working vehicle.
+        const seats = CREW[v.type]
+        if (seats && !dead) {
+          const cc = CREW_RGB[v.team]
+          for (let c = 0; c < seats.length; c += 1) {
+            const seat = seats[c]
+            qSeat.setFromAxisAngle(yAxis, seat.yaw)
+            mSeat.compose(seatP.set(seat.x, seat.y, seat.z), qSeat, one)
+            mCrew.multiplyMatrices(seat.frame === 'top' ? mTop : mBody, mSeat)
+            const mesh = seat.pose === 'hatch' ? rig.crew.hatch : rig.crew.seated
+            const at = seat.pose === 'hatch' ? nHatch++ : nSeated++
+            mCrew.toArray(mesh.instanceMatrix.array, at * 16)
+            setColor(mesh, at, cc.r, cc.g, cc.b)
+          }
         }
         if (!realtimeShadows || v.spec.air) {
           const lift = Math.min(1, y / 40)
@@ -259,6 +291,8 @@ export default function Vehicles() {
         nJ += 1
       }
       commit(rig.jets, nJ)
+      commit(rig.crew.seated, nSeated)
+      commit(rig.crew.hatch, nHatch)
       commit(rig.shadows, nShadow)
       commit(rig.rings, nRing)
       commit(rig.fires, nFire)
@@ -277,6 +311,8 @@ export default function Vehicles() {
           {kinds[k].tail && <primitive object={kinds[k].tail} />}
         </group>
       ))}
+      <primitive object={rig.crew.seated} />
+      <primitive object={rig.crew.hatch} />
       <primitive object={rig.jets} />
       <primitive object={rig.shadows} />
       <primitive object={rig.rings} />
