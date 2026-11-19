@@ -14,7 +14,7 @@ export const MAPS = [
     id: 'training',
     name: 'Training Grounds',
     blurb: 'An army training base: barracks round a parade ground, Nissen huts, a motor pool, an assault course, a rifle range, firing trenches and a killhouse you fight through room by room.',
-    size: '170 × 110 m',
+    size: '220 × 140 m',
     load: () => import('./trainingGrounds.js'),
   },
   {

@@ -324,7 +324,8 @@ export default function Scatter({ map }) {
     const style = STYLES[map.theme?.scatter] || STYLES.meadow
     const terrain = mapTerrain(map)
     const canGrow = groundTest(map)
-    const area = ((map.width + 12) * (map.depth + 12)) / (182 * 122)
+    // Denser on bigger maps, except on LOW (its counts are a whole-map budget).
+    const area = Math.min(counts.maxArea ?? Infinity, ((map.width + 12) * (map.depth + 12)) / (182 * 122))
     const n = (k) => Math.round(k * area)
 
     const bladesPts = scatterPoints(map, n(counts.blades * (style.bladeShare ?? 1)), 11, canGrow, 0.25)

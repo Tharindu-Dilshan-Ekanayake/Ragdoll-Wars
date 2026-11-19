@@ -61,7 +61,8 @@ function installWorld(world, online = false) {
   const portrait = window.innerWidth < window.innerHeight
   const v = battle.view
   const yaw = portrait ? Math.PI / 2 : 0
-  const dist = portrait ? 105 : 74
+  // Bigger maps open further out.
+  const dist = (portrait ? 105 : 74) * Math.max(1, world.map.width / 170)
   Object.assign(v, { tx: 0, tz: 6, yaw, pitch: 0.95, dist: dist + 6 })
   Object.assign(v.goal, { tx: 0, tz: portrait ? 0 : 6, yaw, pitch: 0.92, dist })
   battle.walk.on = false

@@ -67,7 +67,7 @@ const WEST_SETS = [
   ['flagpole', -79, -11, 0, { color: '#3f6fb0' }],
   ['hangar', -60, -44, 0, { w: 7, d: 12, h: 3.6, small: true, color: '#6f7a5a' }],
   ['hangar', -51, -44, 0, { w: 7, d: 12, h: 3.6, small: true, color: '#77805f' }],
-  ['watertower', -82, -44, 0],
+  ['watertower', -76, -44, 0],
   // Motor pool.
   ['shelter', -62, 44, 0, { w: 14, d: 7 }],
   ['truck', -62, 42.3, 0, { color: '#5d6b4a' }],
@@ -101,7 +101,52 @@ const CENTRE_SETS = [
   ['bldg', 0, 7.5, 2, { ...KILLHOUSE, color: '#c4bba4' }],
 ]
 
-const { obstacles, pieces } = mirrored(WEST, WEST_PIECES, CENTRE, [])
+// --- The bigger field (220 x 140) ---------------------------------------------------
+// The camp moves 25 m back and the far ends 12 m out; the forward area this opens up
+// gets its own buildings, nests, lorries and knolls.
+const SHIFT_X = 25
+const SHIFT_Z = 12
+const fx = (x) => (x < -40 ? x - SHIFT_X : x)
+const fz = (z) => (Math.abs(z) > 26 ? z + Math.sign(z) * SHIFT_Z : z)
+const movePt = ([x, z]) => [fx(x), fz(z)]
+const moveBox = (o) => ({ ...o, x: fx(o.x), z: fz(o.z) })
+const movePiece = ([k, x, z, r]) => [k, fx(x), fz(z), r]
+const moveSet = ([k, x, z, r, o]) => [k, fx(x), fz(z), r, o]
+
+/** The forward area: an armoury and a guard post you can go inside, nests and lorries. */
+const FORWARD = [
+  box('sandbag', -46, -30, 0.9, 5),
+  box('sandbag', -47.9, -32.95, 4.7, 0.9),
+  box('sandbag', -46, 30, 0.9, 5),
+  box('sandbag', -47.9, 32.95, 4.7, 0.9),
+  box('crate', -60, -6.5, 1.25, 1.25, 2.5),
+  box('crate', -61.35, -6.5, 1.25, 1.25),
+  box('crate', -60.6, 23.5, 1.25, 1.25),
+  box('barrier', -44, -2, 0.7, 2.6),
+  box('barrier', -44, 2, 0.7, 2.6),
+  box('lowwall', -50, -44, 6, 0.6),
+  box('lowwall', -50, 44, 6, 0.6),
+]
+const FORWARD_PIECES = [
+  ['drum', -64, -21],
+  ['drum', -64.8, -20.4],
+  ['ammocrate', -64, 21],
+  ['fuel', -70, 27],
+  ['floodlight', -48, -12],
+  ['floodlight', -48, 12],
+]
+const FORWARD_SETS = [
+  ['bldg', -56, -14, 0, { w: 10, d: 7, doors: [['w', 0]], split: null, color: '#c9c0a4' }],
+  ['bldg', -56, 15, 0, { w: 8, d: 6, doors: [['w', 1.2]], split: null, color: '#bfb59a' }],
+  ['truck', -63, 33, 1, { color: '#5d6b4a' }],
+  ['truck', -67, 33, 1, { color: '#4f5c40' }],
+]
+
+const WEST_ALL = [...WEST.map(moveBox), ...FORWARD]
+const WEST_PIECES_ALL = [...WEST_PIECES.map(movePiece), ...FORWARD_PIECES]
+const WEST_SETS_ALL = [...WEST_SETS.map(moveSet), ...FORWARD_SETS]
+
+const { obstacles, pieces } = mirrored(WEST_ALL, WEST_PIECES_ALL, CENTRE, [])
 // Terrain (sim/terrain.js): a firing trench across each side's half (broken for the
 // road), grassy knolls, a low bank by the north fence and a gently rolling field.
 const WEST_HILLS = [
@@ -116,14 +161,25 @@ const WEST_TRENCHES = [
 ]
 const WEST_RIDGES = [{ points: [[-44, -52], [-34, -51]], w: 6, h: 1.2 }]
 const mirrorPts = (pts) => pts.map(([x, z]) => [-x, z])
+const WEST_HILLS_ALL = [
+  ...WEST_HILLS.map((h) => ({ ...h, x: fx(h.x), z: fz(h.z) })),
+  // Knolls out on the wings of the forward area, and a long rise behind the trenches.
+  { x: -40, z: -54, r: 9, h: 2.4 },
+  { x: -42, z: 56, r: 9, h: 2.2 },
+  { x: -86, z: -30, r: 10, h: 2.6 },
+]
+const WEST_TRENCHES_ALL = WEST_TRENCHES.map((t) => ({ ...t, points: t.points.map(movePt) }))
+const WEST_RIDGES_ALL = [...WEST_RIDGES.map((r) => ({ ...r, points: r.points.map(movePt) })), { points: [[-34, -20], [-33, 0], [-34, 20]], w: 7, h: 0.9 }]
 const TERRAIN = {
-  hills: [...WEST_HILLS, ...WEST_HILLS.map((h) => ({ ...h, x: -h.x }))],
-  trenches: [...WEST_TRENCHES, ...WEST_TRENCHES.map((t) => ({ ...t, points: mirrorPts(t.points) }))],
-  ridges: [...WEST_RIDGES, ...WEST_RIDGES.map((r) => ({ ...r, points: mirrorPts(r.points) }))],
+  hills: [...WEST_HILLS_ALL, ...WEST_HILLS_ALL.map((h) => ({ ...h, x: -h.x }))],
+  trenches: [...WEST_TRENCHES_ALL, ...WEST_TRENCHES_ALL.map((t) => ({ ...t, points: mirrorPts(t.points) }))],
+  ridges: [...WEST_RIDGES_ALL, ...WEST_RIDGES_ALL.map((r) => ({ ...r, points: mirrorPts(r.points) }))],
   rough: 0.35,
 }
 
 const mirrorPad = (p) => ({ ...p, x: -p.x })
+const movePad = (p) => ({ ...p, x: fx(p.x), z: fz(p.z) })
+const moveLine = (l) => ({ ...l, points: l.points.map(movePt) })
 const mirrorLine = (l) => ({ ...l, points: l.points.map(([x, z]) => [-x, z]) })
 
 const WEST_PADS = [
@@ -149,10 +205,10 @@ function scatterTrees(count, seed = 7) {
   }
   const out = []
   while (out.length < count) {
-    const x = (rand() * 2 - 1) * 130
-    const z = (rand() * 2 - 1) * 95
+    const x = (rand() * 2 - 1) * 160
+    const z = (rand() * 2 - 1) * 112
     // Keep a clear band just outside the fence.
-    if (Math.abs(x) < 92 && Math.abs(z) < 62) continue
+    if (Math.abs(x) < 118 && Math.abs(z) < 77) continue
     out.push({ x, z, s: 0.75 + rand() * 0.6, r: rand() * Math.PI * 2 })
   }
   return out
@@ -163,28 +219,31 @@ export const TRAINING_GROUNDS = {
   name: 'Training Grounds',
   blurb: 'An army training base: barracks round a parade ground, an assault course, a rifle range and a two-building killhouse to fight through in the middle.',
   /** Playable area (the fence). */
-  width: 170,
-  depth: 110,
+  width: 220,
+  depth: 140,
   terrain: TERRAIN,
   /** Where each team's units tend to form up. */
   bases: [
-    { x: -70, z: 0 },
-    { x: 70, z: 0 },
+    { x: -95, z: 0 },
+    { x: 95, z: 0 },
   ],
   obstacles,
   pieces,
-  sets: [...WEST_SETS, ...WEST_SETS.map(mirrorSet), ...CENTRE_SETS],
-  pads: [...WEST_PADS, ...WEST_PADS.map(mirrorPad), { x: 0, z: 0, w: 24, d: 24, color: '#9a968c', joints: 3 }],
-  lines: [...WEST_LINES, ...WEST_LINES.map(mirrorLine)],
+  sets: [...WEST_SETS_ALL, ...WEST_SETS_ALL.map(mirrorSet), ...CENTRE_SETS],
+  pads: [...WEST_PADS.map(movePad), ...WEST_PADS.map(movePad).map(mirrorPad), { x: 0, z: 0, w: 24, d: 24, color: '#9a968c', joints: 3 }],
+  lines: [...WEST_LINES.map(moveLine), ...WEST_LINES.map(moveLine).map(mirrorLine)],
   /** Dirt roads painted on the ground: polylines of [x, z], with a half width. */
   roads: [
-    { width: 3.2, points: [[-90, 0], [-12, 0], [12, 0], [90, 0]] },
-    { width: 2.6, points: [[0, -60], [0, -12], [0, 12], [0, 60]] },
-    { width: 2.2, points: [[-56, -6], [-56, -30], [-50, -38]] },
-    { width: 2.2, points: [[56, 6], [56, 30], [50, 38]] },
+    { width: 3.2, points: [[-118, 0], [-12, 0], [12, 0], [118, 0]] },
+    { width: 2.6, points: [[0, -76], [0, -12], [0, 12], [0, 76]] },
+    { width: 2.2, points: [[-56, -6], [-56, -30], [-50, -38]].map(movePt) },
+    { width: 2.2, points: [[56, 6], [56, 30], [50, 38]].map(([x, z]) => [-fx(-x), fz(z)]) },
+    // Tracks out to the forward buildings.
+    { width: 1.8, points: [[-81, -14], [-61, -14]] },
+    { width: 1.8, points: [[81, -14], [61, -14]] },
   ],
   /** Muddy patches: [x, z, radius]. */
-  mud: [[-34, -38, 8], [-30, -30, 7], [-22, 26, 6], [-46, 0, 6]].flatMap((p) => [p, mirrorPatch(p)]),
+  mud: [[-34, -38, 8], [-30, -30, 7], [-22, 26, 6], [-46, 0, 6]].map(([x, z, r]) => [fx(x), fz(z), r]).concat([[-52, 0, 5], [-40, 38, 6]]).flatMap((p) => [p, mirrorPatch(p)]),
   trees: scatterTrees(100),
   sky: { top: '#5b9bd8', horizon: '#cfe3ee', ground: '#8a9a6a' },
   fog: '#c9d9df',

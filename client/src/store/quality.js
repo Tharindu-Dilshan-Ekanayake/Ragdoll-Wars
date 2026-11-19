@@ -38,7 +38,7 @@ export const PRESETS = {
     /** Share of the scenery trees to plant (0-1). */
     decorDensity: 0.4,
     /** Grass tufts, stones/bushes and flowers on a standard-size map (Scatter.jsx). */
-    scatter: { blades: 1100, props: 220, flowers: 160 },
+    scatter: { blades: 1100, props: 220, flowers: 160, maxArea: 1 },
     /** Grass and flowers sway; clouds drift; the sea moves. */
     wind: false,
   },
