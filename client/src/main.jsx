@@ -9,24 +9,24 @@ import BloxityProvider from './bloxity/BloxityProvider.jsx'
 import FpsMeter from './bloxity/FpsMeter.jsx'
 import { GAME_SLUG } from './bloxity/identity'
 import { installDebugHooks } from './debug'
+import { startCloud } from './net/cloud'
 import './index.css'
 
-// Start-up milestones (pp:*) show up in DevTools' Performance panel and are read by
-// the automated load test.
-performance.mark('pp:main')
+performance.mark('ff:main')
 installDebugHooks()
+// Cloud saves for signed-in players, and the totals the leaderboards rank.
+startCloud()
+// Audio starts on the first tap or key press (browsers block it before that).
 installAudioUnlock()
 // Every chunky button clicks.
 window.addEventListener('pointerdown', (e) => {
-  if (e.target instanceof Element && e.target.closest('.pp-btn')) sfx.click()
+  if (e.target instanceof Element && e.target.closest('.ff-btn, .ff-iconbtn, .ff-action')) sfx.click()
 })
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    {/* Slug comes from VITE_GAME_SLUG in client/.env — see .env.example. */}
     <BloxityProvider gameSlug={GAME_SLUG}>
       <App />
-      {/* Boxity's show_fps setting. */}
       <FpsMeter />
     </BloxityProvider>
   </StrictMode>,

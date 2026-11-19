@@ -5,7 +5,8 @@ import { create } from 'zustand'
  * than deciding for itself, so dropping a preset reliably sheds load everywhere.
  *
  * LOW is the mobile / weak-PC baseline: no realtime shadows, no particles, no
- * post-processing, short view distance and textures capped at 512px.
+ * post-processing, short view distance, textures capped at 512px, and the smallest
+ * armies (30 a side) so the triangle and ragdoll budgets hold on a phone.
  */
 export const QUALITY_LEVELS = ['LOW', 'MEDIUM', 'HIGH']
 
@@ -13,37 +14,33 @@ export const PRESETS = {
   LOW: {
     dpr: 1,
     antialias: false,
-    /** 'blob' = fake contact shadows only; 'realtime' = shadow-mapped sun. */
+    /** 'blob' = soft fake shadows under soldiers; 'realtime' = shadow-mapped sun. */
     shadows: 'blob',
     shadowMapSize: 0,
+    /** Dirt, dust, sparks and blood mist. Tracers, flashes and blood pools stay on. */
     particles: false,
-    speedLines: true,
-    /** Motion blur down the sides at speed (post-processing): samples a pixel, 0 = off. */
-    motionBlur: 0,
-    viewDistance: 190,
-    fogNear: 60,
-    cloudCount: 8,
+    particleCount: 0,
+    /** One shared point light that flickers with muzzle flashes. */
+    flashLight: false,
+    viewDistance: 230,
+    fogNear: 90,
     /** Max side of any generated texture. */
     maxTexture: 512,
-    /**
-     * Other players are drawn this far away - the whole lobby - and the nearest
-     * `remoteAvatars` of them within `remoteAvatarDistance` as their real Boxity avatar
-     * (anyone else as the blocky figure). On every preset that's everyone in the room:
-     * players want to see each other as themselves, across the whole lobby. A Boxity
-     * avatar is ~100 triangles and one draw call plus one per worn item, so a full room
-     * of 8 typically adds 20-40 draw calls; if a weak device can't keep up, the FPS
-     * monitor lowers the resolution (RENDER_SCALES) rather than taking avatars away.
-     */
-    remoteDrawDistance: 150,
-    remoteAvatars: 7,
-    remoteAvatarDistance: 150,
-    remoteNameDistance: 40,
-    /** World labels fade out past this. */
-    labelDistance: 70,
-    /** How much of the canyon's scenery to spawn (0-1). */
-    decorDensity: 0.45,
-    /** Board and egg halo size multiplier. */
-    boardGlow: 0.8,
+    /** Soldiers per team, bodies left on the ground, ragdolls simulating at once. */
+    units: 24,
+    corpses: 30,
+    ragdolls: 3,
+    vehicles: 4,
+    /** Pieces built in build mode. */
+    structures: 80,
+    /** Soldiers further than this re-pose every 2nd frame (every 3rd past double). */
+    lodNear: 40,
+    /** Share of the scenery trees to plant (0-1). */
+    decorDensity: 0.4,
+    /** Grass tufts, stones/bushes and flowers on a standard-size map (Scatter.jsx). */
+    scatter: { blades: 1100, props: 220, flowers: 160, maxArea: 1 },
+    /** Grass and flowers sway; clouds drift; the sea moves. */
+    wind: false,
   },
   MEDIUM: {
     dpr: 1.25,
@@ -51,19 +48,21 @@ export const PRESETS = {
     shadows: 'blob',
     shadowMapSize: 0,
     particles: true,
-    speedLines: true,
-    motionBlur: 8,
-    viewDistance: 300,
-    fogNear: 100,
-    cloudCount: 14,
+    particleCount: 600,
+    flashLight: true,
+    viewDistance: 330,
+    fogNear: 120,
     maxTexture: 1024,
-    remoteDrawDistance: 150,
-    remoteAvatars: 7,
-    remoteAvatarDistance: 150,
-    remoteNameDistance: 55,
-    labelDistance: 110,
+    units: 60,
+    corpses: 60,
+    ragdolls: 5,
+    vehicles: 6,
+    /** Pieces built in build mode. */
+    structures: 140,
+    lodNear: 55,
     decorDensity: 0.75,
-    boardGlow: 1,
+    scatter: { blades: 2800, props: 450, flowers: 320 },
+    wind: true,
   },
   HIGH: {
     dpr: 1.5,
@@ -71,23 +70,25 @@ export const PRESETS = {
     shadows: 'realtime',
     shadowMapSize: 1024,
     particles: true,
-    speedLines: true,
-    motionBlur: 12,
-    viewDistance: 460,
-    fogNear: 140,
-    cloudCount: 18,
+    particleCount: 1200,
+    flashLight: true,
+    viewDistance: 430,
+    fogNear: 150,
     maxTexture: 1024,
-    remoteDrawDistance: 150,
-    remoteAvatars: 7,
-    remoteAvatarDistance: 150,
-    remoteNameDistance: 70,
-    labelDistance: 150,
+    units: 90,
+    corpses: 80,
+    ragdolls: 6,
+    vehicles: 8,
+    /** Pieces built in build mode. */
+    structures: 220,
+    lodNear: 70,
     decorDensity: 1,
-    boardGlow: 1,
+    scatter: { blades: 2700, props: 480, flowers: 360 },
+    wind: true,
   },
 }
 
-const STORAGE_KEY = 'pp.quality'
+const STORAGE_KEY = 'ff.quality'
 
 /**
  * Resolution steps, as a fraction of the preset's pixel ratio. Below LOW, a weak PC or
@@ -140,8 +141,8 @@ export const useQuality = create((set, get) => ({
   settings: PRESETS[initialLevel],
   /**
    * Bumped when the player picks a new level by hand: the 3D view is rebuilt from
-   * scratch, so things set when it's made (antialiasing, scenery density, tire detail)
-   * take the new level at once.
+   * scratch, so things set when it's made (antialiasing, scenery density) take the new
+   * level at once. The battle itself lives outside the canvas and carries on.
    */
   rebuild: 0,
   /** Index into RENDER_SCALES: how far resolution has been dropped to keep FPS up. */

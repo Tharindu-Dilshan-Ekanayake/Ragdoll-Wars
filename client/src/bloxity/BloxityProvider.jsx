@@ -4,7 +4,6 @@ import { BloxityContext } from './BloxityContext'
 import { GAME_SLUG } from './identity'
 import { installIntegration, setupOnce } from './integration'
 import { getSDK, safeCall, toUnsubscribe, waitForSDK } from './sdk'
-import { onAccountChanged } from './services'
 import { DEFAULT_PROPORTIONS, useBloxityStore } from './store'
 
 /**
@@ -110,8 +109,6 @@ export function BloxityProvider({ gameSlug, children }) {
           toUnsubscribe(
             sdk.auth.onUserChanged((nextUser) => {
               useBloxityStore.getState().setUser(nextUser || null)
-              // Friends and the Gems balance belong to the account (services.js).
-              onAccountChanged(nextUser || null)
               // The guest identity is what the HUD falls back to when signed out.
               useBloxityStore
                 .getState()

@@ -1,0 +1,644 @@
+import { emitExplosion, emitFlame, emitFlash, emitImpact, emitSound } from './fx.js'
+import { collideCircle, segmentHit3D } from './obstacles.js'
+import { floorAt } from './levels.js'
+import { deckAt } from './rampart.js'
+import { groundAt } from './terrain.js'
+import { startRagdoll } from './ragdoll.js'
+import { J_PELVIS, wrapAngle } from './rig.js'
+import { UNIT_TYPES } from './units.js'
+import { blastStructures } from './structures.js'
+import { blastVehicles } from './vehicles.js'
+import { blastHit } from './world.js'
+
+/**
+ * Phase 2 ordnance: rockets and mortar shells in flight, explosions, landmines, the
+ * flamethrower's cone, and setting soldiers alight. Everything is pooled (fixed arrays
+ * made once per battle); nothing allocates while the battle runs.
+ *
+ * Explosions hurt everyone in reach - friendly fire included - falling off with
+ * distance, cut down to a third behind cover. They throw the dead as ragdolls (within
+ * the ragdoll budget; the rest get a scripted fling), toss bodies already lying there,
+ * and set off nearby mines, which go a moment later so chains ripple outwards.
+ */
+
+export const MAX_PROJECTILES = 96
+export const MAX_MINES = 64
+const ROCKET_GRAVITY = 0.8
+const SHELL_GRAVITY = 9.8
+const MINE_TRIGGER = 1.05
+const MINE_ARM = 1.0
+
+const rand = Math.random
+const gauss = () => (rand() + rand() + rand() - 1.5) * 2
+
+export function createOrdnance() {
+  return {
+    projectiles: Array.from({ length: MAX_PROJECTILES }, () => ({
+      active: false,
+      /** 'rocket' | 'shell' (mortar) | 'cannon' (vehicle guns) | 'bomb' (strikes). */
+      kind: 'rocket',
+      shell: false,
+      big: false,
+      grav: 0,
+      anti: 1,
+      team: 0,
+      x: 0,
+      y: 0,
+      z: 0,
+      vx: 0,
+      vy: 0,
+      vz: 0,
+      age: 0,
+      life: 0,
+      radius: 0,
+      damage: 0,
+      shooter: null,
+      shooterId: 0,
+    })),
+    mines: Array.from({ length: MAX_MINES }, () => ({ active: false, team: 0, x: 0, z: 0, armT: 0, trip: false, seed: 0 })),
+  }
+}
+
+export function clearOrdnance(w) {
+  for (const p of w.ord.projectiles) {
+    p.active = false
+    p.shooter = null
+  }
+  for (const m of w.ord.mines) m.active = false
+}
+
+// --- Projectiles ----------------------------------------------------------------------
+
+/**
+ * Fires `type`'s projectile from the muzzle (mx, my, mz) at soldier `t`. Rockets fly
+ * straight (a touch of drop, aimed for); shells are lobbed to land near the target.
+ * Returns false when every projectile slot is in use.
+ */
+export function launchProjectile(w, s, type, t, mx, my, mz, targetY) {
+  const pool = w.ord.projectiles
+  let p = null
+  for (let i = 0; i < pool.length; i += 1) {
+    if (!pool[i].active) {
+      p = pool[i]
+      break
+    }
+  }
+  if (!p) return false
+  p.active = true
+  p.team = s.team
+  p.x = mx
+  p.y = my
+  p.z = mz
+  p.age = 0
+  p.radius = type.blast.radius
+  p.damage = type.blast.damage
+  p.shooter = s
+  p.shooterId = s.id
+  p.big = false
+  if (type.proj === 'shell') {
+    p.kind = 'shell'
+    p.grav = SHELL_GRAVITY
+    p.anti = 1.2
+    p.shell = true
+    const dist = Math.hypot(t.x - mx, t.z - mz)
+    const err = dist * type.scatter
+    // Lead a moving target a little.
+    const tx = t.x + t.vx * 1.2 + gauss() * err
+    const tz = t.z + t.vz * 1.2 + gauss() * err
+    const T = 2 + dist / 55
+    p.vx = (tx - mx) / T
+    p.vz = (tz - mz) / T
+    p.vy = (0.5 * SHELL_GRAVITY * T * T - my) / T
+    p.life = T + 2
+    emitSound(w.fx, 'mortar', mx, my, mz, 0)
+  } else {
+    p.kind = 'rocket'
+    p.grav = ROCKET_GRAVITY
+    p.anti = 3
+    p.shell = false
+    const dx = t.x - mx
+    const dz = t.z - mz
+    const dist = Math.max(1, Math.hypot(dx, dz))
+    const T = dist / type.projSpeed
+    const yaw = Math.atan2(dx, dz) + gauss() * type.spread
+    const pitch = Math.atan2(targetY - my + 0.5 * ROCKET_GRAVITY * T * T, dist) + gauss() * type.spread * 0.6
+    const cp = Math.cos(pitch)
+    p.vx = Math.sin(yaw) * cp * type.projSpeed
+    p.vy = Math.sin(pitch) * type.projSpeed
+    p.vz = Math.cos(yaw) * cp * type.projSpeed
+    p.life = (type.range * 1.4) / type.projSpeed
+    emitSound(w.fx, 'launch', mx, my, mz, 0)
+  }
+  const sp = Math.hypot(p.vx, p.vy, p.vz) || 1
+  emitFlash(w.fx, mx, my, mz, p.vx / sp, p.vy / sp, p.vz / sp, w.time, p.shell ? 1.3 : 1.6)
+  return true
+}
+
+function freeProjectile(w) {
+  const pool = w.ord.projectiles
+  for (let i = 0; i < pool.length; i += 1) if (!pool[i].active) return pool[i]
+  return null
+}
+
+/**
+ * A projectile from a vehicle gun or a strike, at the point (tx, ty, tz). `gun`:
+ * { kind: 'cannon' | 'rocket' | 'bomb', projSpeed, blast: { radius, damage, anti },
+ *   sound, big } - bombs also { fall (gravity), speed (the jet's) }.
+ */
+export function fireProjectile(w, team, shooter, mx, my, mz, tx, ty, tz, gun) {
+  const p = freeProjectile(w)
+  if (!p) return false
+  p.active = true
+  p.team = team
+  p.x = mx
+  p.y = my
+  p.z = mz
+  p.age = 0
+  p.radius = gun.blast.radius
+  p.damage = gun.blast.damage
+  p.anti = gun.blast.anti || 1
+  p.shooter = shooter
+  p.shooterId = shooter ? shooter.id : 0
+  p.big = Boolean(gun.big)
+  p.shell = false
+  if (gun.kind === 'bomb') {
+    p.kind = 'bomb'
+    p.grav = gun.fall
+    const T = Math.sqrt((2 * Math.max(0.5, my - ty)) / gun.fall)
+    p.vx = (tx - mx) / T
+    p.vz = (tz - mz) / T
+    p.vy = 0
+    p.life = T + 3
+    return true
+  }
+  p.kind = gun.kind === 'rocket' ? 'rocket' : 'cannon'
+  p.grav = ROCKET_GRAVITY
+  const dx = tx - mx
+  const dz = tz - mz
+  const dist = Math.max(1, Math.hypot(dx, dz))
+  const speed = gun.projSpeed
+  const T = dist / speed
+  const yaw = Math.atan2(dx, dz)
+  const pitch = Math.atan2(ty - my + 0.5 * ROCKET_GRAVITY * T * T, dist)
+  const cp = Math.cos(pitch)
+  p.vx = Math.sin(yaw) * cp * speed
+  p.vy = Math.sin(pitch) * speed
+  p.vz = Math.cos(yaw) * cp * speed
+  p.life = Math.max(2, (dist * 1.6) / speed)
+  emitFlash(w.fx, mx, my, mz, Math.sin(yaw) * cp, Math.sin(pitch), Math.cos(yaw) * cp, w.time, gun.big ? 2.4 : 1.4)
+  if (gun.sound === 'launch') emitSound(w.fx, 'launch', mx, my, mz, 0)
+  else emitSound(w.fx, 'shot', mx, my, mz, gun.sound)
+  return true
+}
+
+/**
+ * A spitter's gob of acid (zombies.js), lobbed from (mx, my, mz) to land on (tx, ty, tz):
+ * a high arc, so it drops onto troops behind a parapet. Splashes on what it hits.
+ */
+export function fireAcid(w, shooter, mx, my, mz, tx, ty, tz, sp) {
+  const p = freeProjectile(w)
+  if (!p) return false
+  const dist = Math.hypot(tx - mx, tz - mz)
+  const T = 0.55 + dist / 17
+  p.active = true
+  p.kind = 'acid'
+  p.team = shooter.team
+  p.x = mx
+  p.y = my
+  p.z = mz
+  p.age = 0
+  p.grav = ACID_GRAVITY
+  p.vx = (tx - mx) / T
+  p.vz = (tz - mz) / T
+  p.vy = (ty - my + 0.5 * ACID_GRAVITY * T * T) / T
+  p.life = T + 2
+  p.radius = sp.radius
+  p.damage = sp.damage
+  p.anti = 0.2
+  p.shooter = shooter
+  p.shooterId = shooter.id
+  p.big = false
+  p.shell = false
+  emitSound(w.fx, 'spit', mx, my, mz, 0)
+  return true
+}
+
+const ACID_GRAVITY = 9.8
+
+/** The floor at (x, z) for a falling gob: a standing rampart section, a raised floor, the ground. */
+function acidFloor(w, x, z) {
+  let f = w.levels ? floorAt(w.levels, x, z) : groundAt(w.terrain, x, z)
+  const seg = deckAt(w.rampart, x, z)
+  if (seg >= 0 && w.rampart.segs[seg].h > f) f = w.rampart.segs[seg].h
+  return f
+}
+
+/** Acid splashing at (x, y, z): burns the soldiers it lands on (no blast, no throw). */
+function acidSplash(w, p, x, y, z, attacker) {
+  emitImpact(w.fx, x, y + 0.05, z, 5, w.time)
+  emitSound(w.fx, 'splat', x, y, z, 0)
+  const enemies = w.teamLiving[1 - p.team]
+  for (let i = 0; i < enemies.length; i += 1) {
+    const s = enemies[i]
+    if (!s.alive || s.dropY > 0) continue
+    const dx = s.x - x
+    const dz = s.z - z
+    const dy = s.fy + 0.9 - y
+    const d = Math.sqrt(dx * dx + dz * dz + dy * dy * 0.4)
+    if (d > p.radius) continue
+    const k = 1 - d / p.radius
+    const hl = Math.hypot(dx, dz) || 1
+    blastHit(w, s, p.damage * (0.4 + 0.6 * k), dx / hl, dz / hl, 0.05, attacker)
+    emitImpact(w.fx, s.x, s.fy + 1.1, s.z, 5, w.time)
+  }
+  blastVehicles(w, x, y, z, p.radius, p.damage * 0.5, attacker, p.anti)
+}
+
+export function updateProjectiles(w, h) {
+  const pool = w.ord.projectiles
+  for (let i = 0; i < pool.length; i += 1) {
+    const p = pool[i]
+    if (!p.active) continue
+    const ox = p.x
+    const oy = p.y
+    const oz = p.z
+    p.vy -= p.grav * h
+    p.x += p.vx * h
+    p.y += p.vy * h
+    p.z += p.vz * h
+    p.age += h
+    // First thing hit along this step: cover, the ground, or (rockets) an enemy.
+    let tHit = segmentHit3D(w.obs, ox, oy, oz, p.x, p.y, p.z, 0)
+    // (On a map with terrain the ground is already in segmentHit3D.)
+    if (!w.terrain && p.y <= 0) {
+      const tg = oy / (oy - p.y)
+      if (tg < tHit) tHit = tg
+    }
+    // Acid lands on whatever floor it comes down on: the wall's walkway, a platform, the
+    // ground (the walkway's boxes don't stop things from above, so check it here).
+    if (p.kind === 'acid' && p.vy < 0) {
+      const f = acidFloor(w, p.x, p.z)
+      if (p.y <= f && oy > f) {
+        const tf = (oy - f) / (oy - p.y)
+        if (tf < tHit) tHit = tf
+      }
+    }
+    const direct = p.kind === 'rocket' || p.kind === 'cannon'
+    if (direct && tHit > 1) {
+      const enemies = w.teamLiving[1 - p.team]
+      for (let k = 0; k < enemies.length; k += 1) {
+        const e = enemies[k]
+        if (e.dropY > 0) continue
+        const dx = e.x - p.x
+        const dz = e.z - p.z
+        if (dx * dx + dz * dz < 0.36 && p.y < 1.9) {
+          tHit = 1
+          break
+        }
+      }
+    }
+    // Any projectile stops at an enemy vehicle (or aircraft) it flies into.
+    if (tHit > 1) {
+      const vehicles = w.veh.living[1 - p.team]
+      for (let k = 0; k < vehicles.length; k += 1) {
+        const v = vehicles[k]
+        const dx = v.x - p.x
+        const dy = v.y + v.aimH - p.y
+        const dz = v.z - p.z
+        const r = v.hitR + 0.3
+        if (dx * dx + dy * dy + dz * dz < r * r) {
+          tHit = 1
+          break
+        }
+      }
+    }
+    const expired = p.age > p.life || Math.abs(p.x) > w.obs.halfW + 40 || Math.abs(p.z) > w.obs.halfD + 40
+    if (tHit <= 1 || expired) {
+      const k = tHit <= 1 ? tHit : 1
+      const hx = ox + (p.x - ox) * k
+      const hy = Math.max(0.15, oy + (p.y - oy) * k)
+      const hz = oz + (p.z - oz) * k
+      const attacker = p.shooter && p.shooter.id === p.shooterId ? p.shooter : null
+      p.active = false
+      p.shooter = null
+      if (p.kind === 'acid') acidSplash(w, p, hx, hy, hz, attacker)
+      else explode(w, hx, hy, hz, p.radius, p.damage, attacker, p.anti)
+    }
+  }
+}
+
+// --- Explosions -------------------------------------------------------------------------
+
+/**
+ * A blast at (x, y, z): damages and throws every soldier within `radius` (any team),
+ * tosses bodies already down, and trips mines close by.
+ */
+export function explode(w, x, y, z, radius, damage, attacker, anti = 1) {
+  emitExplosion(w.fx, x, y, z, radius, w.time)
+  emitSound(w.fx, 'boom', x, y, z, radius)
+  for (let k = 0; k < 6; k += 1) {
+    const ix = x + gauss() * radius * 0.25
+    const iz = z + gauss() * radius * 0.25
+    emitImpact(w.fx, ix, groundAt(w.terrain, ix, iz) + 0.05, iz, 0, w.time)
+  }
+  emitImpact(w.fx, x, 0.4, z, 3, w.time)
+
+  const living = w.living
+  for (let i = 0; i < living.length; i += 1) {
+    const s = living[i]
+    if (!s.alive || s.dropY > 0) continue
+    const dx = s.x - x
+    const dz = s.z - z
+    const dy = 0.9 - y
+    const d = Math.sqrt(dx * dx + dz * dz + dy * dy * 0.5)
+    if (d > radius) continue
+    const k = 1 - d / radius
+    const covered = segmentHit3D(w.obs, x, y + 0.3, z, s.x, 0.9, s.z, 0) < 0.97
+    const dmg = (damage * k * k + 12 * k) * (covered ? 0.3 : 1)
+    const hl = Math.hypot(dx, dz) || 1
+    blastHit(w, s, dmg, dx / hl, dz / hl, covered ? k * 0.4 : k, attacker)
+  }
+
+  blastVehicles(w, x, y, z, radius, damage, attacker, anti)
+  blastStructures(w, x, y, z, radius, damage, anti)
+
+  // Bodies already lying here get thrown about again (within the ragdoll budget).
+  const bodies = w.bodies
+  for (let i = 0; i < bodies.length && w.ragdolls.length < w.caps.ragdolls; i += 1) {
+    const b = bodies[i]
+    if (b.ragActive || b.crumple || b.flinging || b.sinkT > 0) continue
+    const px = b.joints[J_PELVIS * 3]
+    const pz = b.joints[J_PELVIS * 3 + 2]
+    const dx = px - x
+    const dz = pz - z
+    const d = Math.hypot(dx, dz)
+    if (d > radius * 1.2) continue
+    const k = 1 - d / (radius * 1.2)
+    const hl = d || 1
+    startRagdoll(b, 0, 0, -1, (dx / hl) * 0.6, 0.8, (dz / hl) * 0.6, 8 + 18 * k)
+    w.ragdolls.push(b)
+  }
+
+  // Mines close by go off a moment later.
+  const mines = w.ord.mines
+  const reach2 = radius * 0.75 * (radius * 0.75)
+  for (let i = 0; i < mines.length; i += 1) {
+    const m = mines[i]
+    if (!m.active) continue
+    const dx = m.x - x
+    const dz = m.z - z
+    if (dx * dx + dz * dz < reach2) m.trip = true
+  }
+}
+
+// --- Mines ------------------------------------------------------------------------------
+
+const POS = { x: 0, z: 0 }
+
+/** Lays up to `count` mines for `team` in a small spiral round (x, z). */
+export function placeMines(w, team, x, z, count) {
+  const type = UNIT_TYPES.mine
+  const mines = w.ord.mines
+  let have = 0
+  for (const m of mines) if (m.active && m.team === team) have += 1
+  const room = type.max - have
+  if (room <= 0) return { spawned: 0, limited: `Max ${type.max} mines per team` }
+  const n = Math.min(count, room)
+  let spawned = 0
+  for (let i = 0; i < n; i += 1) {
+    let m = null
+    for (const c of mines) {
+      if (!c.active) {
+        m = c
+        break
+      }
+    }
+    if (!m) break
+    const a = i * 2.4
+    const r = 1.7 * Math.sqrt(i)
+    POS.x = Math.max(-w.obs.limitX, Math.min(w.obs.limitX, x + Math.sin(a) * r))
+    POS.z = Math.max(-w.obs.limitZ, Math.min(w.obs.limitZ, z + Math.cos(a) * r))
+    collideCircle(w.obs, POS, 0.3, true)
+    m.active = true
+    m.team = team
+    m.x = POS.x
+    m.z = POS.z
+    m.armT = MINE_ARM
+    m.trip = false
+    m.seed = rand() * 10
+    emitImpact(w.fx, m.x, groundAt(w.terrain, m.x, m.z) + 0.05, m.z, 3, w.time)
+    spawned += 1
+  }
+  if (spawned) emitSound(w.fx, 'reload', x, 0.2, z, 'mine')
+  return { spawned, limited: n < count ? `Max ${type.max} mines per team` : null }
+}
+
+export function updateMines(w, h) {
+  const mines = w.ord.mines
+  const blast = UNIT_TYPES.mine.blast
+  for (let i = 0; i < mines.length; i += 1) {
+    const m = mines[i]
+    if (!m.active) continue
+    let go = m.trip
+    if (!go) {
+      if (m.armT > 0) {
+        m.armT -= h
+        continue
+      }
+      const enemies = w.teamLiving[1 - m.team]
+      for (let k = 0; k < enemies.length; k += 1) {
+        const e = enemies[k]
+        if (e.dropY > 0) continue
+        const dx = e.x - m.x
+        const dz = e.z - m.z
+        if (dx * dx + dz * dz < MINE_TRIGGER * MINE_TRIGGER) {
+          go = true
+          break
+        }
+      }
+      if (!go) {
+        const vehicles = w.veh.living[1 - m.team]
+        for (let k = 0; k < vehicles.length; k += 1) {
+          const v = vehicles[k]
+          if (v.spec.air || v.dropY > 0) continue
+          const dx = v.x - m.x
+          const dz = v.z - m.z
+          const r = v.spec.radius + 0.2
+          if (dx * dx + dz * dz < r * r) {
+            go = true
+            break
+          }
+        }
+      }
+    }
+    if (go) {
+      m.active = false
+      explode(w, m.x, groundAt(w.terrain, m.x, m.z) + 0.15, m.z, blast.radius, blast.damage, null, 4)
+    }
+  }
+}
+
+// --- Fire -------------------------------------------------------------------------------
+
+let flameTick = 0
+
+/**
+ * One burst of flame from the muzzle along soldier `s`'s aim: sets alight every enemy
+ * in the cone who isn't behind a wall.
+ */
+export function flameBurst(w, s, type, mx, my, mz) {
+  const yaw = s.aimYaw + gauss() * 0.04
+  const len = type.range * (0.85 + rand() * 0.2)
+  const cp = Math.cos(s.aimPitch)
+  emitFlame(w.fx, mx, my, mz, Math.sin(yaw) * cp, Math.sin(s.aimPitch), Math.cos(yaw) * cp, len, w.time)
+  flameTick += 1
+  if (flameTick % 3 === 0) emitSound(w.fx, 'flame', mx, my, mz, 0)
+  const enemies = w.teamLiving[1 - s.team]
+  for (let i = 0; i < enemies.length; i += 1) {
+    const e = enemies[i]
+    if (e.dropY > 0) continue
+    const dx = e.x - s.x
+    const dz = e.z - s.z
+    const d = Math.hypot(dx, dz)
+    if (d > len + 0.4) continue
+    const off = Math.abs(wrapAngle(Math.atan2(dx, dz) - yaw))
+    if (off > 0.26 + 0.5 / (d + 1)) continue
+    if (segmentHit3D(w.obs, mx, 0.9, mz, e.x, 0.9, e.z, 0) < 0.95) continue
+    ignite(e, type.flame, s, type.interval)
+  }
+}
+
+/** Sets soldier `e` alight (or keeps them burning), with a first lick of damage. */
+export function ignite(e, flame, attacker, dt) {
+  e.burnT = Math.max(e.burnT, flame.burn)
+  e.burnDps = flame.dps
+  e.hp -= flame.dps * dt
+  e.hurtT = 0
+  e.suppress = 1
+  e.burnerSlot = attacker ? attacker.slot : -1
+  e.burnerId = attacker ? attacker.id : 0
+}
+
+// --- Medics -----------------------------------------------------------------------------
+
+/** How badly soldier `p` needs a medic: 0 not at all, higher is more urgent. */
+export function needsMedic(p) {
+  if (p.downed) return 3
+  if (p.burnT > 0) return 2.5
+  if (p.hp < p.maxHp * 0.7 || p.bleed > 0.6) return 1
+  return 0
+}
+
+/** How long a fallen soldier can still be brought back by a medic (seconds). */
+export const REVIVE_WINDOW = 30
+
+/**
+ * Whether fallen soldier `b` can still be revived by a medic of `team`: a teammate, dead
+ * a short while, lying still (not mid-ragdoll or sinking away), and not burned.
+ */
+export function canRevive(w, b, team) {
+  return Boolean(
+    b.used && !b.alive && b.team === team && !b.charred && b.sinkT === 0 && !b.ragActive && !b.crumple && !b.flinging && w.time - b.deadT < REVIVE_WINDOW && !UNIT_TYPES[b.type].zombieAI,
+  )
+}
+
+/** Where a patient is: a living one where he stands, a fallen one where his body lies. */
+export function patientPos(p, out) {
+  if (p.alive) {
+    out.x = p.x
+    out.z = p.z
+  } else {
+    out.x = p.joints[J_PELVIS * 3]
+    out.z = p.joints[J_PELVIS * 3 + 2]
+  }
+  return out
+}
+
+const PP = { x: 0, z: 0 }
+
+/** Whether another living medic is already on its way to `p`. */
+function claimed(w, p, medic) {
+  if (!p.medicId || p.medicId === medic.id) return false
+  const m = w.slots[p.medicSlot]
+  return Boolean(m && m.alive && m.id === p.medicId && m.patient === p)
+}
+
+/**
+ * The most urgent hurt teammate within `range` of medic `s` that no one's seeing to - or,
+ * with `bodies`, a fallen one he can still revive (just behind the downed in urgency).
+ */
+export function findPatient(w, s, range, bodies = false) {
+  const friends = w.teamLiving[s.team]
+  let best = null
+  let bestScore = Infinity
+  if (bodies) {
+    for (let i = 0; i < w.bodies.length; i += 1) {
+      const b = w.bodies[i]
+      if (!canRevive(w, b, s.team) || claimed(w, b, s)) continue
+      patientPos(b, PP)
+      const d = Math.hypot(PP.x - s.x, PP.z - s.z)
+      if (d > range) continue
+      const score = d - 2.8 * 12
+      if (score < bestScore) {
+        bestScore = score
+        best = b
+      }
+    }
+  }
+  for (let i = 0; i < friends.length; i += 1) {
+    const p = friends[i]
+    if (p === s || p.dropY > 0) continue
+    const need = needsMedic(p)
+    if (!need) continue
+    const d = Math.hypot(p.x - s.x, p.z - s.z)
+    if (d > range || claimed(w, p, s)) continue
+    const score = d - need * 12
+    if (score < bestScore) {
+      bestScore = score
+      best = p
+    }
+  }
+  return best
+}
+
+export function assignPatient(s, p) {
+  s.patient = p
+  s.patientId = p.id
+  s.healT = 0
+  s.dragging = false
+  s.dragDone = false
+  p.medicId = s.id
+  p.medicSlot = s.slot
+}
+
+export function clearPatient(s) {
+  const p = s.patient
+  if (p && p.medicId === s.id) {
+    p.medicId = 0
+    p.medicSlot = -1
+  }
+  s.patient = null
+  s.patientId = 0
+  s.healT = 0
+  s.dragging = false
+}
+
+/** Patches `p` up: health back, bleeding and fire out, back on their feet. */
+export function healPatient(w, p, medic) {
+  p.hp = Math.min(p.maxHp, p.hp + medic.heal)
+  p.bleed = 0
+  p.burnT = 0
+  p.legL = 0
+  p.legR = 0
+  p.armL = 0
+  p.armR = 0
+  p.staggerT = 0
+  if (p.downed) {
+    p.downed = false
+    p.downT = 0
+    p.goalMode = 0
+    p.hp = Math.max(p.hp, p.maxHp * 0.5)
+  }
+  emitSound(w.fx, 'heal', p.x, 1, p.z, 0)
+  w.version += 1
+}

@@ -25,7 +25,7 @@ export const MAX_TICKETS = 5
 
 let secret = null
 
-/** Set once by db.js from the database, before any room opens. */
+/** Set once at start-up (32+ characters), before any room opens; without one, no tickets. */
 export function setSaveTicketSecret(value) {
   secret = typeof value === 'string' && value.length >= 32 ? value : null
 }

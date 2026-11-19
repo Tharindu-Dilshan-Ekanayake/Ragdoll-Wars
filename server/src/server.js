@@ -1,37 +1,40 @@
 import cors from 'cors'
 import express from 'express'
-import { defineRoom, defineServer } from '@colyseus/core'
+import { defineRoom, defineServer, matchMaker } from '@colyseus/core'
 import { WebSocketTransport } from '@colyseus/ws-transport'
 
 import { resolveIdentity } from './bloxityApi.js'
 import { bloxity } from './bloxityEnv.js'
 import { startBloxityLeaderboards } from './bloxityLeaderboards.js'
-import { closeStorage, openStorage, storageKind } from './db.js'
-import { gemsWebhook, startGemsPoller } from './gems.js'
+import { openDb } from './db.js'
 import { installRoomReporter } from './legionRoomReporter.js'
-import { startLeaderboards } from './leaderboards.js'
-import { activePlayers } from './registry.js'
-import { GameRoom } from './rooms/GameRoom.js'
+import { BattleRoom } from './rooms/BattleRoom.js'
+import { ProfileRoom } from './rooms/ProfileRoom.js'
+
+/**
+ * Floppy Front's game server: Colyseus battle rooms (BattleRoom.js) running the game's
+ * own simulation, cloud saves and leaderboards (ProfileRoom.js, db.js), plus the HTTP
+ * endpoints Bloxity Legion and the SDK expect.
+ */
 
 // Bloxity Legion injects PORT (HTTP and WebSocket share it); 2567 is Colyseus's usual.
 const PORT = Number(process.env.PORT || 2567)
 
 /**
  * Browser origins allowed to call /api: Legion's CLIENT_ORIGIN (the game's site), the
- * Bloxity-hosted frontends (<game>.<play host> and its dev channel, the play host from
- * bloxityEnv.js), extra ones from CLIENT_ORIGINS, and Vite dev servers.
+ * Bloxity-hosted frontends (<game>.<play host> and its dev channel), extra ones from
+ * CLIENT_ORIGINS, and local Vite servers in development.
  */
 const ALLOWED_ORIGINS = [
   process.env.CLIENT_ORIGIN,
   bloxity.playHost && `https://${bloxity.gameId}.${bloxity.playHost}`,
   bloxity.playHost && `https://${bloxity.gameId}.dev.${bloxity.playHost}`,
   ...(process.env.CLIENT_ORIGINS || '').split(',').map((s) => s.trim()),
-  ...(process.env.NODE_ENV === 'production' ? [] : ['http://localhost:5173', 'http://localhost:5180', 'http://127.0.0.1:5180']),
+  ...(process.env.NODE_ENV === 'production' ? [] : ['http://localhost:5173', 'http://localhost:4173', 'http://127.0.0.1:4173', 'http://localhost:5180']),
 ].filter(Boolean)
 
-/** HTTP endpoints next to the Colyseus matchmaker on the same port. */
 function routes(app) {
-  // Legion's readiness and liveness probes. Answers at once, whatever else is going on.
+  // Legion's readiness and liveness probes.
   app.get('/health', (_req, res) => {
     res.json({ ok: true })
   })
@@ -41,13 +44,12 @@ function routes(app) {
 
   app.get('/api/health', (_req, res) => {
     // `game` lets a development client tell this server from another project's.
-    res.json({ ok: true, game: 'phone-plunge', players: activePlayers.size, db: storageKind() })
+    res.json({ ok: true, game: 'floppy-front' })
   })
 
   /**
-   * Auth passthrough for the Bloxity SDK: the frontend POSTs `{ token, user }` from
-   * `Legion.SDK.auth.authenticateWithServer('/api/legion-auth')`. The token is checked
-   * with Boxity, and the user comes from Boxity's answer, never from the body.
+   * Auth passthrough for the Bloxity SDK: `Legion.SDK.auth.authenticateWithServer`
+   * POSTs `{ token }`; the token is checked with Boxity, never trusted as is.
    */
   app.post('/api/legion-auth', async (req, res) => {
     const token = req.body?.token
@@ -60,42 +62,30 @@ function routes(app) {
       res.status(401).json({ error: 'Invalid token' })
     }
   })
-
-  /**
-   * Boxity Gems purchases (server to server): recorded here, applied by the pod the
-   * buyer plays on. See gems.js.
-   */
-  app.post('/api/gems/webhook', gemsWebhook)
 }
 
-await openStorage()
-
 const server = defineServer({
-  transport: new WebSocketTransport(),
+  // One sandbox save per message can be tens of KB (Colyseus' default cap is 4 KB).
+  transport: new WebSocketTransport({ maxPayload: 64 * 1024 }),
   rooms: {
-    game: defineRoom(GameRoom).enableRealtimeListing(),
+    // Quick match puts you with players in the same mode.
+    battle: defineRoom(BattleRoom).filterBy(['mode']).enableRealtimeListing(),
+    // Cloud saves and leaderboards: a room of one, opened by the game when needed.
+    profile: defineRoom(ProfileRoom),
   },
   express: routes,
   greet: false,
 })
 
 const stopTimers = []
-
-// SIGTERM (a deploy or scale-in) runs Colyseus' graceful shutdown: every room saves
-// and hands its players to another pod (GameRoom.onBeforeShutdown), then this.
 server.onShutdown(() => {
   for (const stop of stopTimers) stop()
-  return closeStorage()
 })
 
+// Open the save database up front, so a bad MONGODB_URI shows in the log at start-up.
+openDb().catch((err) => console.error('[db] could not open the save database', err?.message || err))
 await server.listen(PORT)
-// After listen: Boxity's "Open Rooms" list, fed from this pod (legionRoomReporter.js).
-stopTimers.push(startLeaderboards(), startBloxityLeaderboards(), startGemsPoller(), installRoomReporter())
-console.log(
-  `[server] listening on port ${PORT} (Boxity ${bloxity.env}, ${bloxity.apiUrl})` +
-    `${process.env.POD_NAME ? ` (${process.env.POD_NAME}, ${process.env.BLOXITY_CHANNEL})` : ''}`,
-)
-if (bloxity.hosted && !bloxity.apiUrl) {
-  // Boxity hosting injects it; without it nobody's sign-in can be checked.
-  console.error('[server] !!! BLOXITY_API_URL is not set: signed-in players will play as guests, and ad rewards and leaderboard reports are off.')
-}
+// Boxity's "Open Rooms" list, fed from this pod (battles only, not profile rooms).
+stopTimers.push(installRoomReporter({ query: () => matchMaker.query({ name: 'battle' }) }))
+stopTimers.push(startBloxityLeaderboards())
+console.log(`[server] Floppy Front listening on port ${PORT} (Boxity ${bloxity.env})${process.env.POD_NAME ? ` (${process.env.POD_NAME})` : ''}`)

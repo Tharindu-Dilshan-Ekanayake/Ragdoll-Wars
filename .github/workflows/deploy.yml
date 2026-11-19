@@ -1,9 +1,15 @@
-# Ships Phone Plunge to Bloxity Legion: the dev branch to the dev channel, main to prod.
+# Ships Floppy Front to Bloxity Legion: the dev branch to the dev channel, main to prod.
+#
+# The game is registered on Boxity Legion as `ragdoll-wars`. Before the first deploy add
+# the deploy token as a repository secret (below): never put it in a file in the repo.
 #
 #   server   -> Docker image in this repo's GitHub Container Registry, then Legion rolls
-#               it out behind its matchmaker (players reach it only through that)
-#   frontend -> the built client, served at https://1-phone-drop.play.bloxity.io
-#               (prod) and https://1-phone-drop.dev.play.bloxity.io (dev)
+#               it out behind its matchmaker: the multiplayer battle rooms (server/), which
+#               run the game's own simulation (client/src/battle/sim, copied in the image).
+#   frontend -> the built client, served at https://ragdoll-wars.play.bloxity.io
+#               (prod) and https://ragdoll-wars.dev.play.bloxity.io (dev). Single Player
+#               and Zombie Horde run entirely in the browser (no server needed); the
+#               backend only carries Multiplayer and cloud saves.
 #
 # Every push deploys to the production platform, and to the staging platform too once
 # its token exists. A manual run (Actions -> Run workflow) deploys any branch to the one
@@ -13,7 +19,7 @@
 #   LEGION_DEPLOY_TOKEN        production platform (required)
 #   LEGION_DEPLOY_TOKEN_STAGE  staging platform (optional; staging is skipped without it)
 # After the first run, make the ghcr.io package public so Legion can pull it
-# (repo -> Packages -> 1-phone-drop-server -> Package settings -> Change visibility).
+# (repo -> Packages -> ragdoll-wars-server -> Package settings -> Change visibility).
 #
 # One client build works on every platform: the Bloxity SDK and the server find their
 # own environment at runtime, so no URL or environment goes into the build.
@@ -32,10 +38,10 @@ on:
         default: staging
 
 env:
-  GAME_ID: 1-phone-drop
-  # Seats per pod: the Colyseus room's maxClients (GameRoom.js MAX_CLIENTS). When a pod
-  # fills to it, Legion's matchmaker starts another.
-  SEAT_CAP: 8
+  GAME_ID: ragdoll-wars
+  # Seats per pod: the battle room's maxClients (server/src/rooms/BattleRoom.js
+  # MAX_PLAYERS). When a pod fills to it, Legion's matchmaker starts another.
+  SEAT_CAP: 4
 
 concurrency:
   group: deploy-${{ github.ref_name }}

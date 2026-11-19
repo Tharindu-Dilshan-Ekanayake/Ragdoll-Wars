@@ -1,92 +1,66 @@
 ---
 canDie: false
-hasScore: true
+hasScore: false
 ---
 
-# Phone Plunge: Boxity integration
+# Floppy Front: Boxity integration
 
-The player cannot die: there is no death or game-over screen. You practise throwing on
-throw pads for Skill, walk to the DROP ZONE at the edge of the mountain-top lobby, hold DROP to charge
-the throw meter and let go: your phone falls through the clouds onto the hotel far below,
-smashes its glass roof and then floor after floor - more Skill smashes deeper, every
-metre pays Wins, and the meter (let go at the top of its wobble for PERFECT) adds up to
-x1.6 Wins and half as deep again. You always get another drop. Phones (24 kinds, bought
-with Wins) change how your phone looks and how much Skill each gain is worth.
+A ragdoll army sandbox. The player is a commander: from the Sea Fort lobby you deploy
+onto one of ten battlefields, drop soldiers, vehicles and fortifications for the Blue and
+Red teams, give orders and watch the battle play out with ragdoll physics - or walk the
+field as your own Boxity avatar. Zombie Horde is a 15-wave survival mode; multiplayer
+battles (sandbox and co-op Zombie Horde, up to four players) run on the game server.
 
-Built on the Phone Plunge template: inside the code the old names stay (`health` is
-Skill, a `tire` is a phone, a `pad` is a throw pad, a `roll` is a drop and a `zone` is a
-hotel floor), so saves and the server protocol are unchanged.
+## What runs where
+
+- Single-player battles run entirely in the browser.
+- The game server (`server/`, Colyseus on Bloxity Legion) runs multiplayer battles with
+  the game's own simulation, and keeps cloud saves and leaderboards (below).
+- Settings (graphics level, blood on/off, volume) are kept in localStorage.
+
+## Identity
+
+`VITE_GAME_SLUG` (default `floppy-front`) is passed to `Legion.SDK.init()`. A signed-in
+player's token goes with every server join and is verified there; their Boxity name is
+shown to other players and on the leaderboards.
+
+## Screen ads and lifecycle
+
+`ads.declareScreens({ panel: {}, gameplay: {} })` once after init. The client reports
+`gameplayStart` once the menu is up, then `ads.screen('panel')` while a modal panel is
+open (settings, help, confirmations) and `ads.screen('gameplay')` otherwise. Gameplay
+banners are **off** (no `show: true`).
+
+## Ad breaks
+
+`ads.onBreakStart` stops the canvas from drawing (R3F `frameloop: 'never'`), which also
+freezes the battle, and mutes audio until `ads.onBreakEnd`.
+
+## Portal settings
+
+`master_volume`, `music_volume` (the ambient wind), `graphics_quality` (never raises an
+auto-detected LOW device on the initial default), `show_fps`, `camera_sensitivity`,
+`background_transparency`, `fullscreen`.
+
+## Cloud saves
+
+Signed-in players' progress (Zombie Horde best wave and star badges, the leaderboard
+totals) and their sandbox saves are kept by the game server, not the SDK: the client
+opens a short-lived Colyseus `profile` room (`server/src/rooms/ProfileRoom.js`) with
+its Boxity token, which the server checks with `/v1/auth/game-token/verify`. Profiles
+live in the managed MongoDB (`MONGODB_URI`), or a SQLite file off hosting. Merging
+never loses progress (`client/src/shared/profile.js`). Guests keep everything in
+localStorage, as before.
 
 ## Leaderboards
 
-Scores are reported by the **game server**, never by the client
-(`server/src/bloxityLeaderboards.js`, `BLOXITY_LEADERBOARDS`). Every ~20 s and when a
-player leaves, each pod sends the changed scores of its verified players to
-`POST {api}/v1/leaderboards/hosted/{BLOXITY_GAME_ID}/report` as `legion_<userId>`.
+Four boards, declared with `leaderboard.define()` at init: `zombie_wave` (Best Zombie
+Wave), `zombie_kills` (Zombies Dropped), `battles` (Battles Fought), `playtime`
+(Minutes Played), all `best` mode. Scores come from the cloud profile: the server
+reports them (`/v1/leaderboards/hosted/{gameId}/report`, `BLOXITY_REPORT_TOKEN`) and
+the client also submits them through the SDK for signed-in players. The lobby's
+trophy button shows the game's own top-10 from the server's database.
 
-| Board      | Label            | Score                                | Format  |
-|------------|------------------|--------------------------------------|---------|
-| `rebirths` | Rebirths         | `profile.rebirths`                   | number  |
-| `wins`     | Total Wins       | `profile.stats.totalWins`            | compact |
-| `distance` | Deepest Drop (m) | `floor(profile.stats.bestDistance)`  | compact |
-| `playtime` | Minutes Played   | `floor(profile.stats.playtime / 60)` | number  |
+## Not used yet
 
-All four are `order: desc`, `mode: best`, `reset: none`.
-
-## Identity and saves
-
-- Signed in: the client sends the SDK's game token (only while `getUser()` is non-null);
-  the server verifies it with `POST {api}/v1/auth/game-token/verify` and saves under the
-  returned `user._id` only. Ids in the join options are ignored.
-- Guests (no token, a refused/expired token, or Boxity unreachable): the server makes the
-  id (`guest-<uuid>`) and sends the browser a **save ticket** - that id signed with a
-  per-database secret (`server/src/saveTickets.js`). The browser keeps its last 5 tickets
-  (`pp.saveTickets`) and shows them on every join, so a guest gets back into their own
-  save whatever the SDK's guest identity does. Forged or edited tickets are ignored.
-- Carry-over: an id with no save yet gets the first unused save among Boxity's
-  `carriedFrom` guest ids and the browser's ticketed guest saves, copied once.
-
-## Screen ads
-
-`ads.declareScreens({ panel: {}, gameplay: {} })` once after init; the client then calls
-`ads.screen('panel')` while a modal panel is open and `ads.screen('gameplay')` otherwise.
-Gameplay banners are **off** (no `show: true`); turning them on is the developer's call.
-
-## Gems purchases
-
-Boxity's purchase webhook goes to `POST /api/gems/webhook` on the game server. It is
-recorded in the database by `transactionId` (idempotent) and applied exactly once by
-the pod the buyer plays on. Unknown skus are answered 400 so Boxity refunds them.
-
-## Rewarded ads
-
-The client sends `adReward { placement, rewardToken }`; the server verifies the token
-with `POST {api}/v1/ads/reward/verify` before granting anything.
-
-## Open Rooms
-
-Each pod reports its rooms every 2 s to `POST {MATCHMAKER_REPORT_URL}/{BLOXITY_GAME_ID}/rooms`
-(`server/src/legionRoomReporter.js`, installed after `listen()`), so they show under
-"Open Rooms" on the game page. The client joins `?roomId=` at launch and falls back to
-normal matchmaking if that room is gone or full.
-
-## Avatars
-
-`client/src/game/PlayerAvatar.jsx` + `avatarRig.js` draw every slot: skin (with face,
-shirt and pants), body parts, hat + hair + mask on `Neck1`, back on `Spine2`, neck/chest
-on `Spine2` and waist on `Spine1` (rest-inverse placement), hands and shoes as mirrored
-pairs following the leaf bones' position and rotation only. A player wearing an uploaded
-character (`characterId`) gets its GLB via `avatar.getCharacter()` / `getCharacterFor()`,
-with accessories fitted by `characterAccessoryMatrix`; on any failure the regular avatar
-shows. Body proportions are applied by moving bones, so accessories follow them.
-
-## Server environment
-
-| Variable                | Purpose                                                       |
-|-------------------------|---------------------------------------------------------------|
-| `BLOXITY_REPORT_TOKEN`  | Token for leaderboard and room reports (none set = no reports) |
-| `MATCHMAKER_REPORT_URL` | Where the Open Rooms reporter posts (injected by Boxity hosting) |
-| `BLOXITY_GAME_ID`       | Hosted game id for reports (default `1-phone-drop`)              |
-| `LEGION_WEBHOOK_SECRET` | Must match the webhook's `x-legion-webhook-secret` header     |
-| `MONGODB_URI`           | Shared database for profiles, Gems grants and the save-ticket secret. Required when hosted: without it saves go to a file inside the pod and are lost on every redeploy (the server logs an error and `/api/health` shows `db: "sqlite"`) |
-| `BLOXITY_API_URL` etc.  | Platform URLs, injected by Boxity hosting; no defaults are written in code (`server/src/bloxityEnv.js`) |
+Chat bubbles, rewarded ads and Gems purchases.
