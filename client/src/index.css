@@ -1751,13 +1751,7 @@ button {
   height: 1.3em;
 }
 /* On a phone the stick and jump button need the bottom corners: while you walk the side
-   columns fold to their tabs (Hud.jsx) and, opened, stop short of the stick and jump. */
-@media (pointer: coarse), (max-width: 820px) {
-  .ff-hud.is-walking .ff-rail,
-  .ff-hud.is-walking .ff-actions {
-    max-height: max(96px, calc(100% - var(--side-top) - 150px));
-  }
-}
+   columns fold to their tabs (Hud.jsx); opened, they sit above the stick's zone. */
 .ff-walker-tag {
   pointer-events: none;
 }
@@ -2537,6 +2531,20 @@ button {
   /* Drawn over the walking stick's touch zone, so the Units button always takes the tap. */
   .ff-hud .ff-tray {
     z-index: 3;
+  }
+  /* Likewise the side columns: out walking, an opened one sits over the stick's zone and
+     its buttons (and fold tab) must take the taps, not the stick. */
+  .ff-hud .ff-rail,
+  .ff-hud .ff-actions {
+    z-index: 3;
+  }
+  .ff-hud .ff-rail > *,
+  .ff-hud .ff-actions > * {
+    flex-shrink: 0;
+  }
+  .ff-stick-zone,
+  .ff-jump {
+    z-index: 1;
   }
 }
 @media (pointer: coarse) and (orientation: landscape), (max-width: 820px) and (orientation: landscape) {

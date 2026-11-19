@@ -103,7 +103,14 @@ function isMobileDevice() {
   const ua = navigator.userAgent || ''
   if (/Android|iPhone|iPad|iPod|Mobile|Silk|Kindle/i.test(ua)) return true
   // iPadOS reports itself as a Mac; touch points give it away.
-  return navigator.maxTouchPoints > 1 && /Macintosh/.test(ua)
+  if (navigator.maxTouchPoints > 1 && /Macintosh/.test(ua)) return true
+  // "Desktop site" mode, an in-app browser or a webview can hide the user agent: a device
+  // with only a touch screen (no mouse or trackpad), or a touch screen the size of a phone
+  // or tablet, is still a phone.
+  const media = (q) => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(q).matches
+  if (media('(pointer: coarse)') && !media('(any-pointer: fine)')) return true
+  const side = typeof screen !== 'undefined' ? Math.min(screen.width || Infinity, screen.height || Infinity) : Infinity
+  return navigator.maxTouchPoints > 0 && side <= 820
 }
 
 function readSaved() {
