@@ -376,12 +376,22 @@ function buildTerrainGround(map, T) {
     for (let c = 0; c < NX; c += 1) {
       const x0 = -GROUND_W / 2 + c * cw
       const z0 = -GROUND_D / 2 + r * cd
-      // Split where the heightfield moves inside the battlefield (outside: as before).
+      // Split where the heightfield strays more than 15 cm from the flat quad between this
+      // cell's corners (a hill, a trench; not a gentle roll), inside the battlefield.
       let bumpy = false
       const inside = Math.abs(x0 + cw / 2) < map.width / 2 + 10 && Math.abs(z0 + cd / 2) < map.depth / 2 + 10
       if (inside) {
-        for (let k = 0; k <= SUB && !bumpy; k += 1) {
-          for (let m = 0; m <= SUB && !bumpy; m += 1) if (Math.abs(groundAt(T, x0 + (k / SUB) * cw, z0 + (m / SUB) * cd)) > 0.03) bumpy = true
+        const h00 = groundAt(T, x0, z0)
+        const h10 = groundAt(T, x0 + cw, z0)
+        const h01 = groundAt(T, x0, z0 + cd)
+        const h11 = groundAt(T, x0 + cw, z0 + cd)
+        for (let k = 0; k <= 4 && !bumpy; k += 1) {
+          for (let m = 0; m <= 4 && !bumpy; m += 1) {
+            const u = k / 4
+            const v = m / 4
+            const flat = h00 * (1 - u) * (1 - v) + h10 * u * (1 - v) + h01 * (1 - u) * v + h11 * u * v
+            if (Math.abs(groundAt(T, x0 + u * cw, z0 + v * cd) - flat) > 0.15) bumpy = true
+          }
         }
       }
       if (bumpy) {

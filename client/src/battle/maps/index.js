@@ -49,7 +49,7 @@ export const MAPS = [
     id: 'jungle',
     name: 'Monsoon Outpost',
     blurb: 'Jungle stockades of stilt huts either side of a misty river crossed only at a plank bridge, a rope footbridge and a ford; temple ruins and thick jungle between.',
-    size: '170 × 110 m',
+    size: '220 × 140 m',
     load: () => import('./monsoonOutpost.js'),
   },
   {
