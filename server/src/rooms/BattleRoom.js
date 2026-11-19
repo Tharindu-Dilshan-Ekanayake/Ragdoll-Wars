@@ -110,13 +110,15 @@ export class BattleRoom extends Room {
     }
     this.enc = createEncoder(this.w)
     this.code = null
-    // Private rooms wait for the host's Start; quick match ones are under way at once.
-    this.started = !options.private
-    if (options.private) {
+    // Rooms made on purpose wait for the host's Start; quick match ones are under way at
+    // once. A private one is for friends with the code; a listed one (`listed`) shows
+    // under "Open Rooms" on the game's Boxity page for anyone to join.
+    this.started = !options.private && !options.listed
+    if (options.private || options.listed) {
       // A short code friends can read out instead of the long generated id.
       this.roomId = makeCode()
       this.code = this.roomId
-      await this.setPrivate(true)
+      if (options.private) await this.setPrivate(true)
     }
     await this.setMetadata({ mode: this.mode, mapId: this.mapId, code: this.code, started: this.started, max: this.maxClients })
     this.setSimulationInterval((dt) => this.tick(dt), 1000 / SIM_HZ)
