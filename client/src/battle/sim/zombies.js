@@ -5,7 +5,6 @@ import { UNIT_TYPES } from './units.js'
 import { damageVehicle } from './vehicles.js'
 import { fireAcid } from './ordnance.js'
 import { segmentHit3D } from './obstacles.js'
-import { collideCircle } from './obstacles.js'
 import { meleeHit, rebuildStatic, removeSoldier, spawnOne } from './world.js'
 import { clampToDeck, rampartHealth, segAt } from './rampart.js'
 import { cellIndex, reachableFrom } from './nav.js'
@@ -23,16 +22,13 @@ import { cellIndex, reachableFrom } from './nav.js'
  * behemoths lead waves 10, 15 and 18, and the last wave is a horde of the big ones.
  *
  * On a map with a rampart (Mirefall Bastion) the wall is what you defend: your troops
- * stand up on it and the zombies can't reach them, so they pile up at its foot and batter
- * the section in front of them. A section battered to nothing falls - with whoever stood
- * on it - and the horde pours through the gap; one that gets right through to the camp
- * wrecks more of the wall. When the whole wall is down, it's over. Cleared waves patch
- * it up (a little) and rebuild what fell (at a quarter).
- *
- * Zombies that reach the wall's foot may climb it instead of battering it: up the face in
- * a few seconds, then over the parapet onto the walkway to fight the troops there - who
- * shoot back (a section holds only so many at once). Bats fly in over the wall and go for
- * the troops on top. The horde spawns far out: you watch it come.
+ * stand up on it and the zombies can't reach them - they never climb it and never get
+ * past it. They pile up at its foot and batter the section in front of them; a section
+ * battered to nothing falls (with whoever stood on it) and they move on to the next one
+ * still standing. Bring the whole wall down and they've won. Cleared waves patch it up
+ * (a little) and rebuild what fell (at a quarter). Spitters stand off out in the marsh
+ * and lob acid up onto the walkway - it splashes, and it hurts. Bats fly in over the wall
+ * and go for the troops on top. The horde spawns far out: you watch it come.
  *
  * Zombies are team 1 soldiers with a zombie type, so everything else - bullets, fire,
  * blasts, ragdolls, the renderer - just works on them. Only so many are alive at once
@@ -50,10 +46,6 @@ const WALL_BASH = 2.4
 const BREACH_WALL = 1200
 /** Zombies get tougher as the waves go on: this much more health per wave. */
 const HP_PER_WAVE = 0.06
-/** Seconds a walker takes to climb the wall (bigger ones take longer). */
-const CLIMB_TIME = 3.4
-/** Most zombies climbing or up on one section of the wall at a time. */
-const MAX_UP = 5
 /** The height of a bat's middle above its `fy` (so soldiers aim at it, not under it). */
 export const BAT_LIFT = 1.0
 /** Share of a zombie's listed bounty you actually get. */
@@ -139,7 +131,7 @@ function composeWave(n) {
   const runners = n >= 2 ? (n - 1) * 3 : 0
   // The big ones come only at the end: a few brutes late on, the behemoths in the last wave.
   const brutes = (n >= 12 ? Math.floor((n - 10) / 2) : 0) + (n >= 19 ? 3 : 0)
-  const spitters = n >= 3 ? Math.min(14, Math.floor(n / 2) + 1) : 0
+  const spitters = n >= 2 ? Math.min(14, Math.floor(n / 2) + 1) : 0
   const bats = n >= 5 ? Math.min(16, n - 3) : 0
   for (let i = 0; i < walkers; i += 1) out.push('zombie')
   // Runners, spitters, bats and brutes mixed in through the rest of the wave.
@@ -176,9 +168,12 @@ export function restartZombies(w) {
 
 // --- The rampart ------------------------------------------------------------------------
 
-/** A blow to a rampart section; it falls when it's had enough. */
+/**
+ * A blow to a rampart section; it falls when it's had enough. The first waves hit softer
+ * (under half on wave 1, full strength from wave 10), so a new player's thin line holds.
+ */
 function hitWall(w, seg, dmg, s) {
-  seg.hp -= dmg * WALL_BASH
+  seg.hp -= dmg * WALL_BASH * Math.min(1, 0.4 + 0.06 * w.zmode.wave)
   const r = w.rampart
   emitImpact(w.fx, r.front + 0.05, 0.4 + rand() * 2.6, s.z + (rand() - 0.5) * 0.8, 2, w.time)
   if (rand() < 0.35) emitSound(w.fx, 'thud', r.front, 1.5, s.z, 0)
@@ -300,8 +295,7 @@ function spawnZombie(w, key) {
   s.dropY = 0
   s.scale = 1
   s.thinkT = rand() * 0.3
-  // Some walk up to the wall to climb it, the rest batter it; bats are up in the air.
-  s.climber = rand() < (UNIT_TYPES[key].zombieAI.climb || 0)
+  // Bats are up in the air.
   if (flying) {
     s.fy = 4.5 + rand() * 3 - BAT_LIFT
     s.vx = -3
@@ -439,11 +433,14 @@ function spit(w, s, sp, h) {
 }
 
 /** The fallen rampart section nearest z, or null. */
-function nearestGap(r, z) {
+/** The section of wall to batter from `z`: the one there if it's standing, else the nearest that is. */
+function nearestStanding(r, z) {
+  const here = segAt(r, z)
+  if (here && here.up) return here
   let best = null
   let bestD = Infinity
   for (const seg of r.segs) {
-    if (seg.up) continue
+    if (!seg.up) continue
     const d = Math.abs((seg.fz0 + seg.fz1) / 2 - z)
     if (d < bestD) {
       bestD = d
@@ -486,62 +483,6 @@ function nearestPrey(w, s) {
  * there's nobody), hit it when in reach, bash through anything built in the way.
  * Returns the goal for `move` via the soldier's own fields.
  */
-/** How many zombies are climbing section `i` or up on it. */
-function upOn(w, i) {
-  let n = 0
-  const zs = w.teamLiving[1]
-  for (let k = 0; k < zs.length; k += 1) {
-    const z = zs[k]
-    if (z.alive && (z.deck === i || (z.climbT >= 0 && z.climbSeg === i))) n += 1
-  }
-  return n
-}
-
-/** A zombie scaling the wall: up the face, then over the parapet onto the walkway. */
-function climbStep(w, s, type, h) {
-  const r = w.rampart
-  const seg = r && r.segs[s.climbSeg]
-  s.goalMode = 0
-  s.target = null
-  if (!seg || !seg.up) {
-    // The section went (or there's no wall): back down.
-    s.climbT = -1
-    s.fy = 0
-    return
-  }
-  s.climbT += h
-  const p = Math.min(1, s.climbT / (CLIMB_TIME * (type.size || 1)))
-  s.fy = seg.h * p
-  s.x += (r.front + 0.4 - s.x) * Math.min(1, h * 6)
-  s.yaw += wrapAngle(-Math.PI / 2 - s.yaw) * Math.min(1, h * 8)
-  s.ready = 1
-  if (p < 1) return
-  // Over the top.
-  s.climbT = -1
-  s.deck = seg.i
-  s.fy = seg.h
-  s.wallSeg = -1
-  s.deckIdle = 0
-  s.thinkT = 0
-  s.x = r.front - 1.1
-  s.z = Math.max(seg.fz0 + 0.8, Math.min(seg.fz1 - 0.8, s.z))
-  emitImpact(w.fx, s.x, seg.h + 0.1, s.z, 3, w.time)
-}
-
-/** Nobody left to fight up here: down behind the wall and on for the camp. */
-function dropBehind(w, s) {
-  const r = w.rampart
-  const seg = r.segs[s.deck]
-  s.deck = -1
-  s.dropY = seg ? seg.h : 4.5
-  s.dropV = 0
-  s.fy = 0
-  s.x = r.back - 1.4
-  s.z = Math.max(-w.obs.limitZ + 1, Math.min(w.obs.limitZ - 1, s.z))
-  collideCircle(w.obs, s, 0.35)
-  s.goalMode = 1
-}
-
 /**
  * A bat: flies over everything at the troops, the ones up on the wall first. Cruises high
  * and weaving, dives to bite (then flits off a moment before coming back). Ignores walls;
@@ -615,11 +556,9 @@ export function batStep(w, s, type, h) {
 
 export function zombieStep(w, s, type, h) {
   const ai = type.zombieAI
-  // Going up the wall face.
-  if (s.climbT >= 0) {
-    climbStep(w, s, type, h)
-    return
-  }
+  const r = w.rampart
+  // The wall's as far as they ever get: one shoved through a gap by the crush goes back out.
+  if (r && s.x < r.back) s.x = r.back
   s.thinkT -= h
   if (s.thinkT <= 0) {
     s.thinkT = 0.3 + rand() * 0.25
@@ -628,36 +567,17 @@ export function zombieStep(w, s, type, h) {
     s.goalX = prey ? prey.x : -w.obs.limitX - 6
     s.goalZ = prey ? prey.z : s.z
     s.wallSeg = -1
-    const r = w.rampart
-    // Through the wall and chasing someone it can't get at for a long while (round the
-    // camp, under the wall where the troops on top can't shoot it): on for the camp itself.
-    if (r && s.x < r.back && prey) {
-      if (!s.behindAt) s.behindAt = w.time
-      if (w.time - s.behindAt > 40) {
-        prey = null
-        s.goalX = -w.obs.limitX - 6
-        s.goalZ = s.z
-      }
-    } else s.behindAt = 0
-    // Up on the wall: fight whoever's up here; with nobody, hop down behind it.
-    if (r && s.deck >= 0) {
-      s.deckIdle = prey ? 0 : s.deckIdle + 0.4
-      if (s.deckIdle > 6) dropBehind(w, s)
-    }
-    if (r && s.deck < 0 && s.x > r.back - 0.5) {
-      // Still out in front of the wall: only what's out here too can be reached.
-      if (prey && prey.x < r.front + 0.5) prey = null
+    if (r) {
+      // In front of the wall is all they can get at: anyone out here (or down in the
+      // rubble of a fallen section) - else the nearest section still standing, to batter.
+      if (prey && prey.x < r.back) prey = null
       if (!prey) {
-        const seg = segAt(r, s.z)
-        const gap = nearestGap(r, s.z)
-        // Some of them make for a gap when there is one; the rest pound their bit.
-        if (seg && seg.up && !(gap && (s.seed * 0.137) % 1 < 0.55)) {
+        const seg = nearestStanding(r, s.z)
+        s.goalX = r.front + 0.5
+        s.goalZ = s.z
+        if (seg) {
           s.wallSeg = seg.i
-          s.goalX = r.front + 0.5
           s.goalZ = Math.max(seg.fz0 + 0.8, Math.min(seg.fz1 - 0.8, s.z))
-        } else if (gap) {
-          s.goalX = r.back - 4
-          s.goalZ = Math.max(gap.fz0 + 1.2, Math.min(gap.fz1 - 1.2, s.z))
         }
       }
     }
@@ -698,20 +618,10 @@ export function zombieStep(w, s, type, h) {
   }
   // At the foot of the rampart: batter it.
   if (s.wallSeg >= 0 && !s.target) {
-    const r = w.rampart
     const seg = r.segs[s.wallSeg]
     if (!seg.up) s.wallSeg = -1
     else if (s.x > r.front - 1 && s.x - r.front < ai.reach * (type.size || 1) * 0.6 + 0.9) {
       s.goalMode = 0
-      // Up it, if this one climbs and the section's top isn't full already.
-      if (s.climber && w.time > s.climbWait) {
-        if (upOn(w, seg.i) < MAX_UP) {
-          s.climbT = 0
-          s.climbSeg = seg.i
-          return
-        }
-        s.climbWait = w.time + 1.5
-      }
       s.yaw += wrapAngle(-Math.PI / 2 - s.yaw) * Math.min(1, h * 8)
       if (s.fireT <= 0) {
         s.fireT = ai.interval * (0.85 + rand() * 0.3)
