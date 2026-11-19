@@ -141,6 +141,7 @@ export async function serverEndpoint() {
 /**
  * Joins a battle. `how`:
  *   { kind: 'quick', mode }                      any open room of that mode, else a new one
+ *   (each also takes `team`: 0 Blue, 1 Red, the side to start on)
  *   { kind: 'private', mode, mapId }             a new private room (shows a code)
  *   { kind: 'code', code }                       a friend's room by its code
  * `name` is shown to the other players (a signed-in player's Boxity name wins).
@@ -159,7 +160,8 @@ export async function joinBattle(how, name) {
     const client = new Client(endpoint)
     // What you wear, so the others can draw your avatar when you go walking.
     const { equipped, proportions } = getBloxityState()
-    const options = { name, token: joinToken(), gameSlug: GAME_SLUG, avatar: { e: equipped || null, p: proportions } }
+    // `team`: the side you picked (0 Blue, 1 Red); without one the server balances.
+    const options = { name, token: joinToken(), gameSlug: GAME_SLUG, avatar: { e: equipped || null, p: proportions }, team: how.team === 0 || how.team === 1 ? how.team : undefined }
     let room
     if (how.kind === 'code') room = await client.joinById(parseCode(how.code), options)
     else if (how.kind === 'private') room = await client.create('battle', { ...options, mode: how.mode, mapId: how.mapId, private: true })

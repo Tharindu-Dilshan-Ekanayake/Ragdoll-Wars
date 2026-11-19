@@ -2381,3 +2381,38 @@ button {
     --side-top: 206px;
   }
 }
+
+/* --- Multiplayer popup: your side, create a room, enter a code ---------------------- */
+.ff-mp__card--wide {
+  grid-column: 1 / -1;
+}
+.ff-mp__sides {
+  display: flex;
+  gap: calc(var(--u) * 8);
+}
+.ff-mp__side {
+  flex: 1;
+  gap: 8px;
+  min-height: 44px;
+  font-size: calc(var(--u) * 17);
+}
+.ff-mp__sidedot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+}
+.ff-mp__side--0 .ff-mp__sidedot {
+  background: #3d8bff;
+}
+.ff-mp__side--1 .ff-mp__sidedot {
+  background: #ff4d4d;
+}
+.ff-mp__side--0.is-on {
+  box-shadow: inset 0 0 0 2px #3d8bff;
+}
+.ff-mp__side--1.is-on {
+  box-shadow: inset 0 0 0 2px #ff4d4d;
+}
+.ff-mp__quick .ff-mp__row {
+  margin-top: 0;
+}

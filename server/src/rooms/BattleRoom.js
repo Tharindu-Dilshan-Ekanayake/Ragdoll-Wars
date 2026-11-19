@@ -121,7 +121,9 @@ export class BattleRoom extends Room {
   }
 
   onJoin(client, options, auth) {
-    const team = this.mode === 'zombies' ? 0 : this.emptierTeam()
+    // The side they asked for (sandbox); none asked, the emptier one.
+    const asked = options?.team === 0 || options?.team === 1 ? options.team : null
+    const team = this.mode === 'zombies' ? 0 : asked ?? this.emptierTeam()
     const host = ![...this.players.values()].some((p) => p.host)
     this.players.set(client.sessionId, {
       name: auth?.name || 'Commander',

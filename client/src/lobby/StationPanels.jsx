@@ -207,68 +207,109 @@ function ZombiePanel() {
   )
 }
 
+/** Blue or Red: which army you'll build in the battle. */
+function SidePick({ team, setTeam }) {
+  return (
+    <div className="ff-seg ff-mp__sides" role="group" aria-label="Your side">
+      {[
+        [0, 'Blue'],
+        [1, 'Red'],
+      ].map(([id, label]) => (
+        <button
+          type="button"
+          key={id}
+          className={`ff-chip ff-mp__side ff-mp__side--${id} ${team === id ? 'is-on' : ''}`}
+          onClick={() => {
+            setTeam(id)
+            sfx.toggle()
+          }}
+        >
+          <span className="ff-mp__sidedot" />
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function MultiplayerPanel() {
   const { identity } = useBloxity()
   const status = useNet((s) => s.status)
   const message = useNet((s) => s.message)
   const [mapId, setMapId] = useState(MAPS[0].id)
   const [mode, setMode] = useState('sandbox')
+  const [team, setTeam] = useState(0)
   const [code, setCode] = useState('')
   const name = identity?.displayName || identity?.username || 'Commander'
   const busy = status === 'connecting'
+  const zombies = mode === 'zombies'
   const go = (how) => {
     sfx.click()
-    joinBattle(how, name)
+    joinBattle({ ...how, team }, name)
   }
   return (
     <div className="ff-mp">
-      <section className="ff-mp__card">
-        <h3>Quick match</h3>
-        <p>Jump into an open battle with other players, or start one they can join.</p>
-        <div className="ff-mp__row">
-          <button type="button" className="ff-btn ff-btn--accent" disabled={busy} onClick={() => go({ kind: 'quick', mode: 'sandbox' })}>
-            Sandbox battle
-          </button>
-          <button type="button" className="ff-btn ff-btn--accent" disabled={busy} onClick={() => go({ kind: 'quick', mode: 'zombies' })}>
-            Co-op Zombie Horde
-          </button>
-        </div>
+      <section className="ff-mp__card ff-mp__card--wide">
+        <h3>Your side</h3>
+        <p>Pick Blue or Red, then build your own army in the battle. You can switch side there too. (Zombie Horde: everyone fights together on one side.)</p>
+        <SidePick team={team} setTeam={setTeam} />
       </section>
       <section className="ff-mp__card">
-        <h3>Private battle</h3>
-        <p>Start a battle only friends with the code can join (up to 4 players).</p>
-        <div className="ff-mp__row">
-          <select className="ff-select" value={mode} onChange={(e) => setMode(e.target.value)} aria-label="Mode">
-            <option value="sandbox">Sandbox battle</option>
-            <option value="zombies">Co-op Zombie Horde</option>
+        <h3>Create a room</h3>
+        <p>You get a room code to send to your friends: up to 4 players. You choose the mode and the map.</p>
+        <div className="ff-seg">
+          {[
+            ['sandbox', 'Sandbox battle'],
+            ['zombies', 'Co-op Zombie Horde'],
+          ].map(([id, label]) => (
+            <button type="button" key={id} className={`ff-chip ${mode === id ? 'is-on' : ''}`} onClick={() => setMode(id)}>
+              {label}
+            </button>
+          ))}
+        </div>
+        {zombies ? (
+          <p>Map: {ZOMBIE_MAP.name} · {ZOMBIE_MAP.size}</p>
+        ) : (
+          <select className="ff-select" value={mapId} onChange={(e) => setMapId(e.target.value)} aria-label="Map">
+            {MAPS.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name} · {m.size}
+              </option>
+            ))}
           </select>
-          {mode === 'sandbox' && (
-            <select className="ff-select" value={mapId} onChange={(e) => setMapId(e.target.value)} aria-label="Map">
-              {MAPS.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
-          )}
-          <button type="button" className="ff-btn" disabled={busy} onClick={() => go({ kind: 'private', mode, mapId })}>
-            Create
+        )}
+        <div className="ff-mp__row">
+          <button type="button" className="ff-btn ff-btn--accent" disabled={busy} onClick={() => go({ kind: 'private', mode, mapId })}>
+            Create room
           </button>
         </div>
       </section>
       <section className="ff-mp__card">
-        <h3>Join a friend</h3>
+        <h3>Enter a room code</h3>
+        <p>Got a code (or an invite link) from a friend? Put it in and you join their battle.</p>
         <div className="ff-mp__row">
           <input
             className="ff-input"
             value={code}
             maxLength={200}
-            placeholder="Battle code or invite link"
+            placeholder="Room code or invite link"
             onChange={(e) => setCode(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && parseCode(code) && go({ kind: 'code', code })}
           />
-          <button type="button" className="ff-btn" disabled={busy || !parseCode(code)} onClick={() => go({ kind: 'code', code })}>
-            Join
+          <button type="button" className="ff-btn ff-btn--accent" disabled={busy || !parseCode(code)} onClick={() => go({ kind: 'code', code })}>
+            Join room
+          </button>
+        </div>
+      </section>
+      <section className="ff-mp__card ff-mp__card--wide ff-mp__quick">
+        <h3>Or just play</h3>
+        <p>Jump into any open battle with other players (or start one they can join).</p>
+        <div className="ff-mp__row">
+          <button type="button" className="ff-btn" disabled={busy} onClick={() => go({ kind: 'quick', mode: 'sandbox' })}>
+            Quick sandbox
+          </button>
+          <button type="button" className="ff-btn" disabled={busy} onClick={() => go({ kind: 'quick', mode: 'zombies' })}>
+            Quick Zombie Horde
           </button>
         </div>
       </section>
