@@ -178,7 +178,7 @@ function ZombiePanel() {
         bounty, every wave cleared pays a bonus and patches the wall. Bring the whole wall down and they win.
       </p>
       <ul>
-        <li>Click the top of the rampart to place troops on it; walk up the stairs yourself</li>
+        <li>Click the top of the rampart to place troops on it, or the ground up to 20 m out in front of it (the red line); walk up the stairs yourself</li>
         <li>Spread your troops along the whole wall: the horde batters wherever nobody's shooting</li>
         <li>Walkers, fast Runners, hulking Brutes - and a giant Behemoth on waves 10 and 15</li>
         <li>Start with $500; machine guns, rockets and mortars on the wall are your friends</li>

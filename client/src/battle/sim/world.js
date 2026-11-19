@@ -2031,7 +2031,7 @@ function animStep(s, h) {
 // --- Commands (from the HUD / input) -------------------------------------------------
 
 /** How far in front of the wall you can put anything down in Zombie Horde (m). */
-export const WALL_REACH = 10
+export const WALL_REACH = 20
 
 /** Living soldiers of `team` (not counting ones still dropping in). */
 const teamCount = (w, team) => w.slots.reduce((n, s) => n + (s.used && s.alive && s.team === team ? 1 : 0), 0)
