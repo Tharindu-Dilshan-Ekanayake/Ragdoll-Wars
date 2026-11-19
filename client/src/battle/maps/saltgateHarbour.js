@@ -41,19 +41,18 @@ const WEST = [
   box('crate', -70, 4, 1.25, 1.25, 2.5),
   // Cover on the quay.
   box('barrier', -40, -22, 2.6, 0.7),
-  box('barrier', -10, -22, 2.6, 0.7),
+  box('barrier', -12.5, -22, 2.6, 0.7),
 ]
 
 const WEST_PIECES = [
   ['sandwall', -82, 6, 0],
   ['sandwall', -79.5, 6, 0],
   ['tower', -68, 36],
-  ['helipad', -76, -4],
   ['floodlight', -66, 18],
   ['ammocrate', -70, 10],
   ['pipes', -40, 8],
-  ['drum', -30, 22],
-  ['drum', -31, 22.6],
+  ['drum', -30, 24.5],
+  ['drum', -31, 25.1],
 ]
 
 const WEST_SETS = [
@@ -67,7 +66,7 @@ const WEST_SETS = [
   ['truck', -41, -6, 0],
   ['truck', -14, -8, 2],
   // Rail line and wagons.
-  ['rail', -42, 21, 0, { len: 86 }],
+  ['rail', -55, 21, 0, { len: 110 }],
   ['railcar', -60, 21, 0, { seed: 0.1 }],
   ['railcar', -46, 21, 0, { type: 'tanker' }],
   ['railcar', -32, 21, 0, { seed: 0.7 }],
@@ -86,48 +85,87 @@ const CENTRE_SETS = [
   ['lamp', 2, 26, 0],
 ]
 
-const { obstacles, pieces } = mirrored(WEST, WEST_PIECES, [box('container', 0, 4, 2.5, 6.1, 5.2, 1)], [['pipes', 0, -10]])
+// --- The bigger port (220 x 130) ---------------------------------------------------
+// The camp moves 25 m back; the quay, basins and ships 10 m south (the apron between is
+// new paving), the rail yard and warehouses 10 m north. The ground opened up behind the
+// terminal gets a customs house and a dockers' shed you can fight through.
+const fx = (x) => (x < -64 ? x - 25 : x)
+const fz = (z) => (z > 26 ? z + 10 : z < -20 ? z - 10 : z)
+const mv = (o) => ({ ...o, x: fx(o.x), z: fz(o.z) })
+const mvPiece = ([k, x, z, r]) => [k, fx(x), fz(z), r]
+// South-side sets keep their x (the basins and quay are stretched to the new edge instead).
+const mvSet = ([k, x, z, r, o]) => [k, z < -20 ? x : fx(x), fz(z), r, o]
+
+const NEW_WEST = [
+  box('container', -82, -14, 6.1, 2.5, 5.2, 4),
+  box('container', -82, -11.4, 6.1, 2.5, 2.6, 1),
+  box('crate', -74, 4, 1.25, 1.25, 2.5),
+  box('crate', -75.35, 4, 1.25, 1.25),
+  box('barrier', -68, -20, 2.6, 0.7),
+  box('barrier', -88, -20, 2.6, 0.7),
+  box('sandbag', -70, 22, 3, 0.9),
+]
+const NEW_PIECES = [
+  ['drum', -86, -4],
+  ['drum', -86.8, -3.4],
+  ['floodlight', -70, -4],
+]
+const NEW_SETS = [
+  ['bldg', -78, -3, 0, { w: 12, d: 8, doors: [['n', 3], ['e', 0]], color: '#c9c4b8' }],
+  ['bldg', -79, 13, 0, { w: 9, d: 6, doors: [['e', 0], ['s', -2]], split: null, color: '#b9b2a2' }],
+  ['forklift', -71, -12, 0, { color: '#d8a22c', flip: true }],
+  ['pallets', -86, 3, 0],
+  ['truck', -88, 26, 0, { color: '#3f6b9a', flip: true }],
+]
+
+const WEST_ALL = [...WEST.map(mv), ...NEW_WEST]
+const WEST_PIECES_ALL = [...WEST_PIECES.map(mvPiece), ...NEW_PIECES]
+const WEST_SETS_ALL = [...WEST_SETS.map(mvSet), ...NEW_SETS]
+
+const { obstacles, pieces } = mirrored(WEST_ALL, WEST_PIECES_ALL, [box('container', 0, 4, 2.5, 6.1, 5.2, 1)], [['pipes', 0, -10]])
 
 const WEST_PADS = [
-  { x: -42.5, z: -26, w: 85, d: 12, color: '#a19d93', joints: 6 },
-  { x: -42.5, z: -5, w: 85, d: 30, color: '#55585b', joints: 0 },
-  { x: -50, z: -43.5, w: 12, d: 23, color: '#a19d93', joints: 6 },
+  // The quay (moved south), the new apron behind it, the terminal's asphalt, the pier.
+  { x: -55, z: -36, w: 110, d: 12, color: '#a19d93', joints: 6 },
+  { x: -55, z: -25, w: 110, d: 10, color: '#9a968c', joints: 6 },
+  { x: -55, z: -5, w: 110, d: 30, color: '#55585b', joints: 0 },
+  { x: -50, z: -53.5, w: 12, d: 23, color: '#a19d93', joints: 6 },
 ]
 const WEST_LINES = [
   // Lane markings through the terminal and the quay's edge line.
-  { points: [[-85, -8], [0, -8]], width: 0.25, color: 'rgba(230,200,80,0.85)', dash: [3, 3] },
-  { points: [[-85, 6], [0, 6]], width: 0.25, color: 'rgba(230,200,80,0.85)', dash: [3, 3] },
-  { points: [[-85, -21], [0, -21]], width: 0.35, color: 'rgba(230,200,80,0.9)' },
+  { points: [[-110, -8], [0, -8]], width: 0.25, color: 'rgba(230,200,80,0.85)', dash: [3, 3] },
+  { points: [[-110, 6], [0, 6]], width: 0.25, color: 'rgba(230,200,80,0.85)', dash: [3, 3] },
+  { points: [[-110, -31], [0, -31]], width: 0.35, color: 'rgba(230,200,80,0.9)' },
   // Ballast and sleepers under the rails.
-  { points: [[-85, 21], [0, 21]], width: 3.2, color: '#6e6a62' },
-  { points: [[-85, 21], [0, 21]], width: 2.6, color: '#4a3a2c', dash: [0.25, 0.55] },
+  { points: [[-110, 21], [0, 21]], width: 3.2, color: '#6e6a62' },
+  { points: [[-110, 21], [0, 21]], width: 2.6, color: '#4a3a2c', dash: [0.25, 0.55] },
 ]
 
 export const SALTGATE_HARBOUR = {
   id: 'harbor',
   name: 'Saltgate Harbour',
-  width: 170,
-  depth: 110,
+  width: 220,
+  depth: 130,
   bases: [
-    { x: -74, z: 10 },
-    { x: 74, z: 10 },
+    { x: -99, z: 10 },
+    { x: 99, z: 10 },
   ],
   obstacles,
   pieces,
-  sets: [...WEST_SETS, ...WEST_SETS.map(mirrorSet), ...CENTRE_SETS],
+  sets: [...WEST_SETS_ALL, ...WEST_SETS_ALL.map(mirrorSet), ...CENTRE_SETS.map(mvSet)],
   water: [
-    { x: -70.5, z: -43.5, w: 29, d: 23, open: 'sw' },
-    { x: -25.5, z: -43.5, w: 37, d: 23, open: 's' },
-    { x: 25.5, z: -43.5, w: 37, d: 23, open: 's' },
-    { x: 70.5, z: -43.5, w: 29, d: 23, open: 'se' },
+    { x: -83, z: -53.5, w: 54, d: 23, open: 'sw' },
+    { x: -25.5, z: -53.5, w: 37, d: 23, open: 's' },
+    { x: 25.5, z: -53.5, w: 37, d: 23, open: 's' },
+    { x: 83, z: -53.5, w: 54, d: 23, open: 'se' },
   ],
-  pads: [...WEST_PADS, ...WEST_PADS.map(mirrorPad), { x: 0, z: -43.5, w: 14, d: 23, color: '#a19d93', joints: 6 }],
+  pads: [...WEST_PADS, ...WEST_PADS.map(mirrorPad), { x: 0, z: -53.5, w: 14, d: 23, color: '#a19d93', joints: 6 }],
   lines: [...WEST_LINES, ...WEST_LINES.map(mirrorLine)],
-  texts: [{ x: 0, z: -46, text: 'PIER 2', size: 2.4, rot: -Math.PI / 2, color: 'rgba(240,235,220,0.75)' }],
-  roads: [{ width: 3.4, points: [[-92, 30], [92, 30]] }, ...[{ width: 3, points: [[-40, 60], [-40, 30]] }].flatMap((r) => [r, mirrorRoad(r)])],
+  texts: [{ x: 0, z: -56, text: 'PIER 2', size: 2.4, rot: -Math.PI / 2, color: 'rgba(240,235,220,0.75)' }],
+  roads: [{ width: 3.4, points: [[-118, 30], [118, 30]] }, ...[{ width: 3, points: [[-40, 72], [-40, 30]] }].flatMap((r) => [r, mirrorRoad(r)])],
   mud: [],
-  sea: { z: -57 },
-  trees: scatterTrees(40, 91, 85, 55, (x, z) => z < -50),
+  sea: { z: -67 },
+  trees: scatterTrees(46, 91, 110, 65, (x, z) => z < -60),
   hills: [150, 250],
   hillScale: 0.9,
   theme: {

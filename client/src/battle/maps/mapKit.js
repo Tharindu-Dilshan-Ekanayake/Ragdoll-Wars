@@ -58,3 +58,37 @@ export function scatterTrees(count, seed, hx, hz, skip = () => false) {
   }
   return out
 }
+
+/**
+ * Growing a map: moves everything past a line further out, as whole groups, so a
+ * layout keeps its shape and opens up new ground in between. `x < -ax` moves `dx` further
+ * west (write the west half), `|z| > az` moves `dz` further from the middle.
+ * Returns movers for points, boxes, pieces, sets, pads, polylines and hills.
+ */
+export function grow({ ax = Infinity, dx = 0, az = Infinity, dz = 0 }) {
+  const fx = (x) => (x < -ax ? x - dx : x)
+  const fz = (z) => (Math.abs(z) > az ? z + Math.sign(z) * dz : z)
+  const pt = ([x, z]) => [fx(x), fz(z)]
+  return {
+    fx,
+    fz,
+    pt,
+    box: (o) => ({ ...o, x: fx(o.x), z: fz(o.z) }),
+    piece: ([k, x, z, r]) => [k, fx(x), fz(z), r],
+    set: ([k, x, z, r, o]) => [k, fx(x), fz(z), r, o],
+    pad: (p) => ({ ...p, x: fx(p.x), z: fz(p.z) }),
+    line: (l) => ({ ...l, points: l.points.map(pt) }),
+    hill: (h) => ({ ...h, x: fx(h.x), z: fz(h.z) }),
+  }
+}
+
+/** Mirrors map.terrain features (west half) to both halves. */
+export function mirrorTerrain({ hills = [], ridges = [], trenches = [], rough = 0 }) {
+  const mp = (pts) => pts.map(([x, z]) => [-x, z])
+  return {
+    hills: [...hills, ...hills.map((h) => ({ ...h, x: -h.x }))],
+    ridges: [...ridges, ...ridges.map((r) => ({ ...r, points: mp(r.points) }))],
+    trenches: [...trenches, ...trenches.map((t) => ({ ...t, points: mp(t.points) }))],
+    rough,
+  }
+}

@@ -21,7 +21,7 @@ export const MAPS = [
     id: 'harbor',
     name: 'Saltgate Harbour',
     blurb: 'A working container port: cargo ships under gantry cranes, piers into the basins, a container terminal, rail yard, warehouses and a tank farm.',
-    size: '170 × 110 m',
+    size: '220 × 130 m',
     load: () => import('./saltgateHarbour.js'),
   },
   {
