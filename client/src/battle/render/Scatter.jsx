@@ -15,6 +15,7 @@ import {
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
 import { useQuality } from '../../store/quality'
+import { helipadsOf, PAD_SIZE } from '../sim/helipads'
 import { mapObstacles } from '../sim/pieces'
 import { addFrameHook, PHASE } from '../state'
 import { hash } from './coverGeometry'
@@ -232,6 +233,8 @@ function distToPolyline(x, z, pts) {
 /** A test for "can something small grow at (x, z)?" for this map. */
 function groundTest(map) {
   const boxes = mapObstacles(map).filter((o) => o.kind !== 'tree')
+  // The helipads stay bare.
+  for (const p of helipadsOf(map)) boxes.push({ x: p.x, z: p.z, w: PAD_SIZE, d: PAD_SIZE })
   const roads = map.roads || []
   const ice = map.ice || []
   const mud = map.mud || []

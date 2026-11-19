@@ -151,10 +151,10 @@ export const STEELBAY_WAREHOUSE = {
   pieces,
   sets: [...WEST_SETS, ...WEST_SETS.map(mirrorSet), ...CENTRE_SETS],
   levels: [...WEST_LEVELS, ...WEST_LEVELS.map(mirrorLevel), ...CENTRE_LEVELS],
-  // Helipads beside each base.
-  pads: [
-    { x: -63, z: -32, w: 12, d: 12, color: '#b9bcc2' },
-    { x: 63, z: -32, w: 12, d: 12, color: '#b9bcc2' },
+  // Helipads beside each base (you fly in to yours: walk/arrivalFlight.js).
+  helipads: [
+    { x: -63, z: -32 },
+    { x: 63, z: -32 },
   ],
   // A tiled floor wall to wall.
   floor: { x: 0, z: 0, w: W, d: D, tile: 2, colors: ['#cfd1d6', '#c6c8ce'], grout: 'rgba(70,74,86,0.45)' },
@@ -165,8 +165,6 @@ export const STEELBAY_WAREHOUSE = {
     { points: ring, width: 0.2, color: 'rgba(230,190,40,0.85)' },
   ],
   texts: [
-    { x: -63, z: -32, text: 'H', size: 7, color: 'rgba(250,250,250,0.9)' },
-    { x: 63, z: -32, text: 'H', size: 7, color: 'rgba(250,250,250,0.9)' },
     { x: -66, z: 22, text: 'BLUE', size: 2.6, color: 'rgba(80,130,210,0.85)' },
     { x: 66, z: 22, text: 'RED', size: 2.6, color: 'rgba(205,90,80,0.85)' },
   ],

@@ -30,6 +30,26 @@ export const battle = {
    * A spectator - the battle can't see or hurt you, but blasts still knock you about.
    * `cam` is the third-person orbit (yaw 0: camera south of you, looking north).
    */
+  /**
+   * Flying in at the start of a battle (walk/arrivalFlight.js): the clock, whether your
+   * avatar is still scripted, the helicopter's pose, the pad's frame.
+   */
+  arrival: {
+    running: false,
+    scripted: false,
+    waiting: false,
+    skip: false,
+    t: 0,
+    shown: false,
+    camMode: 'follow',
+    frame: null,
+    team: 0,
+    vy: 0,
+    saluted: false,
+    salute: 0,
+    heli: { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, visible: false },
+  },
+
   walk: {
     /** Walking (camera behind you) vs the top view; `placed`: your avatar is on the map. */
     on: false,

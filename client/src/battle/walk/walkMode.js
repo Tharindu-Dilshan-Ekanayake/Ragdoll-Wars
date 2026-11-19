@@ -1,7 +1,8 @@
 import { net } from '../../net/battleNet'
 import { useHud } from '../hud/hudStore'
-import { collideWalker, floorUnder, segmentClear2D } from '../sim/obstacles'
+import { collideWalker, floorUnder } from '../sim/obstacles'
 import { battle } from '../state'
+import { releaseArrival } from './arrivalFlight'
 
 /**
  * Walk mode: you're on the battlefield as your own Bloxity avatar from the moment it
@@ -59,51 +60,6 @@ export function placeWalker(w, x, z, camYaw) {
   Object.assign(wk.cam, { yaw: camYaw, pitch: 0.32, dist: 7 })
 }
 
-/**
- * Lands you at your side's base as the battle loads, facing the enemy, and starts you
- * walking. `slot` spreads teammates out (online) so nobody lands inside anyone.
- */
-export function landWalker(w, team, slot = 0) {
-  // A map with a rampart: up on top of its middle section, looking out over the field.
-  const r = w.rampart
-  if (r && team === 0) {
-    const seg = r.segs[Math.floor(r.segs.length / 2)]
-    const wk = battle.walk
-    placeWalker(w, (seg.x0 + seg.x1) / 2, (seg.z0 + seg.z1) / 2, -Math.PI / 2)
-    // (placeWalker keeps to the ground: put it back on the walkway.)
-    wk.x = (seg.x0 + seg.x1) / 2 - 1
-    wk.z = (seg.z0 + seg.z1) / 2 + (slot % 2 ? -1 : 1) * Math.ceil(slot / 2) * 2.5
-    wk.y = seg.h
-    wk.floor = seg.h
-    wk.on = false
-    enterWalk()
-    return
-  }
-  const base = w.map.bases[team] || { x: 0, z: 0 }
-  const ahead = team === 0 ? 1 : -1
-  const z0 = base.z + (slot % 2 ? -1 : 1) * Math.ceil(slot / 2) * 2.5
-  // In front of the base, on a spot with open ground ahead (not nose to a sandbag wall).
-  let x = base.x + ahead * 12
-  let z = z0
-  search: for (const dx of [12, 16, 8, 20, 4]) {
-    for (const dz of [0, 3, -3, 6, -6, 9, -9]) {
-      const cx = base.x + ahead * dx
-      const cz = z0 + dz
-      _p.x = cx
-      _p.z = cz
-      if (collideWalker(w.obs, _p, WALK.radius + 0.3, 0)) continue
-      if (!segmentClear2D(w.obs, cx, cz, cx + ahead * 8, cz, WALK.radius + 0.2)) continue
-      x = cx
-      z = cz
-      break search
-    }
-  }
-  // The camera sits behind you: west of you for Blue (facing east), east for Red.
-  placeWalker(w, x, z, -ahead * (Math.PI / 2))
-  battle.walk.on = false
-  enterWalk()
-}
-
 /** Out walking: back to your avatar where you left it (or, first time, where you look). */
 export function enterWalk() {
   const wk = battle.walk
@@ -121,6 +77,8 @@ export function enterWalk() {
 export function exitWalk() {
   const wk = battle.walk
   if (!wk.on) return
+  // Still flying in: land first (the helicopter flies on without you).
+  if (battle.arrival.scripted) releaseArrival(true)
   wk.on = false
   const v = battle.view
   const pitch = Math.min(1.42, Math.max(0.3, wk.cam.pitch))

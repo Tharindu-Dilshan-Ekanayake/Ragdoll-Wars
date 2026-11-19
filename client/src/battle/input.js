@@ -258,6 +258,11 @@ export function attachInput(canvas, boxEl) {
   }
 
   const onDown = (e) => {
+    // Flying in: a tap skips to standing on the ground.
+    if (battle.arrival.scripted) {
+      battle.arrival.skip = true
+      return
+    }
     canvas.setPointerCapture?.(e.pointerId)
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
     const touch = e.pointerType === 'touch'
@@ -386,6 +391,11 @@ export function attachInput(canvas, boxEl) {
 
   const onKeyDown = (e) => {
     if (typing(e)) return
+    // Flying in: any key skips to standing on the ground.
+    if (battle.arrival.scripted && !e.repeat) {
+      battle.arrival.skip = true
+      return
+    }
     const hud = getHud()
     const k = e.key.toLowerCase()
     battle.view.keys.add(k)

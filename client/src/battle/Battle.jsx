@@ -1,5 +1,5 @@
 import { useProgress } from '@react-three/drei'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { startAmbience, stopAmbience } from '../audio/sfx'
 import { useApp } from '../store/app'
@@ -17,7 +17,7 @@ import { getNet, me, useNet } from '../store/net'
 import { applySnapshot, createNetMirror } from './net/netWorld'
 import { applySave } from './sim/saveGame'
 import { battle } from './state'
-import { landWalker } from './walk/walkMode'
+import { startArrival } from './walk/arrivalFlight'
 
 /**
  * The battle screen (its own lazily-loaded chunk): loads the map, creates the
@@ -97,11 +97,11 @@ function installWorld(world, online = false) {
     syncTime()
     offHud = useHud.subscribe(syncTime)
   }
-  // You land on the battlefield as your avatar, at your side's base.
+  // You fly in to your side's helipad and hop out as your avatar.
   const mine = online ? me() : null
   const team = mine ? mine.team : useHud.getState().team
   const slot = mine ? Math.max(0, getNet().players.filter((p) => p.team === team).indexOf(mine)) : 0
-  landWalker(world, team, slot)
+  startArrival(world, team, slot)
   const stopTicker = startHudTicker()
   startAmbience()
   return () => {
@@ -121,6 +121,8 @@ function installWorld(world, online = false) {
     battle.moveMarker = null
     battle.walk.on = false
     battle.walk.placed = false
+    battle.arrival.running = false
+    battle.arrival.scripted = false
     disposeTextures()
   }
 }
@@ -128,6 +130,8 @@ function installWorld(world, online = false) {
 export default function Battle({ mapId, mode = 'sandbox', onExit }) {
   const [map, setMap] = useState(null)
   const [ready, setReady] = useState(false)
+  // (A ref too: switching maps keeps the canvas, which only reports ready once.)
+  const readyRef = useRef(false)
 
   // Load the map, then build its battle. The world lives outside React (battle.world).
   useEffect(() => {
@@ -147,6 +151,7 @@ export default function Battle({ mapId, mode = 'sandbox', onExit }) {
         if (!online && save && save.mapId === m.default.id && mode === 'sandbox') applySave(world, save.data)
         useHud.setState({ mode, team: 0, zombie: null, placing: null, dockTab: 'units' })
         teardown = installWorld(world, online)
+        if (readyRef.current) battle.arrival.waiting = false
         setMap(m.default)
       })
     return () => {
@@ -157,7 +162,12 @@ export default function Battle({ mapId, mode = 'sandbox', onExit }) {
     }
   }, [mapId, mode])
 
-  const handleReady = useCallback(() => setReady(true), [])
+  const handleReady = useCallback(() => {
+    setReady(true)
+    readyRef.current = true
+    // The flight in starts once there's something to see.
+    battle.arrival.waiting = false
+  }, [])
 
   return (
     <div className="ff-battle">

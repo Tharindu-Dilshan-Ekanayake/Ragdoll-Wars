@@ -14,6 +14,7 @@ import { drain } from './sim/fx'
 import { netStep } from './net/netWorld'
 import { stepWorld } from './sim/world'
 import { addFrameHook, battle, PHASE } from './state'
+import HeliArrival from './walk/HeliArrival'
 import RemoteWalkers from './walk/RemoteWalkers'
 import Walker from './walk/Walker'
 
@@ -62,10 +63,11 @@ function SimAndSound() {
 }
 
 /** You as your avatar, and the other players' avatars. */
-function WalkLayer() {
+function WalkLayer({ map }) {
   return (
     <>
       <Walker />
+      <HeliArrival map={map} />
       <RemoteWalkers />
     </>
   )
@@ -88,7 +90,7 @@ export default function BattleScene({ map, onReady }) {
       <Ordnance />
       <Vehicles />
       <Markers map={map} />
-      <WalkLayer />
+      <WalkLayer map={map} />
     </GameCanvas>
   )
 }

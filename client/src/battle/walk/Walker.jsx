@@ -9,6 +9,7 @@ import { getTextures } from '../render/textures'
 import { drain } from '../sim/fx'
 import { segmentHit3D } from '../sim/obstacles'
 import { addFrameHook, battle, PHASE } from '../state'
+import { arrivalCamera, stepArrival } from './arrivalFlight'
 import { blastWalker, stepWalker, WALK } from './walkMode'
 
 /**
@@ -29,6 +30,10 @@ const FAR_VIEW = 40
 const _target = new Vector3()
 const _desired = new Vector3()
 const _look = new Vector3()
+const _camPos = new Vector3()
+const _camLook = new Vector3()
+/** The camera's place round you when the flight-in shot ends (the sweep starts there). */
+const sweepFrom = { yaw: 0, pitch: 0, dist: 7, set: false }
 /** The message sent to the server, reused: [x, y, z] cm, yaw mrad, speed cm/s, grounded. */
 const walkMsg = [0, 0, 0, 0, 0, 1]
 const onBlast = (e) => blastWalker(battle.walk, e)
@@ -64,6 +69,8 @@ export default function Walker() {
       const wk = battle.walk
       const w = battle.world
       const group = groupRef.current
+      // Flying in: the flight's clock (it runs on in the top view too).
+      if (battle.arrival.running) stepArrival(Math.min(rawDelta, 0.05))
       if (group) group.visible = wk.placed
       if (!wk.placed || !w || !group) {
         wasOn = false
@@ -100,6 +107,26 @@ export default function Walker() {
         wasOn = true
       }
       blasts = drain(w.fx.explosions, blasts, onBlast)
+
+      // Aboard or hopping off: the flight moves you (stepArrival), out of sight until the door.
+      if (battle.arrival.scripted) {
+        group.position.set(wk.x, 0, wk.z)
+        const yawG = yawRef.current
+        yawG.visible = battle.arrival.shown
+        yawG.position.y = wk.y
+        yawG.rotation.y = wk.yaw
+        pivotRef.current.rotation.x = 0
+        const motion = motionRef.current
+        motion.time += dt
+        motion.speed = wk.speed
+        motion.grounded = wk.grounded
+        motion.vy = wk.vy
+        motion.stride += dt * (5 + 6 * Math.min(1, wk.speed / WALK.run))
+        battle.view.tx = wk.x
+        battle.view.tz = wk.z
+        return
+      }
+      if (!yawRef.current.visible) yawRef.current.visible = true
 
       const keys = battle.view.keys
       const joy = wk.input
@@ -151,6 +178,36 @@ export default function Walker() {
       if (!wk.on || !w) return
       const dt = Math.min(rawDelta, 0.05)
       const c = wk.cam
+      const arr = battle.arrival
+      if (arr.running && arr.scripted) {
+        const k = arrivalCamera(_camPos, _camLook)
+        if (k < 0) {
+          // The fixed shot of the helicopter coming in (pulled in front of any wall).
+          const hit = segmentHit3D(w.obs, arr.frame.px, 2, arr.frame.pz, _camPos.x, _camPos.y, _camPos.z)
+          if (hit < 1) _camPos.lerp(_target.set(arr.frame.px, 2, arr.frame.pz), 1 - Math.max(0.15, hit - 0.05))
+          const camera = state.camera
+          camera.position.copy(_camPos)
+          camera.lookAt(_camLook)
+          camera.updateMatrixWorld()
+          _look.copy(_camLook)
+          sweepFrom.set = false
+          return
+        }
+        // You're out: swing from that shot round to behind you.
+        const camera = state.camera
+        if (!sweepFrom.set) {
+          const dx = camera.position.x - wk.x
+          const dy = camera.position.y - (wk.y + WALK.eye)
+          const dz = camera.position.z - wk.z
+          const dist = Math.max(0.5, Math.hypot(dx, dy, dz))
+          Object.assign(sweepFrom, { yaw: Math.atan2(dx, dz), pitch: Math.asin(dy / dist), dist, set: true })
+        }
+        let dyaw = arr.frame.yaw - sweepFrom.yaw
+        dyaw = Math.atan2(Math.sin(dyaw), Math.cos(dyaw))
+        c.yaw = sweepFrom.yaw + dyaw * k
+        c.pitch = sweepFrom.pitch + (0.32 - sweepFrom.pitch) * k
+        c.dist = sweepFrom.dist + (7 - sweepFrom.dist) * k
+      } else sweepFrom.set = false
       _target.set(wk.x, wk.y + WALK.eye, wk.z)
       const h = Math.cos(c.pitch) * c.dist
       _desired.set(_target.x + Math.sin(c.yaw) * h, Math.max(_target.y + Math.sin(c.pitch) * c.dist, 0.4), _target.z + Math.cos(c.yaw) * h)
