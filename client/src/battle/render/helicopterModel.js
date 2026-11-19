@@ -104,6 +104,12 @@ const STATIONS = [
   [-7.75, 0.05, 0.08, 0.05, 2.6],
 ]
 const RADIAL = 18
+/** The cabin lining sits this far in from the outer skin (a share of the section). */
+const INSET = 0.93
+const LINING = '#6a6f5c'
+const FLOOR_IN = '#3d4236'
+const GLASS_IN = '#1c2a33'
+const BULKHEAD = '#5a5f4c'
 
 /** What colour a fuselage face is (its centre: z, angle round the hull), or null for an opening. */
 function hullFace(z, t) {
@@ -149,6 +155,40 @@ function fuselage() {
       idx.push(a, b, c, b, d, c)
       faceColor.push(col, col)
     }
+  }
+  // The cabin and cockpit from inside: an inset copy of the hull's skin there, facing in
+  // (lining, a darker floor, glass seen from inside), and a bulkhead at the back of the
+  // cabin so nobody can see down the tail boom.
+  const first = STATIONS.findIndex((st) => st[0] <= 3.0)
+  const last = STATIONS.findIndex((st) => st[0] <= -0.9)
+  const base = pos.length / 3
+  for (let i = first; i <= last; i += 1) {
+    const yc = STATIONS[i][4]
+    for (let k = 0; k < RADIAL; k += 1) {
+      const [x, y, z] = ring(STATIONS[i], k)
+      pos.push(x * INSET, yc + (y - yc) * INSET, z)
+    }
+  }
+  for (let i = 0; i < last - first; i += 1) {
+    for (let k = 0; k < RADIAL; k += 1) {
+      const a = base + i * RADIAL + k
+      const b = base + i * RADIAL + ((k + 1) % RADIAL)
+      const c = base + (i + 1) * RADIAL + k
+      const d = base + (i + 1) * RADIAL + ((k + 1) % RADIAL)
+      const z = (STATIONS[first + i][0] + STATIONS[first + i + 1][0]) / 2
+      const t = ((k + 0.5) / RADIAL) * Math.PI * 2
+      const out = hullFace(z, t)
+      const col = out === GLASS ? GLASS_IN : Math.sin(t) < -0.45 ? FLOOR_IN : LINING
+      idx.push(a, c, b, b, c, d)
+      faceColor.push(col, col)
+    }
+  }
+  const back = base + (last - first) * RADIAL
+  const centre = pos.length / 3
+  pos.push(0, STATIONS[last][4], STATIONS[last][0])
+  for (let k = 0; k < RADIAL; k += 1) {
+    idx.push(centre, back + k, back + ((k + 1) % RADIAL))
+    faceColor.push(BULKHEAD)
   }
   const g = new BufferGeometry()
   g.setAttribute('position', new Float32BufferAttribute(pos, 3))
@@ -199,11 +239,20 @@ function doorGun(side) {
 export function buildHelicopterGeometry({ armed = false } = {}) {
   const parts = [
     fuselage(),
-    // The cabin seen through the open doors: floor, back wall, a bench.
-    // (Kept inside the hull's narrowing lower half: floor at the door sill.)
-    place(tint(new BoxGeometry(1.6, 1.15, 1.45), CABIN), 0, 2.08, 0.22),
-    place(tint(new BoxGeometry(1.75, 0.08, 1.5), '#3a3e36'), 0, 1.5, 0.22),
-    place(tint(new BoxGeometry(1.4, 0.45, 0.35), '#4a5038'), 0, 1.75, -0.4),
+    // Inside, through the open doors: a flat cabin floor, a troop bench and its backs along
+    // the rear bulkhead, the two pilot seats, the instrument panel under its glare shield.
+    place(tint(new BoxGeometry(1.6, 0.06, 3.3), FLOOR_IN), 0, 1.5, 0.75),
+    place(tint(new BoxGeometry(1.7, 0.12, 0.5), '#7a5a3a'), 0, 1.92, -0.6),
+    place(tint(new BoxGeometry(1.7, 0.55, 0.08), '#7a5a3a'), 0, 2.25, -0.84),
+    ...[-0.55, 0, 0.55].map((x) => place(tint(new BoxGeometry(0.06, 0.4, 0.45), CABIN), x, 1.72, -0.6)),
+    ...[-0.42, 0.42].flatMap((x) => [
+      place(tint(new BoxGeometry(0.5, 0.1, 0.5), '#2c302a'), x, 1.85, 1.65),
+      place(tint(new BoxGeometry(0.5, 0.75, 0.1), '#2c302a'), x, 2.2, 1.4, -0.12),
+      place(tint(new BoxGeometry(0.08, 0.32, 0.4), CABIN), x, 1.7, 1.65),
+    ]),
+    place(tint(new BoxGeometry(1.5, 0.45, 0.12), CABIN), 0, 2.15, 2.45, 0.5),
+    place(tint(new BoxGeometry(1.55, 0.06, 0.35), '#1f2226'), 0, 2.42, 2.4),
+    place(tint(new BoxGeometry(0.25, 0.4, 0.6), CABIN), 0, 1.75, 1.95),
     // Doors slid back along the outside of the cabin.
     place(tint(new BoxGeometry(0.06, 1.05, 1.3), OLIVE_DARK), 1.3, 2.0, -1.1),
     place(tint(new BoxGeometry(0.06, 1.05, 1.3), OLIVE_DARK), -1.3, 2.0, -1.1),

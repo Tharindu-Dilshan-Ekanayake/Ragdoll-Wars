@@ -42,7 +42,7 @@ const TEAM_RGB = [new Color('#3d78dc'), new Color('#d64545')]
 const RING_RGB = [new Color('#7fb4ff'), new Color('#ff8a8a')]
 /** The crew's uniform, as the soldiers wear it (Soldiers.jsx TEAM_COLORS). */
 const CREW_RGB = [new Color('#3f7ddf'), new Color('#d84848')]
-const MAX_CREW = MAX_VEHICLES * 3
+const MAX_CREW = MAX_VEHICLES * 4
 
 const mBody = new Matrix4()
 const mPart = new Matrix4()
