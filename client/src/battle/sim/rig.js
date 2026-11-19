@@ -158,8 +158,29 @@ const rotZ = (x, z, c, s) => -x * s + z * c
  * Weapon and both arms, shared by the upright and prone poses. Expects the shoulders,
  * UP/LEFT/FWD (torso axes) and DIR (weapon direction) filled in.
  */
-function poseArms(out, type, ready, reloadP, t, seed) {
+function poseArms(out, type, ready, reloadP, t, seed, swing = -1) {
   const shR = J_SH_R * 3
+  // Carrying something by its handle (a medic's bag, a loader's case of rounds): right
+  // arm down at the side, the load hanging from the hand, the left arm swinging.
+  if (swing >= 0) {
+    const shL = J_SH_L * 3
+    let fx = FWD[0]
+    let fz = FWD[2]
+    const fl = Math.hypot(fx, fz) || 1
+    fx /= fl
+    fz /= fl
+    const sw = Math.sin(swing) * 0.13
+    const gx = out[shR] - UP[0] * 0.6 - LEFT[0] * 0.07 + fx * (0.03 - sw * 0.5)
+    const gy = out[shR + 1] - UP[1] * 0.6
+    const gz = out[shR + 2] - UP[2] * 0.6 - LEFT[2] * 0.07 + fz * (0.03 - sw * 0.5)
+    setJ(out, J_GRIP, gx, gy, gz)
+    setJ(out, J_MUZZLE, gx + fx * 0.3, gy, gz + fz * 0.3)
+    setJ(out, J_HA_R, gx, gy + 0.02, gz)
+    setJ(out, J_HA_L, out[shL] - UP[0] * 0.58 + LEFT[0] * 0.07 + fx * sw, out[shL + 1] - UP[1] * 0.58, out[shL + 2] - UP[2] * 0.58 + LEFT[2] * 0.07 + fz * sw)
+    ik(out, J_SH_R, J_EL_R, J_HA_R, BONE.upperArm, BONE.foreArm, -LEFT[0] * 0.3 - FWD[0], -LEFT[1] * 0.3 - FWD[1], -LEFT[2] * 0.3 - FWD[2])
+    ik(out, J_SH_L, J_EL_L, J_HA_L, BONE.upperArm, BONE.foreArm, LEFT[0] * 0.3 - FWD[0], LEFT[1] * 0.3 - FWD[1], LEFT[2] * 0.3 - FWD[2])
+    return
+  }
   const pistol = type.foregrip === 0
   let gx
   let gy
@@ -347,7 +368,9 @@ function poseUpright(s, out, t, type) {
   DIR[0] = dx / dl
   DIR[1] = dy / dl
   DIR[2] = dz / dl
-  poseArms(out, type, ready, s.reloadP, t, s.seed)
+  // (A medic, or a mortar loader on the move: carrying, not aiming.)
+  const carry = type.unarmed || (s.loaderOf >= 0 && mv > 0.15)
+  poseArms(out, type, ready, s.reloadP, t, s.seed, carry ? (mv > 0.05 ? ph * 0.5 : 0) : -1)
 }
 
 /** Lying on the stomach, weapon forward; crawling when moving. Body space. */

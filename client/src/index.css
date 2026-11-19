@@ -1485,6 +1485,7 @@ button {
   aspect-ratio: 178 / 118;
   border-radius: 10px;
   background: #2a323b;
+  object-fit: cover;
 }
 .ff-preview--loading {
   animation: ff-pulse 1.2s ease-in-out infinite;

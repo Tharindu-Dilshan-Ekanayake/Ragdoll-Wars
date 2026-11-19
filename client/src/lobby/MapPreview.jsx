@@ -3,9 +3,13 @@ import { useEffect, useState } from 'react'
 import { mapPieces } from '../battle/sim/pieces'
 
 /**
- * A top-down sketch of a battlefield, drawn as SVG from the map's own data (loaded on
- * demand, a few KB): roads, mud, every piece of cover, and each team's side.
+ * A battlefield's picture for the map picker: a render of the map itself (previews/*.webp,
+ * 11-42 KB each, made from the game; loaded only when the picker opens). A map without
+ * one gets a top-down sketch drawn as SVG from its own data: roads, mud, cover, sides.
  */
+const PICTURES = Object.fromEntries(
+  Object.entries(import.meta.glob('./previews/*.webp', { eager: true, query: '?url', import: 'default' })).map(([path, url]) => [path.slice(11, -5), url]),
+)
 const KIND_FILL = {
   sandbag: '#c9b483',
   barrier: '#d8d4ca',
@@ -35,6 +39,12 @@ const PIECE_FILL = {
 }
 
 export default function MapPreview({ entry }) {
+  const picture = PICTURES[entry.id]
+  if (picture) return <img className="ff-preview" src={picture} alt={`${entry.name}`} loading="lazy" decoding="async" />
+  return <MapSketch entry={entry} />
+}
+
+function MapSketch({ entry }) {
   const [map, setMap] = useState(null)
   useEffect(() => {
     let cancelled = false
