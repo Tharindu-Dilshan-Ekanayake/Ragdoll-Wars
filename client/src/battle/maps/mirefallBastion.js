@@ -200,7 +200,7 @@ export const MIREFALL_BASTION = {
     ],
   },
   /** How far out from the wall you may deploy (WALL_REACH in sim/world.js): marked. */
-  lines: [{ points: [[-24, -HALF_D + 1], [-24, HALF_D - 1]], width: 0.35, color: 'rgba(200,40,30,0.75)', dash: [2, 1.5] }],
+  lines: [{ points: [[-14, -HALF_D + 1], [-14, HALF_D - 1]], width: 0.35, color: 'rgba(200,40,30,0.75)', dash: [2, 1.5] }],
   /** Lamp posts along the top of the rampart (z positions). */
   lamps: [-66, -45, -26, -9, 9, 26, 45, 66],
   theme: {

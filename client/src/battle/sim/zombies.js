@@ -41,7 +41,7 @@ const BUILD_TIME_FIRST = 35
 const BUILD_TIME = 25
 const MAX_BREACHES = 10
 /** How hard zombies hit the wall (times their melee damage and `bash`). */
-const WALL_BASH = 2.4
+const WALL_BASH = 1.15
 /** A zombie through to the camp behind a rampart: the wall damage it does. */
 const BREACH_WALL = 1200
 /** Zombies get tougher as the waves go on: this much more health per wave. */
@@ -128,10 +128,11 @@ export function initZombieMode(w) {
 function composeWave(n) {
   const out = []
   const walkers = 10 + n * 4
-  const runners = n >= 2 ? (n - 1) * 3 : 0
+  // (A couple of fast ones even in wave 1: someone always gets to the front line.)
+  const runners = (n - 1) * 3 + 2
   // The big ones come only at the end: a few brutes late on, the behemoths in the last wave.
   const brutes = (n >= 12 ? Math.floor((n - 10) / 2) : 0) + (n >= 19 ? 3 : 0)
-  const spitters = n >= 2 ? Math.min(14, Math.floor(n / 2) + 1) : 0
+  const spitters = Math.min(14, Math.floor(n / 2) + 1)
   const bats = n >= 5 ? Math.min(16, n - 3) : 0
   for (let i = 0; i < walkers; i += 1) out.push('zombie')
   // Runners, spitters, bats and brutes mixed in through the rest of the wave.
