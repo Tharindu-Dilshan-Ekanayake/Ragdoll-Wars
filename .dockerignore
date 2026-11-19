@@ -1,6 +1,11 @@
-# The server image needs only shared/ and server/ (see server/Dockerfile).
+# The server image copies a few folders of the client (server/Dockerfile): the battle
+# simulation (client/src/battle/sim), the maps and the shared profile rules. The rest of
+# the client isn't needed, but `client` must NOT be ignored whole or those COPYs fail
+# ("not found") - so only the big or private bits are left out.
 **/node_modules
-client
+client/dist
+client/public
+client/scripts
 **/data
 **/*.db
 **/.env
