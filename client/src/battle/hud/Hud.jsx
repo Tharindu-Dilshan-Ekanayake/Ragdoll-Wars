@@ -351,7 +351,14 @@ function Rail() {
         ))}
       </div>
       {isTouch && (
-        <button type="button" className={`ff-order ${selectMode ? 'is-on' : ''}`} onClick={toggleSelectMode}>
+        <button
+          type="button"
+          className={`ff-order ${selectMode ? 'is-on' : ''}`}
+          onClick={toggleSelectMode}
+          title="Box select: drag to select a group"
+          aria-label="Box select: drag to select a group"
+          aria-pressed={selectMode}
+        >
           <Glyph name="box" className="ff-ico" />
           <span>Box select</span>
         </button>
@@ -936,6 +943,15 @@ export default function Hud({ onExit }) {
     useHud.setState({ railHidden: true, actionsHidden: true })
     return () => useHud.setState({ railHidden, actionsHidden })
   }, [walking])
+  // Compact HUD: while the unit picker is open the side columns fold away (it takes the
+  // bottom of a short screen), and come back as they were when it shuts.
+  const dockOpen = useHud((s) => !s.dockHidden)
+  useEffect(() => {
+    if (!dockOpen || !COMPACT) return undefined
+    const { railHidden, actionsHidden } = useHud.getState()
+    useHud.setState({ railHidden: true, actionsHidden: true })
+    return () => useHud.setState({ railHidden, actionsHidden })
+  }, [dockOpen])
   // Boxity's screen ads follow modal panels.
   useEffect(() => {
     useApp.getState().setPanel(Boolean(panel))
