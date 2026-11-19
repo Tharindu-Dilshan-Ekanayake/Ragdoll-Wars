@@ -9,6 +9,7 @@ import BattleScene from './BattleScene'
 import Hud from './hud/Hud'
 import { useHud } from './hud/hudStore'
 import { startHudTicker } from './hud/hudTicker'
+import { startZombieTutorial } from './tutorial'
 import { mapById } from './maps'
 import { disposeTextures } from './render/textures'
 import { createWorld, initZombieMode, setCaps } from './sim/world'
@@ -103,6 +104,8 @@ function installWorld(world, online = false) {
   const team = mine ? mine.team : useHud.getState().team
   const slot = mine ? Math.max(0, getNet().players.filter((p) => p.team === team).indexOf(mine)) : 0
   startArrival(world, team, slot)
+  // A first Zombie Horde game (single player): the guide up the wall to Start wave.
+  const stopTutorial = online ? () => {} : startZombieTutorial(world)
   const stopTicker = startHudTicker()
   startAmbience()
   return () => {
@@ -115,6 +118,7 @@ function installWorld(world, online = false) {
       net.onSpeed = null
       net.onDisconnect = null
     }
+    stopTutorial()
     stopTicker()
     stopAmbience()
     if (battle.world === world) battle.world = null

@@ -2542,3 +2542,152 @@ button {
     grid-template-columns: 44px;
   }
 }
+
+/* --- First-time guide (battle/tutorial.js) ------------------------------------------ */
+.ff-tut {
+  position: absolute;
+  top: calc(var(--u) * 74);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: max-content;
+  max-width: min(640px, calc(100% - 24px));
+  padding: 10px 12px 10px 14px;
+  border-radius: 14px;
+  background: rgba(18, 22, 28, 0.94);
+  border: 2px solid #ffd25a;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: max(14px, calc(var(--u) * 16));
+  z-index: 4;
+  animation: ff-rise 0.25s ease-out;
+}
+.ff-tut__step {
+  flex: none;
+  padding: 3px 9px;
+  border-radius: 99px;
+  background: #ffd25a;
+  color: #1b1206;
+  font-family: var(--ff-display);
+  font-size: 0.85em;
+}
+.ff-tut__text {
+  line-height: 1.3;
+}
+.ff-tut__skip {
+  flex: none;
+}
+@keyframes ff-tut-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 210, 90, 0.9);
+  }
+  50% {
+    box-shadow: 0 0 0 7px rgba(255, 210, 90, 0);
+  }
+}
+.ff-hud[data-tut='place'] .ff-unitsbtn,
+.ff-hud[data-tut='place'] .ff-card[data-key='rifle'],
+.ff-hud[data-tut='start'] .ff-zbar__go {
+  animation: ff-tut-pulse 1.1s ease-in-out infinite;
+  outline: 3px solid #ffd25a;
+  outline-offset: 2px;
+}
+@media (pointer: coarse), (max-width: 820px) {
+  .ff-tut {
+    top: var(--side-top, 64px);
+    max-width: calc(100% - 132px);
+    font-size: 13px;
+    gap: 8px;
+    padding: 8px 10px;
+  }
+}
+
+/* --- Multiplayer waiting room ----------------------------------------------------------- */
+.ff-wait {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--u) * 12);
+}
+.ff-wait__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: calc(var(--u) * 12);
+  border-radius: var(--ff-radius);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--ff-line);
+}
+.ff-wait__label {
+  color: var(--ff-dim);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.ff-wait__code {
+  font-family: var(--ff-display);
+  font-size: max(28px, calc(var(--u) * 36));
+  letter-spacing: 0.18em;
+  color: var(--ff-accent);
+}
+.ff-wait__info {
+  margin: 0;
+  color: var(--ff-dim);
+}
+.ff-wait__slots {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: calc(var(--u) * 8);
+}
+.ff-wait__slot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 2px dashed var(--ff-line);
+  background: rgba(255, 255, 255, 0.03);
+}
+.ff-wait__slot.is-filled {
+  border-style: solid;
+  background: rgba(255, 255, 255, 0.07);
+}
+.ff-wait__slot.is-team0 {
+  border-color: #3d8bff;
+}
+.ff-wait__slot.is-team1 {
+  border-color: #ff4d4d;
+}
+.ff-wait__dot {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #3d8bff;
+}
+.ff-wait__slot.is-team1 .ff-wait__dot {
+  background: #ff4d4d;
+}
+.ff-wait__name {
+  flex: 1;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ff-wait__host {
+  color: #ffd25a;
+}
+.ff-wait__empty {
+  color: var(--ff-dim);
+  font-size: 13px;
+}
+.ff-wait__note {
+  align-self: center;
+  color: var(--ff-dim);
+}

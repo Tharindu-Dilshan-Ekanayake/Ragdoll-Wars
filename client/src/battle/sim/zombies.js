@@ -334,7 +334,8 @@ export function updateZombieMode(w, h) {
   const z = w.zmode
   if (!z || z.result) return
   if (z.state === 'build') {
-    z.buildT -= h
+    // (Held while the first-time guide runs: the wave starts from the button then.)
+    if (!z.hold) z.buildT -= h
     if (z.buildT <= 0) startWave(w)
     z.left = 0
     return

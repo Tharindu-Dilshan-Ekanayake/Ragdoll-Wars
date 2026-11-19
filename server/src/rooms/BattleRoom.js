@@ -23,6 +23,11 @@ import { resolveIdentity } from '../bloxityApi.js'
  * switch) and 'zombies' (Zombie Horde in co-op: everyone on Blue, one shared purse).
  * The first player in is the host: they can clear the field, change speed, pause and
  * load a saved battlefield; if they leave, the next player takes over.
+ *
+ * A private room (made with a code) starts as a waiting room: friends join, pick their
+ * side, and nothing runs until the host sends 'start' - then everyone goes into the
+ * battle on the host's map together. Anyone joining after that goes straight in. Quick
+ * match rooms start at once.
  */
 
 const MAX_PLAYERS = 4
@@ -98,13 +103,15 @@ export class BattleRoom extends Room {
     if (this.mode === 'zombies') initZombieMode(this.w)
     this.enc = createEncoder(this.w)
     this.code = null
+    // Private rooms wait for the host's Start; quick match ones are under way at once.
+    this.started = !options.private
     if (options.private) {
       // A short code friends can read out instead of the long generated id.
       this.roomId = makeCode()
       this.code = this.roomId
       await this.setPrivate(true)
     }
-    await this.setMetadata({ mode: this.mode, mapId: this.mapId, code: this.code })
+    await this.setMetadata({ mode: this.mode, mapId: this.mapId, code: this.code, started: this.started })
     this.setSimulationInterval((dt) => this.tick(dt), 1000 / SIM_HZ)
     this.onMessage('*', (client, type, payload) => this.command(client, String(type), payload))
   }
@@ -139,7 +146,7 @@ export class BattleRoom extends Room {
     })
     // The newcomer needs every built piece: resend the list with the next snapshot.
     this.enc.buildVersion = -1
-    client.send('welcome', { mapId: this.mapId, mode: this.mode, code: this.code, team, host, speed: this.speed, paused: this.paused })
+    client.send('welcome', { mapId: this.mapId, mode: this.mode, code: this.code, team, host, speed: this.speed, paused: this.paused, started: this.started })
     this.sendPlayers()
   }
 
@@ -188,6 +195,8 @@ export class BattleRoom extends Room {
   }
 
   tick(dtMs) {
+    // The waiting room: nothing runs (or goes out) until the host starts the battle.
+    if (!this.started) return
     const w = this.w
     w.timeScale = this.paused ? 0 : this.speed
     stepWorld(w, Math.min(0.1, dtMs / 1000))
@@ -243,6 +252,15 @@ export class BattleRoom extends Room {
     const w = this.w
     const msg = payload && typeof payload === 'object' ? payload : {}
     switch (type) {
+      case 'start': {
+        if (this.started) return
+        if (!p.host) return this.toast(client, 'Only the host can start the battle')
+        this.started = true
+        this.enc.buildVersion = -1
+        this.setMetadata({ started: true })
+        this.broadcast('start', { mapId: this.mapId, mode: this.mode })
+        return
+      }
       case 'team': {
         if (this.mode !== 'sandbox') return
         p.team = payload === 1 ? 1 : 0

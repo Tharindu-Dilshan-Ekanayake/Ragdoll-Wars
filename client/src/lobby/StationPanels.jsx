@@ -7,7 +7,7 @@ import { useProgress, ZOMBIE_BADGES } from '../store/progress'
 import { useEffect, useState } from 'react'
 
 import { useBloxity } from '../bloxity/BloxityContext'
-import { joinBattle, parseCode } from '../net/battleNet'
+import { inviteLink, joinBattle, leaveBattle, parseCode, setRoomTeam, startRoom } from '../net/battleNet'
 import { cloudText, fetchBoards, useCloud } from '../net/cloud'
 import { LEADERBOARDS } from '../shared/profile'
 import { useNet } from '../store/net'
@@ -232,6 +232,100 @@ function SidePick({ team, setTeam }) {
   )
 }
 
+/**
+ * The waiting room: the room code (and an invite link), a block for each of the four
+ * places with who's in it and on which side, your side, and - for the host - Start.
+ */
+function WaitingRoom() {
+  const players = useNet((s) => s.players)
+  const code = useNet((s) => s.code)
+  const mode = useNet((s) => s.mode)
+  const mapId = useNet((s) => s.mapId)
+  const sid = useNet((s) => s.sessionId)
+  const [copied, setCopied] = useState(false)
+  const mine = players.find((p) => p.sid === sid)
+  const host = Boolean(mine?.host)
+  const zombies = mode === 'zombies'
+  const mapName = zombies ? ZOMBIE_MAP.name : MAPS.find((m) => m.id === mapId)?.name || mapId
+  const copy = async () => {
+    sfx.click()
+    try {
+      await navigator.clipboard.writeText(inviteLink(code))
+      setCopied(true)
+    } catch {
+      setCopied(false)
+    }
+  }
+  return (
+    <div className="ff-wait">
+      <div className="ff-wait__head">
+        <div>
+          <div className="ff-wait__label">Room code</div>
+          <div className="ff-wait__code">{code}</div>
+        </div>
+        <button type="button" className="ff-btn" onClick={copy}>
+          {copied ? 'Link copied' : 'Copy invite link'}
+        </button>
+      </div>
+      <p className="ff-wait__info">
+        {zombies ? 'Co-op Zombie Horde' : 'Sandbox battle'} · {mapName} · {players.length}/4 players
+      </p>
+      <div className="ff-wait__slots">
+        {[0, 1, 2, 3].map((i) => {
+          const p = players[i]
+          return (
+            <div key={i} className={`ff-wait__slot ${p ? `is-filled is-team${p.team}` : ''}`}>
+              {p ? (
+                <>
+                  <span className="ff-wait__dot" />
+                  <span className="ff-wait__name">
+                    {p.name}
+                    {p.sid === sid ? ' (you)' : ''}
+                  </span>
+                  {p.host && (
+                    <span className="ff-wait__host" title="Host">
+                      ★
+                    </span>
+                  )}
+                </>
+              ) : (
+                <span className="ff-wait__empty">Waiting for a friend…</span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+      {!zombies && mine && <SidePick team={mine.team} setTeam={setRoomTeam} />}
+      <div className="ff-mp__row">
+        {host ? (
+          <button
+            type="button"
+            className="ff-btn ff-btn--accent ff-btn--big"
+            onClick={() => {
+              sfx.select()
+              startRoom()
+            }}
+          >
+            Start battle
+          </button>
+        ) : (
+          <span className="ff-wait__note">Waiting for the host to start the battle…</span>
+        )}
+        <button
+          type="button"
+          className="ff-btn"
+          onClick={() => {
+            sfx.click()
+            leaveBattle()
+          }}
+        >
+          Leave room
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function MultiplayerPanel() {
   const { identity } = useBloxity()
   const status = useNet((s) => s.status)
@@ -247,6 +341,7 @@ function MultiplayerPanel() {
     sfx.click()
     joinBattle({ ...how, team }, name)
   }
+  if (status === 'waiting') return <WaitingRoom />
   return (
     <div className="ff-mp">
       <section className="ff-mp__card ff-mp__card--wide">

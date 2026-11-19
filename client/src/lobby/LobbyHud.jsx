@@ -36,6 +36,10 @@ export default function LobbyHud() {
   // An invite link: join that battle as soon as we know who you are (or after a moment,
   // for a guest on a build without a Boxity sign-in).
   const [invited, setInvited] = useState(Boolean(inviteCode))
+  // Into a waiting room (made one, or joined by code or link): show it.
+  useEffect(() => {
+    if (netStatus === 'waiting') useLobby.getState().setPanel('multiplayer')
+  }, [netStatus])
   const [waited, setWaited] = useState(false)
   useEffect(() => {
     if (!inviteCode) return undefined
@@ -151,6 +155,14 @@ export default function LobbyHud() {
               OK
             </button>
           )}
+        </div>
+      )}
+      {netStatus === 'waiting' && panel !== 'multiplayer' && (
+        <div className="ff-invite">
+          <span>You're in a room, waiting for the battle to start</span>
+          <button type="button" className="ff-btn ff-btn--small" onClick={() => open('multiplayer')}>
+            Open
+          </button>
         </div>
       )}
       <TouchStick />

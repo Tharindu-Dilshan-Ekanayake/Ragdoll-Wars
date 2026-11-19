@@ -21,6 +21,7 @@ import { toggleWalk } from '../walk/walkMode'
 import { BodyDiagram, Glyph, WeaponIcon } from './icons'
 import { renderThumbnails } from './thumbnails'
 import { COMPACT, useHud } from './hudStore'
+import { skipTutorial, useTutorial } from '../tutorial'
 import Panels from './Panels'
 
 /**
@@ -594,6 +595,7 @@ function Tray() {
               <button
                 type="button"
                 key={key}
+                data-key={key}
                 className={`ff-card ff-card--team${team} ff-g-${group.label.toLowerCase()} ${placing === key ? 'is-on' : ''} ${poor(key) ? 'is-poor' : ''}`}
                 onClick={() => {
                   setPlacing(key)
@@ -845,6 +847,40 @@ function RoomPanel() {
   )
 }
 
+/** The first-time guide's banner (battle/tutorial.js): what to do now, and Skip. */
+function TutorialBanner() {
+  const step = useTutorial((s) => s.step)
+  const walking = useHud((s) => s.walking)
+  if (!step) return null
+  const text =
+    step === 'climb'
+      ? walking
+        ? 'Follow the light: walk up the stairs onto the wall.'
+        : 'Press Walk, then follow the light up the stairs onto the wall.'
+      : step === 'place'
+        ? COMPACT
+          ? 'Tap Units, pick a Rifle, then tap the wall by the light to put your first soldier there.'
+          : 'Pick a Rifle from the cards below, then click the wall by the light to put your first soldier there.'
+        : 'Ready? Press Start wave: the horde comes when you say so.'
+  const n = step === 'climb' ? 1 : step === 'place' ? 2 : 3
+  return (
+    <div className="ff-tut" role="status">
+      <span className="ff-tut__step">{n} / 3</span>
+      <span className="ff-tut__text">{text}</span>
+      <button
+        type="button"
+        className="ff-btn ff-btn--small ff-tut__skip"
+        onClick={() => {
+          skipTutorial()
+          sfx.click()
+        }}
+      >
+        Skip
+      </button>
+    </div>
+  )
+}
+
 function Toast() {
   const toast = useHud((s) => s.toast)
   const clearToast = useHud((s) => s.clearToast)
@@ -877,6 +913,7 @@ export default function Hud({ onExit }) {
   const walking = useHud((s) => s.walking)
   const zombies = useHud((s) => s.mode === 'zombies')
   const level = useQuality((s) => s.level)
+  const tut = useTutorial((s) => s.step)
   const rootRef = useRef(null)
   // Compact HUD: the status bar, the speed buttons and the menu buttons are stacked
   // top-right; the side columns start just under them, however tall that stack is
@@ -911,13 +948,14 @@ export default function Hud({ onExit }) {
     useApp.getState().setPanel(Boolean(panel))
   }, [panel])
   return (
-    <div ref={rootRef} className={`ff-hud ${walking ? 'is-walking' : ''} ${zombies ? 'is-zombies' : ''}`} data-quality={level}>
+    <div ref={rootRef} className={`ff-hud ${walking ? 'is-walking' : ''} ${zombies ? 'is-zombies' : ''}`} data-quality={level} data-tut={tut || undefined}>
       <TopBar />
       <Corner onExit={onExit} />
       <Rail />
       <Inspector />
       <Tray />
       <Actions />
+      <TutorialBanner />
       <Toast />
       <RoomPanel />
       <WalkControls />

@@ -186,9 +186,16 @@ function attach(room) {
   window.addEventListener('pagehide', onPageHide)
 
   room.onMessage('welcome', (w) => {
-    useNet.setState({ status: 'online', message: '', code: w.code, mode: w.mode, mapId: w.mapId })
-    useApp.getState().startBattle(w.mapId, w.mode)
+    // A private room waits for its host's Start (the waiting room, in the lobby's
+    // Multiplayer popup); everything else, or a room already under way, goes straight in.
+    const started = w.started !== false
+    useNet.setState({ status: started ? 'online' : 'waiting', message: '', code: w.code, mode: w.mode, mapId: w.mapId })
+    if (started) useApp.getState().startBattle(w.mapId, w.mode)
     net.onWelcome?.(w)
+  })
+  room.onMessage('start', (s) => {
+    useNet.setState({ status: 'online', message: '' })
+    useApp.getState().startBattle(s.mapId, s.mode)
   })
   room.onMessage('players', (list) => useNet.setState({ players: list }))
   room.onMessage('snap', (snap) => {
@@ -202,10 +209,22 @@ function attach(room) {
     if (net.room !== room) return
     net.room = null
     sdkGame('updateRoom', '')
-    const wasOnline = getNet().status === 'online'
-    useNet.setState({ status: wasOnline ? 'error' : getNet().status, message: wasOnline ? 'Disconnected from the battle' : getNet().message, players: [] })
+    const status = getNet().status
+    const wasOnline = status === 'online'
+    const wasIn = wasOnline || status === 'waiting'
+    useNet.setState({ status: wasIn ? 'error' : status, message: wasOnline ? 'Disconnected from the battle' : wasIn ? 'You left the room (or it closed)' : getNet().message, players: [] })
     if (wasOnline && useApp.getState().screen === 'battle') net.onDisconnect?.()
   })
+}
+
+/** The host's Start in the waiting room: everyone goes into the battle. */
+export function startRoom() {
+  net.send('start')
+}
+
+/** Changes your side (0 Blue, 1 Red), in the waiting room or in the battle. */
+export function setRoomTeam(team) {
+  net.send('team', team === 1 ? 1 : 0)
 }
 
 /** Leaves the current battle room, if any. */
